@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 262 72" role="img" aria-label="PubMed">
+  <g font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="56" letter-spacing="-2" fill="#3B6FB6">
+    <text x="0" y="54">Pub</text>
+    <text x="150" y="54">Med</text>
+  </g>
+  <g transform="translate(99,13)">
+    <path d="M0,3 Q11,0 22,5 L22,42 Q11,37 0,40 Z" fill="#1F1F1F"/>
+    <path d="M44,3 Q33,0 22,5 L22,42 Q33,37 44,40 Z" fill="#3B6FB6"/>
+  </g>
+</svg>

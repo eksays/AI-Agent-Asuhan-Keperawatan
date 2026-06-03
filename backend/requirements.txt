@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+python-multipart
+PyPDF2
+pdfplumber
+python-docx
+pandas
+openpyxl
+langchain-core
+langchain-openai
+langchain-google-genai
+langchain-anthropic
+cryptography
+gunicorn
+defusedxml

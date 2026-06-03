@@ -1,0 +1,36 @@
+name: Security Scan (SAST)
+
+# Gagalkan push/merge bila ditemukan kerentanan keamanan baru (backend & frontend).
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  backend-bandit:
+    name: Backend SAST (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install bandit
+        run: pip install bandit
+      - name: Bandit scan (gagal bila ada celah medium+)
+        run: bandit -r backend -ll -x backend/env,backend/venv
+
+  frontend-audit:
+    name: Frontend deps audit (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        working-directory: frontend
+        run: npm ci
+      - name: npm audit (gagal bila vulnerability moderate+)
+        working-directory: frontend
+        run: npm audit --audit-level=moderate

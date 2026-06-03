@@ -1,0 +1,57 @@
+# ==================================
+#  .gitignore — AI Agen Asuhan Keperawatan
+# ==================================
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+env/
+venv/
+.venv/
+
+# Node.js
+node_modules/
+.next/
+out/
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# PDF buku referensi (terlalu besar untuk git)
+backend/*.pdf
+backend/Pdf_*.pdf
+
+# Memori sistem (dapat memuat data sensitif/PHI) — JANGAN pernah commit
+backend/feedback_memory.json
+backend/ebp_memory.json
+
+# Kunci enkripsi lokal, registry DEK (crypto-shredding) & jejak audit (WORM ledger)
+backend/.cdss_key
+backend/.dek_store
+backend/.director_totp
+backend/audit_log.txt
+backend/audit_ledger.jsonl
+
+# (Fase 4) sterilisasi tambahan — data turunan/berkas besar/PHI JANGAN di-commit
+data_terstruktur/
+*.pdf
+feedback_memory.json
+ebp_memory.json
