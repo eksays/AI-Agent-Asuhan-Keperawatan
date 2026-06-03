@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
-import type { Credentials, Framework, Tab, Tier } from "@/lib/types";
+import type { Credentials, Framework, ProviderId, Tab, Tier } from "@/lib/types";
 import { detectProvider } from "@/lib/types";
 import * as api from "@/lib/api";
 
@@ -156,8 +156,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
     setSending(true);
     const baseStages = STAGES[agent][file ? "file" : "text"];
-    const stages = tier === "pro" ? [...baseStages, "Multiple agents reviewing in parallel…", "Auditing & finalizing the answer…"]
-      : tier === "medium" ? [...baseStages, "Reviewing the draft…"] : baseStages;
+    const stages = tier === "pro" ? [...baseStages, "Auditing the answer for quality…"] : baseStages;
     let si = 0; const timer = setInterval(() => { si = Math.min(si + 1, stages.length); patch(sid, botId, { status: stages.slice(0, si) }); }, 650);
     const ctx: api.ChatCtx = { provider: creds.provider, apiKey: creds.apiKey, tier, framework };
     // session_id WAJIB diterbitkan backend (CSPRNG). Klien tidak lagi membuat sendiri.

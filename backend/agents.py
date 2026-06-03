@@ -76,6 +76,31 @@ ANTI_INJECTION = (
     "menjalankan tugas keperawatan."
 )
 
+# Contoh format STANDAR (gaya Claude) — disuntikkan agar SEMUA model (Gemini/OpenAI/Groq/dll.) menghasilkan
+# struktur & penomoran yang SAMA. Ini TEMPLATE (placeholder [...]) — model wajib mengisi sesuai kasus nyata.
+FEWSHOT_ANALISIS = (
+    "\n\nCONTOH FORMAT KELUARAN (WAJIB ikuti GAYA, STRUKTUR & PENOMORAN ini PERSIS; ganti bagian [...] dengan isi "
+    "kasus nyata, JANGAN menyalin teks contoh, JANGAN menyertakan tanda '---'):\n"
+    "---\n"
+    "Berikut analisis data dan diagnosis keperawatan berdasarkan data kasus yang diberikan.\n\n"
+    "## A. Analisis Data\n\n"
+    "| No. | Data Subjektif | Data Objektif | Masalah |\n"
+    "|-----|----------------|---------------|---------|\n"
+    "| 1. | 1. [pernyataan subjektif pasien].<br>2. [pernyataan subjektif pasien]. | [data objektif]. | [Masalah Keperawatan] |\n"
+    "| 2. | 1. [pernyataan subjektif pasien]. | [data objektif]. | [Masalah Keperawatan] |\n\n"
+    "## B. Diagnosis Keperawatan\n\n"
+    "1. **[Nama Diagnosis] ([Kode, mis. D.0111])**\n"
+    "   1. Definisi: [definisi singkat].\n"
+    "   1. Penyebab: [penyebab].\n"
+    "   1. Tanda Mayor (Subjektif):\n"
+    "      1. [poin].\n"
+    "      1. [poin].\n"
+    "   1. Tanda Mayor (Objektif): [poin].\n"
+    "   1. Tanda Minor (Subjektif): [poin].\n\n"
+    "Apakah Anda ingin melanjutkan ke luaran dan intervensi, atau ada bagian lain yang perlu dibahas?\n"
+    "---\n"
+)
+
 
 def _books(framework: str):
     return ("SDKI", "SLKI", "SIKI") if framework == "3S" else ("NANDA-I", "NOC", "NIC")
@@ -161,6 +186,7 @@ def single_askep(llm, framework: str, data: str, konteks: str = "", koreksi: str
         + (f"\n\nREFERENSI STANDAR:\n{konteks}" if konteks else "")
         + (f"\n{koreksi}" if koreksi else "")
         + (f"\n\n{iq}" if iq else "")
+        + FEWSHOT_ANALISIS
         + ANTI_INJECTION
     )
     return _run(llm, sys, f"DATA PASIEN / REKAM MEDIS:\n<dokumen_pasien>\n{data}\n</dokumen_pasien>")
@@ -253,15 +279,11 @@ def _swarm_review(llm, sys_text: str, human: str, draft: str) -> str:
 
 
 def orchestrate_answer(llm, msgs, human: str, tier: str) -> str:
-    """Kedalaman jawaban mengikuti pilihan model user:
-    - flash : 1 agen (draf langsung) — cepat.
-    - medium: maker-checker (draf + 1 peninjau) — seimbang.
-    - pro   : multi-agen SIMULTAN (draf + 3 kritikus paralel) lalu disintesis/diaudit jadi final — kualitas utama."""
+    """Kedalaman vs kecepatan sesuai pilihan model user (konsistensi format dijaga oleh contoh format di prompt):
+    - flash & medium : 1 PANGGILAN (cepat; medium pakai model lebih kuat dari flash).
+    - pro            : draft + 1 AUDIT (2 panggilan) — kualitas/konsistensi ekstra, sedikit lebih lambat."""
     t = (tier or "medium").lower()
     draft = bersihkan(getattr(llm.invoke(msgs), "content", "") or "")
-    if t == "flash" or not draft:
-        return draft
-    sys_text = msgs[0].content if msgs else ""
-    if t == "pro":
-        return _swarm_review(llm, sys_text, human, draft)
-    return _review_once(llm, sys_text, human, draft)
+    if t == "pro" and draft:
+        return _review_once(llm, msgs[0].content if msgs else "", human, draft)
+    return draft

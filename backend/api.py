@@ -422,7 +422,7 @@ FORMAT PENULISAN (HIERARKI VERTIKAL & RAPAT):
         1. Poin kedua
 - KETERANGAN TUNGGAL: bila sebuah label/butir hanya memiliki SATU keterangan, tulis keterangan itu LANGSUNG pada baris yang SAMA setelah tanda titik dua — JANGAN dipindah ke baris baru dan JANGAN diberi penanda terpisah. Contoh BENAR: "b. Tanda Mayor (Objektif): Pasangan tampak antusias namun belum mampu menjelaskan pilihan kontrasepsi." Gunakan sub-daftar bernomor (ke bawah) HANYA bila keterangannya LEBIH dari satu.
 - JANGAN memakai bullet (-, •). Sertakan KODE standar. Tulis RAPAT: maksimal SATU baris kosong antar bagian, dan JANGAN ada baris kosong berlebih sebelum kalimat penutup/pertanyaan. **Tebal** hanya untuk label penting. Pakai tabel Markdown bila membandingkan data; pada kolom nomor tabel tulis nomor dengan titik (1., 2., 3.).
-{GUARDRAILS}{socratic}{books_note(framework)}
+{agents.FEWSHOT_ANALISIS}{GUARDRAILS}{socratic}{books_note(framework)}
 {konteks}{koreksi}"""
 
 
@@ -705,14 +705,14 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
         llm = get_llm(provider, model, key)
         extra = ebp.retrieve_context(llm, pertanyaan) if (agent or "").lower() == "referensi" else ""   # jurnal NYATA
         msgs = build_messages(framework, session_id, pertanyaan, tier, agent, extra)
-        if tier_l == "flash":                       # FLASH: 1 agen, streaming token langsung (tercepat)
+        if tier_l != "pro":                         # FLASH & MEDIUM: 1 panggilan, streaming token langsung (cepat)
             precomputed = None
             it = llm.stream(msgs)
             try:
                 first = next(it)
             except StopIteration:
                 first = None
-        else:                                       # MEDIUM/PRO: multi-agen + review (blocking) lalu dipancarkan
+        else:                                       # PRO: draft + 1 audit (blocking) lalu dipancarkan
             it = first = None
             precomputed = agents.orchestrate_answer(llm, msgs, pertanyaan, tier_l)
     except Exception as e:  # noqa
@@ -721,7 +721,7 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
 
     def gen():
         acc: list[str] = []
-        if tier_l == "flash":
+        if tier_l != "pro":
             def emit(chunk) -> str:
                 c = bersihkan_stream(getattr(chunk, "content", "") or "")   # JANGAN strip per-token
                 if c:
