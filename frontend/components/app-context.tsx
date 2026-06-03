@@ -74,7 +74,7 @@ interface Ctx {
   banner: BannerState; dismissBanner: () => void;
   sidebarOpen: boolean; setSidebarOpen: (b: boolean) => void;
   settingsOpen: boolean; setSettingsOpen: (b: boolean) => void;
-  login: (name: string, key: string, remember: boolean) => void;
+  login: (name: string, key: string, remember: boolean, provider?: ProviderId) => void;
   changeName: (name: string) => void;
   logoutCreds: () => void;
   newChat: () => void; selectSession: (id: string) => void;
@@ -111,8 +111,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { try { localStorage.removeItem(LS); const r = sessionStorage.getItem(LS); if (r) { const c = JSON.parse(r) as Credentials; if (c?.apiKey) { setCreds(c); setPhase("dashboard"); } } if (sessionStorage.getItem(CONSENT_KEY) === "1") { setConsentState(true); consentRef.current = true; } } catch {} }, []);
   useEffect(() => { if (phase === "dashboard" && creds?.apiKey) api.getStatus(creds.apiKey).then((d) => setStatus(d.detail || {})).catch(() => {}); }, [phase, creds]);
 
-  const login = useCallback((name: string, key: string, remember: boolean) => {
-    const c: Credentials = { name: name.trim() || "Perawat", apiKey: key.trim(), provider: detectProvider(key) };
+  const login = useCallback((name: string, key: string, remember: boolean, provider?: ProviderId) => {
+    const c: Credentials = { name: name.trim() || "Perawat", apiKey: key.trim(), provider: provider || detectProvider(key) };
     setCreds(c); if (remember) try { sessionStorage.setItem(LS, JSON.stringify(c)); } catch {}
     setPhase("dashboard");
   }, []);

@@ -137,7 +137,7 @@ def _too_big(up) -> bool:
     except Exception:
         return False
 
-PROVIDERS = ["gemini", "openai", "claude", "deepseek", "groq", "sumopod"
+PROVIDERS = ["gemini", "openai", "claude", "deepseek", "groq", "sumopod",
              "xai", "mistral", "together", "openrouter", "shopee"]
 
 OPENAI_COMPATIBLE = {
