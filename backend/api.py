@@ -479,7 +479,8 @@ def build_messages(framework: str, session_id: str, pertanyaan: str, tier: str =
     msgs = [SystemMessage(content=sys_for_agent(agent, framework, konteks, koreksi, tier) + agents.ANTI_INJECTION)]
     for role, content in SESI.history(session_id):
         msgs.append(HumanMessage(content=content) if role == "user" else AIMessage(content=content))
-    msgs.append(HumanMessage(content=pertanyaan))
+    sanitized_pertanyaan = phi.sanitize_phi(pertanyaan)  # [SEC-FIX] PII redaction sebelum transmisi ke LLM
+    msgs.append(HumanMessage(content=sanitized_pertanyaan))
     return msgs
 
 
