@@ -102,8 +102,14 @@ body { background: hsl(var(--background)); color: hsl(var(--foreground)); font-f
 .prose table { width: 100%; border-collapse: collapse; border: 1px solid rgba(255,255,255,0.55); margin: 0.5rem 0; }
 .prose th, .prose td { border: 1px solid rgba(255,255,255,0.55); padding: 0.4rem 0.65rem; vertical-align: top; }
 .prose th { text-align: center; font-weight: 700; color: #fff; }
-.prose table td:first-child, .prose table td:first-child > p { text-align: center; }   /* kolom No. di tengah (horizontal) */
-.prose table td:first-child { vertical-align: middle; }
+.prose table td:first-child, .prose table td:first-child > p { text-align: center; }   /* kolom No.: tengah horizontal */
+.prose table td:first-child { vertical-align: top; }   /* nomor baris di ATAS baris, bukan di tengah */
+/* Penomoran AKTIF di dalam sel tabel: pakai <ol>/<li> agar baris LANJUTAN menggantung sejajar kata pertama (bukan di bawah angka) */
+.prose table td ol, .prose table td ul { margin: 0; padding-left: 1.25em; list-style-position: outside; }
+.prose table td ol { list-style-type: decimal; }
+.prose table td li { margin: 0.12rem 0; padding-left: 0.15em; }
+.prose table td li::marker { color: rgba(255,255,255,0.6); }
+.prose table td li > p { margin: 0; }
 .md a { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 2px; }
 .md code { background: hsl(var(--secondary)); padding: 1px 6px; border-radius: 5px; font-size: 0.85em; font-family: var(--font-geist-mono), monospace; }
 .md pre { background: hsl(var(--secondary)); padding: 14px 16px; border-radius: 10px; overflow-x: auto; margin: 0.8em 0; }

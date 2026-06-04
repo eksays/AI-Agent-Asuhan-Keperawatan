@@ -6,6 +6,7 @@ import * as api from "@/lib/api";
 
 export type Phase = "welcome" | "dashboard";
 export type Agent = "analisis" | "pathway" | "referensi";
+export interface DocAction { label: string; instruction: string }
 export interface Msg {
   id: string; role: "user" | "assistant"; content: string;
   mermaid?: string | null; status?: string[]; done?: boolean; revealed?: boolean;
@@ -13,13 +14,25 @@ export interface Msg {
   feedback?: "up" | "down" | null; feedbackSent?: boolean;
   attachment?: { name: string; ext: string };
 }
-export interface Session { id: string; title: string; tab: Tab; messages: Msg[]; createdAt: number }
+// pendingAction: sesi punya dokumen terunggah yang MENUNGGU pilihan aksi (panel pemilih mengambang di atas chatbox).
+export interface Session { id: string; title: string; tab: Tab; messages: Msg[]; createdAt: number; pendingAction?: boolean }
 export interface BannerState { show: boolean; title: string; description: string }
 
 const LS = "cdss-creds";
 const CONSENT_KEY = "cdss-consent";
 const AGENT_OF: Record<Tab, Agent> = { Analisis: "analisis", Pathway: "pathway", Referensi: "referensi" };
 const EMPTY_ACTIVE: Record<Tab, string | null> = { Analisis: null, Pathway: null, Referensi: null };
+// Saat user HANYA mengunggah dokumen (tanpa perintah) di tab Analisis -> tanyakan dulu aksinya (ala Claude).
+export const DOC_ACTIONS: DocAction[] = [
+  { label: "Susun diagnosis keperawatan", instruction: "Susun diagnosis keperawatan berdasarkan dokumen rekam medis terlampir." },
+  { label: "Susun luaran keperawatan", instruction: "Susun luaran keperawatan berdasarkan dokumen rekam medis terlampir." },
+  { label: "Susun intervensi keperawatan", instruction: "Susun intervensi keperawatan berdasarkan dokumen rekam medis terlampir." },
+  { label: "Susun diagnosis, luaran, dan intervensi keperawatan", instruction: "Susun diagnosis, luaran, dan intervensi keperawatan secara lengkap berdasarkan dokumen rekam medis terlampir." },
+];
+// Tab Referensi: unggah dokumen saja -> tawarkan pencarian EBP (atau user balas langsung di chatbox).
+export const REF_ACTIONS: DocAction[] = [
+  { label: "Carikan jurnal EBP terkait", instruction: "Carikan jurnal EBP terbaru yang relevan dengan dokumen/kasus terlampir menggunakan pendekatan PICO." },
+];
 // Label status (English, gaya agentic) per agen.
 const STAGES: Record<Agent, { file: string[]; text: string[] }> = {
   analisis: {
@@ -78,7 +91,10 @@ interface Ctx {
   changeName: (name: string) => void;
   logoutCreds: () => void;
   newChat: () => void; selectSession: (id: string) => void;
-  send: (text: string, files: File[], targetTab?: Tab) => Promise<void>;
+  send: (text: string, files: File[], targetTab?: Tab, opts?: { suppressChip?: boolean }) => Promise<void>;
+  pendingDocAction: boolean;                                  // panel pemilih aksi (file-only) sedang aktif di sesi terpilih
+  chooseDocAction: (instruction: string) => void;             // user memilih salah satu aksi -> proses dokumen
+  dismissDocPicker: () => void;                               // tutup panel (×/Skip) tanpa memproses
   runOnTab: (targetTab: Tab, text: string) => void;
   revealMsg: (id: string) => void;
   setFeedback: (id: string, fb: "up" | "down") => void;
@@ -105,6 +121,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [consent, setConsentState] = useState(false);          // persetujuan eksplisit pemrosesan data (UU PDP)
   const backendSidRef = useRef<Record<string, string>>({});   // id sesi LOKAL -> session_id kriptografis dari backend
+  const pendingDocRef = useRef<Record<string, File>>({});     // dokumen menunggu aksi (per-sesi) saat unggah dokumen tanpa perintah
   const consentRef = useRef(false);
 
   // Kredensial HANYA di sessionStorage (per-tab, hilang saat tab ditutup) + bersihkan jejak lama di localStorage.
@@ -121,7 +138,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setConsent = useCallback((b: boolean) => { setConsentState(b); consentRef.current = b; try { if (b) sessionStorage.setItem(CONSENT_KEY, "1"); else sessionStorage.removeItem(CONSENT_KEY); } catch {} }, []);
 
   const activeId = activeByTab[tab];
-  const messages = sessions.find((s) => s.id === activeId)?.messages ?? [];
+  const activeSession = sessions.find((s) => s.id === activeId);
+  const messages = activeSession?.messages ?? [];
+  const pendingDocAction = !!activeSession?.pendingAction;     // tampilkan panel pemilih bila sesi aktif menunggu aksi
 
   const ensureSession = useCallback((t: Tab): string => {
     const cur = activeByTab[t];
@@ -139,23 +158,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const patch = useCallback((sid: string, mid: string, p: Partial<Msg>) => setSessions((prev) => prev.map((s) => s.id !== sid ? s : { ...s, messages: s.messages.map((m) => m.id === mid ? { ...m, ...p } : m) })), []);
   const revealMsg = useCallback((mid: string) => setSessions((prev) => prev.map((s) => s.messages.some((m) => m.id === mid && !m.revealed) ? { ...s, messages: s.messages.map((m) => m.id === mid ? { ...m, revealed: true } : m) } : s)), []);
 
-  const send = useCallback(async (text: string, files: File[], targetTab?: Tab) => {
+  const send = useCallback(async (text: string, files: File[], targetTab?: Tab, opts?: { suppressChip?: boolean }) => {
     if (!creds || (!text.trim() && files.length === 0)) return;
     if (!consentRef.current) { setBanner({ show: true, title: "Persetujuan diperlukan", description: "Centang kotak persetujuan pemrosesan data terlebih dahulu sebelum mengirim." }); return; }
     const t = targetTab ?? tab;
     const agent = AGENT_OF[t];
     if (targetTab && targetTab !== tab) setTab(targetTab);   // jalankan & tampilkan di tab tujuan
     const sid = ensureSession(t);                            // session_id backend = id sesi tab ini
-    const file = files[0];
+    // Balasan bebas (user mengetik) saat ada dokumen menunggu di sesi ini -> pakai dokumen itu (panel pemilih ikut tertutup karena pendingAction direset di bawah).
+    let effFiles = files;
+    let suppressChip = !!opts?.suppressChip;                 // dokumen sudah tampil sebagai chip saat diunggah -> jangan duplikasi chip
+    if ((agent === "analisis" || agent === "referensi") && files.length === 0 && text.trim() && pendingDocRef.current[sid]) {
+      effFiles = [pendingDocRef.current[sid]];
+      delete pendingDocRef.current[sid];
+      suppressChip = true;
+    }
+    const file = effFiles[0];
     const userContent = text.trim();
-    const att = file ? { name: file.name, ext: (file.name.split(".").pop() || "FILE").slice(0, 4).toUpperCase() } : undefined;
+    const att = file && !suppressChip ? { name: file.name, ext: (file.name.split(".").pop() || "FILE").slice(0, 4).toUpperCase() } : undefined;
+    // UNGGAH DOKUMEN SAJA (tanpa perintah) di tab Analisis/Referensi -> JANGAN panggil backend; cukup tambahkan pesan dokumen user
+    // lalu nyalakan pendingAction supaya PANEL PEMILIH MENGAMBANG muncul di atas chatbox (bukan di thread).
+    if ((agent === "analisis" || agent === "referensi") && file && !userContent) {
+      pendingDocRef.current[sid] = file;
+      setSessions((prev) => prev.map((s) => s.id !== sid ? s : {
+        ...s, title: s.messages.length === 0 ? autoTitle(file.name) : s.title, pendingAction: true,
+        messages: [...s.messages, { id: newId(), role: "user", content: "", attachment: att, done: true, revealed: true }],
+      }));
+      return;
+    }
     const botId = newId();
     setSessions((prev) => prev.map((s) => s.id !== sid ? s : {
-      ...s, title: s.messages.length === 0 ? autoTitle(userContent || (file ? file.name : "")) : s.title,
+      ...s, title: s.messages.length === 0 ? autoTitle(userContent || (file ? file.name : "")) : s.title, pendingAction: false,
       messages: [...s.messages, { id: newId(), role: "user", content: userContent, attachment: att, done: true, revealed: true }, { id: botId, role: "assistant", content: "", status: ["Initializing…"], done: false }],
     }));
     setSending(true);
-    const baseStages = STAGES[agent][file ? "file" : "text"];
+    const baseStages = STAGES[agent][file ? "file" : "text"].map((s) => s.replace(/3S\/3N/g, framework));   // tampilkan kerangka pilihan user (3S atau 3N)
     const stages = tier === "pro" ? [...baseStages, "Auditing the answer for quality…"] : baseStages;
     let si = 0; const timer = setInterval(() => { si = Math.min(si + 1, stages.length); patch(sid, botId, { status: stages.slice(0, si) }); }, 650);
     const ctx: api.ChatCtx = { provider: creds.provider, apiKey: creds.apiKey, tier, framework };
@@ -216,6 +253,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally { setSending(false); }
   }, [creds, tier, framework, tab, ensureSession, patch]);
 
+  // User memilih salah satu aksi pada PANEL PEMILIH (file-only) -> proses dokumen yang menunggu dengan instruksi terpilih.
+  const chooseDocAction = useCallback((instruction: string) => {
+    const sid = activeByTab[tab];
+    if (!sid) return;
+    const f = pendingDocRef.current[sid];
+    delete pendingDocRef.current[sid];
+    setSessions((prev) => prev.map((s) => s.id === sid ? { ...s, pendingAction: false } : s));
+    void send(instruction, f ? [f] : [], tab, { suppressChip: true });
+  }, [send, activeByTab, tab]);
+  // Tutup panel (× / Skip): cukup matikan pendingAction. Dokumen dibiarkan menunggu agar "balas langsung" tetap memakainya.
+  const dismissDocPicker = useCallback(() => {
+    const sid = activeByTab[tab];
+    if (!sid) return;
+    setSessions((prev) => prev.map((s) => s.id === sid ? { ...s, pendingAction: false } : s));
+  }, [activeByTab, tab]);
+
   const runOnTab = useCallback((targetTab: Tab, text: string) => { void send(text, [], targetTab); }, [send]);
 
   const findQA = useCallback((mid: string) => { const s = sessions.find((x) => x.id === activeId); if (!s) return null; const i = s.messages.findIndex((m) => m.id === mid); if (i < 0) return null; let q = ""; for (let j = i - 1; j >= 0; j--) if (s.messages[j].role === "user") { q = s.messages[j].content; break; } return { pertanyaan: q, jawaban: s.messages[i].content }; }, [sessions, activeId]);
@@ -224,5 +277,5 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const hardReset = useCallback(async () => { try { await Promise.all(Object.values(backendSidRef.current).map((b) => api.resetSesi(b))); } catch {} backendSidRef.current = {}; setSessions([]); setActiveByTab(EMPTY_ACTIVE); }, []);
   const deleteMyData = useCallback(async () => { try { await Promise.all(Object.values(backendSidRef.current).map((b) => api.deleteMyData(b))); } catch {} backendSidRef.current = {}; setSessions([]); setActiveByTab(EMPTY_ACTIVE); }, []);
 
-  return <C.Provider value={{ phase, creds, tier, setTier, framework, setFramework, tab, setTab, status, sessions, activeId, messages, sending, banner, dismissBanner: () => setBanner((b) => ({ ...b, show: false })), sidebarOpen, setSidebarOpen, settingsOpen, setSettingsOpen, login, changeName, logoutCreds, newChat, selectSession, send, runOnTab, revealMsg, setFeedback, submitFeedback, hardReset, consent, setConsent, deleteMyData }}>{children}</C.Provider>;
+  return <C.Provider value={{ phase, creds, tier, setTier, framework, setFramework, tab, setTab, status, sessions, activeId, messages, sending, banner, dismissBanner: () => setBanner((b) => ({ ...b, show: false })), sidebarOpen, setSidebarOpen, settingsOpen, setSettingsOpen, login, changeName, logoutCreds, newChat, selectSession, send, pendingDocAction, chooseDocAction, dismissDocPicker, runOnTab, revealMsg, setFeedback, submitFeedback, hardReset, consent, setConsent, deleteMyData }}>{children}</C.Provider>;
 }

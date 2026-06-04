@@ -120,7 +120,7 @@ function useTypewriter(text: string, animate: boolean): string {
 
 /* Jawaban AI: font serif + typing effect SEKALI. Setelah selesai (revealed) tampil utuh tanpa mengetik ulang. */
 function BotContent({ content, done, revealed, onReveal, forwardRef }: { content: string; done?: boolean; revealed?: boolean; onReveal: () => void; forwardRef: RefObject<HTMLDivElement | null> }) {
-  const clean = content.replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").replace(/^\s+/, "").trimEnd();   // buang spasi/baris kosong berlebih
+  const clean = content.replace(/[ \t]+$/gm, "").replace(/(?:\s*<br\s*\/?>\s*){2,}/gi, "<br>").replace(/\n{3,}/g, "\n\n").replace(/^\s+/, "").trimEnd();   // buang spasi/baris kosong & <br> berlebih
   const typed = useTypewriter(clean, !revealed);
   const caughtUp = typed.length >= clean.length;
   useEffect(() => { if (!revealed && done && caughtUp && clean.length > 0) onReveal(); }, [revealed, done, caughtUp, clean.length, onReveal]);

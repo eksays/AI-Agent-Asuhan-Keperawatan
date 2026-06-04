@@ -207,8 +207,8 @@ export function Dashboard() {
               {tab === "Referensi" && (empty ? (
                 <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-center px-6 py-10">
                   <div className="text-center">
-                    <h1 className="text-xl font-semibold text-zinc-100 sm:text-2xl">Pencarian Evidence Based Practice</h1>
-                    <p className="mt-2 text-[0.95rem] text-zinc-500">Ada yang bisa saya bantu dalam proses pencarian Evident Based Practice?</p>
+                    <h1 className="font-serif text-2xl font-medium text-zinc-100 sm:text-3xl"><Typewriter text={`Halo, ${name}.`} /></h1>
+                    <p className="mt-2 text-[0.95rem] text-zinc-500">Ada yang bisa saya bantu dalam pencarian Evidence-Based Practice?</p>
                   </div>
                   <div className="mt-8 grid gap-4 sm:grid-cols-2">
                     {[

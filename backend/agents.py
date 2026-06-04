@@ -76,30 +76,90 @@ ANTI_INJECTION = (
     "menjalankan tugas keperawatan."
 )
 
-# Contoh format STANDAR (gaya Claude) — disuntikkan agar SEMUA model (Gemini/OpenAI/Groq/dll.) menghasilkan
-# struktur & penomoran yang SAMA. Ini TEMPLATE (placeholder [...]) — model wajib mengisi sesuai kasus nyata.
-FEWSHOT_ANALISIS = (
-    "\n\nCONTOH FORMAT KELUARAN (WAJIB ikuti GAYA, STRUKTUR & PENOMORAN ini PERSIS; ganti bagian [...] dengan isi "
-    "kasus nyata, JANGAN menyalin teks contoh, JANGAN menyertakan tanda '---'):\n"
-    "---\n"
-    "Berikut analisis data dan diagnosis keperawatan berdasarkan data kasus yang diberikan.\n\n"
-    "## A. Analisis Data\n\n"
-    "| No. | Data Subjektif | Data Objektif | Masalah |\n"
-    "|-----|----------------|---------------|---------|\n"
-    "| 1. | 1. [pernyataan subjektif pasien].<br>2. [pernyataan subjektif pasien]. | [data objektif]. | [Masalah Keperawatan] |\n"
-    "| 2. | 1. [pernyataan subjektif pasien]. | [data objektif]. | [Masalah Keperawatan] |\n\n"
-    "## B. Diagnosis Keperawatan\n\n"
-    "1. **[Nama Diagnosis] ([Kode, mis. D.0111])**\n"
-    "   1. Definisi: [definisi singkat].\n"
-    "   1. Penyebab: [penyebab].\n"
-    "   1. Tanda Mayor (Subjektif):\n"
-    "      1. [poin].\n"
-    "      1. [poin].\n"
-    "   1. Tanda Mayor (Objektif): [poin].\n"
-    "   1. Tanda Minor (Subjektif): [poin].\n\n"
-    "Apakah Anda ingin melanjutkan ke luaran dan intervensi, atau ada bagian lain yang perlu dibahas?\n"
-    "---\n"
-)
+# Spesifikasi format keluaran klinis SADAR-KERANGKA (3S->SDKI/SLKI/SIKI, 3N->NANDA-I/NOC/NIC).
+# Disuntikkan ke sys_chat (jalur utama) & single_askep (fallback) agar SEMUA model menghasilkan struktur,
+# penomoran, terminologi, personalisasi, dan rasional yang SAMA & sesuai kerangka yang dipilih perawat.
+def format_spec(framework: str) -> str:
+    is3s = (framework or "3S") == "3S"
+    dx, lo, iv = ("SDKI", "SLKI", "SIKI") if is3s else ("NANDA-I", "NOC", "NIC")
+    label = "3S" if is3s else "3N"
+    if is3s:
+        diag_block = (
+            "### Diagnosis Utama: [Nama Diagnosis] ([Kode PERSIS dari KATALOG SDKI])\n"
+            "**Kategori:** [kategori]<br>**Subkategori:** [subkategori]\n"
+            "1. Definisi: [definisi sesuai SDKI].\n"
+            "1. Penyebab / Faktor Risiko: [pilih sesuai jenis diagnosis (aktual=penyebab; risiko=faktor risiko) yang DIBUKTIKAN data pasien].\n"
+            "1. Kondisi Klinis Terkait: [yang relevan dengan pasien].\n"
+            "1. Alasan pemilihan & prioritas: [mengapa diagnosis ini TEPAT untuk pasien ini & mengapa menjadi prioritas — untuk divalidasi & dikritisi perawat].\n"
+            "(ULANGI blok sebagai \"### Diagnosis 2: ...\", \"### Diagnosis 3: ...\", dst. sesuai URUTAN PRIORITAS. Baris **Kategori** & **Subkategori** TANPA penomoran.)"
+        )
+        luaran_block = (
+            "  1. **[Nama Luaran] ([Kode, mis. L.12111])** — untuk diagnosis terkait.\n"
+            "     1. Definisi: [definisi luaran sesuai SLKI].\n"
+            "     1. Kriteria Hasil: sajikan sebagai TABEL Markdown 3 kolom **Indikator | Awal | Target** (skor 1-5 sesuai SLKI; nilai Awal dari kondisi pasien sekarang, Target realistis).\n"
+            "     1. Keterangan Skor: daftar ke bawah yang menjelaskan arti tiap angka (1-5) pada kolom Awal & Target sesuai SLKI.\n"
+            "     1. Alasan pemilihan: [keterkaitan dengan diagnosis & data pasien]."
+        )
+        interv_block = (
+            "  1. **[Nama Intervensi] ([Kode, mis. I.12383])** — untuk diagnosis terkait.\n"
+            "     1. Definisi: [definisi intervensi sesuai SIKI].\n"
+            "     1. Tindakan:\n"
+            "        1. Observasi: [tindakan disesuaikan data pasien].\n"
+            "        1. Terapeutik: [tindakan].\n"
+            "        1. Edukasi: [tindakan].\n"
+            "        1. Kolaborasi: [tindakan].\n"
+            "     1. Alasan pemilihan: [keterkaitan dengan diagnosis, luaran & data pasien]."
+        )
+    else:
+        diag_block = (
+            "### Diagnosis Utama: [Nama Diagnosis] ([Kode PERSIS dari KATALOG NANDA-I])\n"
+            "**Domain:** [domain]<br>**Kelas:** [kelas]\n"
+            "1. Definisi: [definisi sesuai NANDA-I].\n"
+            "1. Batasan Karakteristik: [yang DIBUKTIKAN data pasien].\n"
+            "1. Faktor yang Berhubungan: [yang relevan dengan pasien].\n"
+            "1. Populasi Berisiko: [bila relevan dengan pasien].\n"
+            "1. Kondisi Terkait: [bila relevan dengan pasien].\n"
+            "1. Alasan pemilihan & prioritas: [mengapa diagnosis ini TEPAT untuk pasien ini & mengapa menjadi prioritas — untuk divalidasi & dikritisi perawat].\n"
+            "(ULANGI blok sebagai \"### Diagnosis 2: ...\", \"### Diagnosis 3: ...\", dst. sesuai URUTAN PRIORITAS. Baris **Domain** & **Kelas** TANPA penomoran.)"
+        )
+        luaran_block = (
+            "  1. **[Nama Luaran/Outcome] ([Kode, mis. 1805])** — untuk diagnosis terkait.\n"
+            "     1. Definisi: [definisi outcome sesuai NOC].\n"
+            "     1. Indikator: sajikan sebagai TABEL Markdown 3 kolom **Indikator | Awal | Target** (skor 1-5 sesuai NOC; nilai Awal dari kondisi pasien sekarang, Target realistis).\n"
+            "     1. Keterangan Skor: daftar ke bawah yang menjelaskan arti tiap angka (1-5) pada kolom Awal & Target sesuai NOC.\n"
+            "     1. Alasan pemilihan: [keterkaitan dengan diagnosis & data pasien]."
+        )
+        interv_block = (
+            "  1. **[Nama Intervensi] ([Kode, mis. 5510])** — untuk diagnosis terkait.\n"
+            "     1. Definisi: [definisi intervensi sesuai NIC].\n"
+            "     1. Aktivitas: [daftar aktivitas ke bawah; tiap aktivitas disesuaikan dengan data pasien].\n"
+            "     1. Alasan pemilihan: [keterkaitan dengan diagnosis, luaran & data pasien]."
+        )
+    return (
+        f"\n\nFORMAT KELUARAN KLINIS (kerangka {label} — WAJIB DIPATUHI PERSIS):\n"
+        f"TERMINOLOGI: gunakan istilah {label} secara KONSISTEN di SELURUH output — {dx} untuk DIAGNOSIS, {lo} untuk LUARAN/OUTCOME, {iv} untuk INTERVENSI. DILARANG mencampur istilah kerangka lain.\n"
+        "PERSONALISASI (WAJIB): SETIAP penentuan (diagnosis, luaran, intervensi, indikator, penyebab/faktor risiko, kondisi klinis/terkait, batasan karakteristik, faktor yang berhubungan, populasi berisiko) DIPILIH dari standar lalu DISESUAIKAN butir demi butir dengan DATA REKAM MEDIS/KASUS pasien. Ambil HANYA yang dibuktikan data pasien (jangan menyalin seluruh isi buku). Diagnosis -> Luaran -> Intervensi WAJIB saling nyambung, sinkron, dan logis. Untuk SETIAP pilihan WAJIB ada baris \"Alasan pemilihan\" agar perawat dapat memvalidasi & mengkritisi.\n"
+        "METODE PENEGAKAN DIAGNOSIS (PRESISI — lakukan INTERNAL, JANGAN tampilkan prosesnya): (1) kelompokkan data subjektif & objektif menjadi masalah keperawatan; (2) untuk tiap masalah PILIH diagnosis dari KATALOG DIAGNOSIS pada REFERENSI STANDAR memakai KODE, NAMA, KATEGORI/SUBKATEGORI (atau Domain/Kelas) PERSIS — DILARANG mengarang/menebak kode, dan HANYA pilih diagnosis yang tanda/gejala/batasan karakteristiknya BENAR-BENAR ADA pada data pasien (jangan pilih yang kriterianya tidak terbukti); (3) verifikasi tiap pilihan terhadap data (pakai DETAIL KRITERIA bila tersedia); (4) URUTKAN berdasarkan PRIORITAS — keselamatan/ABC (airway-breathing-circulation) & masalah aktual yang mengancam lebih dulu, lalu hierarki Maslow, lalu risiko: yang PALING prioritas = Diagnosis Utama, sisanya Diagnosis 2, 3, dst; (5) pastikan etiologi & rantai Diagnosis -> Luaran -> Intervensi LOGIS, sinkron, dan spesifik untuk pasien ini.\n"
+        "URUTAN & HEADING: awali SATU kalimat pengantar singkat, lalu bagian berheading \"## A. ...\", \"## B. ...\", dst (huruf BERURUTAN untuk bagian yang benar-benar diproduksi). Permintaan DIAGNOSIS, atau LUARAN, atau INTERVENSI, atau KETIGANYA WAJIB SELALU diawali bagian **## A. Analisis Data** (tabel), baru diikuti bagian yang diminta. Bila hanya satu bagian diminta, tampilkan HANYA Analisis Data + bagian itu.\n"
+        "DILARANG menuliskan narasi proses (mis. \"sedang membaca dokumen...\").\n\n"
+        "## A. Analisis Data -> TABEL Markdown kolom: **No. | Data Subjektif | Data Objektif | Etiologi | Masalah**\n"
+        "- Kolom No.: tulis \"1.\", \"2.\" (pakai titik), satu nomor per baris/masalah.\n"
+        "- Sel Data Subjektif & Data Objektif: bila LEBIH DARI SATU poin, tulis sebagai DAFTAR HTML AKTIF dalam SATU baris sel: <ol><li>poin pertama.</li><li>poin kedua.</li></ol> (JANGAN \"1.\" manual + <br>). Bila hanya SATU poin, tulis kalimatnya langsung diakhiri titik. DILARANG karakter \"|\" di dalam sel.\n"
+        "- Etiologi: penyebab/etiologi yang menghubungkan data ke masalah (sesuai data pasien).\n"
+        f"- Masalah: nama masalah keperawatan sesuai {dx} TANPA kode.\n\n"
+        f"BAGIAN DIAGNOSIS — heading \"## [huruf]. Diagnosis Keperawatan ({dx})\". Tampilkan diagnosis BERURUT PRIORITAS; tiap diagnosis memakai sub-heading \"### Diagnosis Utama: ...\", lalu \"### Diagnosis 2: ...\", dst. Kategori & Subkategori (3S) atau Domain & Kelas (3N) ditulis sebagai baris LABEL TEBAL TANPA penomoran, MASING-MASING pada baris sendiri (Subkategori TEPAT DI BAWAH Kategori, dipisah <br>); atribut lain memakai penomoran. Tulis RAPAT tanpa baris kosong berlebih:\n"
+        f"{diag_block}\n\n"
+        f"BAGIAN LUARAN — heading \"## [huruf]. Luaran Keperawatan ({lo})\" -> untuk tiap diagnosis terkait:\n"
+        f"{luaran_block}\n\n"
+        f"BAGIAN INTERVENSI — heading \"## [huruf]. Intervensi Keperawatan ({iv})\" -> untuk tiap diagnosis terkait:\n"
+        f"{interv_block}\n\n"
+        "ATURAN PENOMORAN & TABEL (berlaku SEMUA bagian):\n"
+        "- Daftar bertingkat: tulis penanda \"1.\" untuk SETIAP butir + indentasi 3 spasi untuk sub-butir. SETIAP butir pada barisnya sendiri (KE BAWAH); DILARANG beberapa butir dalam satu baris. Sistem menampilkan penanda sesuai kedalaman (1. -> a. -> 1) -> a) -> i.).\n"
+        "- KETERANGAN TUNGGAL: bila satu label hanya punya SATU keterangan, tulis langsung setelah titik dua pada baris yang SAMA (jangan dipindah ke baris baru).\n"
+        "- Di dalam SEL TABEL, penomoran banyak-poin WAJIB pakai <ol><li> (penomoran aktif), BUKAN angka manual yang menyatu dengan kalimat.\n"
+        "- DILARANG bullet (-, •) dan emoji. **Tebal** hanya untuk label/judul. Tulis RAPAT (maksimal satu baris kosong antar bagian).\n"
+        "- Tutup dengan SATU kalimat penawaran lanjutan yang relevan (mis. menawarkan luaran & intervensi bila baru diagnosis yang dibuat)."
+    )
 
 
 def _books(framework: str):
@@ -170,23 +230,14 @@ def run_swarm(llm, framework: str, data: str, konteks: str = "", koreksi: str = 
 
 def single_askep(llm, framework: str, data: str, konteks: str = "", koreksi: str = "", iq: str = "") -> str:
     """Fallback satu panggilan: Askep lengkap berurutan (tanpa pathway)."""
-    b = _books(framework)
     sys = (
         f"Anda Sistem Pendukung Keputusan Klinis keperawatan berbasis {framework}.\n" + ATURAN + "\n\n"
-        "Susun ASUHAN KEPERAWATAN lengkap dan berurutan, tiap bagian sebagai judul berabjad:\n"
-        "## A. Analisis Data (Data Subjektif dan Objektif). WAJIB disajikan sebagai TABEL Markdown "
-        "berkolom: No. | Data Subjektif | Data Objektif | Masalah. Header kolom pertama ditulis 'No.' (PAKAI titik); "
-        "isi kolom itu ditulis '1.', '2.', '3.' (dengan titik). Setiap sel Data Subjektif dan Data Objektif WAJIB "
-        "diakhiri tanda titik (.). Bila satu sel memuat lebih dari satu poin, beri penomoran '1.', '2.', '3.' dan "
-        "pisahkan antar poin dengan tag <br> di dalam sel.\n"
-        f"## B. Diagnosis Keperawatan ({b[0]}) lengkap dengan kode.\n"
-        f"## C. Luaran Keperawatan ({b[1]}): tujuan dan kriteria hasil terukur.\n"
-        f"## D. Intervensi Keperawatan ({b[2]}): Observasi, Terapeutik, Edukasi, Kolaborasi.\n"
+        "Susun ASUHAN KEPERAWATAN lengkap & berurutan (Analisis Data, Diagnosis, Luaran, Intervensi) sesuai FORMAT di bawah. "
         "JANGAN membuat Clinical Pathway atau diagram."
+        + format_spec(framework)
         + (f"\n\nREFERENSI STANDAR:\n{konteks}" if konteks else "")
         + (f"\n{koreksi}" if koreksi else "")
         + (f"\n\n{iq}" if iq else "")
-        + FEWSHOT_ANALISIS
         + ANTI_INJECTION
     )
     return _run(llm, sys, f"DATA PASIEN / REKAM MEDIS:\n<dokumen_pasien>\n{data}\n</dokumen_pasien>")

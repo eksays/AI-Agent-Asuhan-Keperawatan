@@ -116,6 +116,21 @@ def _text(el) -> str:
     return " ".join("".join(el.itertext()).split()) if el is not None else ""
 
 
+def _authors_pubmed(art) -> list:
+    """Daftar penulis 'NamaBelakang Inisial' dari XML PubMed (untuk Daftar Pustaka APA 7)."""
+    names = []
+    for au in art.findall(".//AuthorList/Author"):
+        last = (au.findtext("LastName") or "").strip()
+        ini = (au.findtext("Initials") or "").strip()
+        if last:
+            names.append((last + " " + ini).strip())
+        else:
+            coll = (au.findtext("CollectiveName") or "").strip()
+            if coll:
+                names.append(coll)
+    return names[:25]
+
+
 def _pubmed(query: str, mn, mx, n: int) -> list:
     try:
         params = {"db": "pubmed", "retmode": "json", "sort": "relevance", "retmax": str(n),
@@ -141,6 +156,10 @@ def _pubmed(query: str, mn, mx, n: int) -> list:
                  "abstract": " ".join(_text(x) for x in art.findall(".//Abstract/AbstractText")).strip()[:_ABS_CAP],
                  "journal": (art.findtext(".//Journal/Title") or "").strip(),
                  "year": (art.findtext(".//JournalIssue/PubDate/Year") or art.findtext(".//PubDate/Year") or "").strip(),
+                 "authors": _authors_pubmed(art),
+                 "volume": (art.findtext(".//JournalIssue/Volume") or "").strip(),
+                 "issue": (art.findtext(".//JournalIssue/Issue") or "").strip(),
+                 "pages": (art.findtext(".//Pagination/MedlinePgn") or art.findtext(".//MedlinePgn") or "").strip(),
                  "oa_url": (f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmcid}/" if pmcid else ""),
                  "open_access": True, "citations": 0, "source": "PubMed"}   # sudah disaring free full text[sb]
             out.append(a)
@@ -316,15 +335,20 @@ def _store(arts: list, terms_text: str):
 
 # ----------------------------- jembatan ke LLM -------------------------------
 def _english_query(llm, case: str) -> str:
-    sys = ("Anda pustakawan medis ahli pencari bukti. Dari kasus klinis (Bahasa Indonesia) berikut, susun SATU baris "
-           "kueri pencarian dalam Bahasa Inggris yang RINGKAS namun cukup LUAS: cukup 2-4 KONSEP inti saja "
-           "(boleh memakai OR untuk sinonim). JANGAN merangkai banyak istilah ber-AND agar hasil tidak nihil. "
-           "Keluarkan HANYA kuerinya — tanpa tanda kutip, tanpa field tag seperti [tiab]/[mesh], tanpa penjelasan.")
+    """Susun kueri Bahasa Inggris TERSTRUKTUR berbasis PICO (personal & spesifik pada kasus) namun tidak terlalu sempit."""
+    sys = ("Anda pustakawan medis ahli EBP. Dari kasus klinis (Bahasa Indonesia) berikut, lakukan analisis PICO secara "
+           "internal: P (population/problem pasien), I (intervention/topik keperawatan inti), C (comparison — boleh "
+           "diabaikan), O (outcome yang diharapkan). Lalu susun SATU baris kueri pencarian Bahasa Inggris yang "
+           "menggabungkan konsep P dan I (boleh + O): bentuk (konsep1 OR sinonim) AND (konsep2 OR sinonim), MAKSIMAL "
+           "3 konsep ber-AND agar hasil tidak nihil, dan gunakan OR untuk sinonim tiap konsep agar tetap luas & relevan. "
+           "Keluarkan HANYA kuerinya — tanpa label P/I/C/O, tanpa tanda kutip, tanpa field tag seperti [tiab]/[mesh], "
+           "tanpa penjelasan.")
     r = llm.invoke([SystemMessage(content=sys), HumanMessage(content=case[:2000])])
-    lines = (getattr(r, "content", "") or "").strip().splitlines()
-    q = (lines[0] if lines else "").strip()
+    lines = [ln for ln in (getattr(r, "content", "") or "").strip().splitlines() if ln.strip()]
+    q = (lines[-1] if lines else "").strip()                      # ambil baris kuerinya (abaikan baris analisis bila ada)
+    q = re.sub(r"^\s*(query|kueri|search)\s*[:\-]\s*", "", q, flags=re.I)
     q = re.sub(r"\[[^\]]*\]", "", q).replace('"', "").strip()
-    return q[:200] or case[:200]
+    return q[:240] or case[:200]
 
 
 def _broaden(q: str) -> str:

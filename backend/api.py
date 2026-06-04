@@ -198,28 +198,75 @@ def _entry_text(e: dict) -> str:
     return " ".join(parts)
 
 
-def bangun_konteks(framework: str, query: str, k: int = 5) -> str:
-    """RAG token-diet: hanya menyuntik entri RELEVAN dari tiap buku referensi yang TERMUAT
-    (bukan seluruh file JSON). Otomatis mencakup SDKI/SLKI/SIKI atau NANDA/NOC/NIC bila ada."""
+def _has_gejala(e: dict) -> bool:
+    for blok in (e.get("gejala_mayor"), e.get("gejala_minor")):
+        if isinstance(blok, dict) and (blok.get("subjektif") or blok.get("objektif")):
+            return True
+    return False
+
+
+def _format_detail(e: dict) -> str:
+    """Detail kriteria SATU diagnosis (untuk verifikasi presisi terhadap data pasien)."""
+    out = f"- {e.get('kode')} {e.get('nama')}:"
+    if e.get("definisi"):
+        out += f" Definisi: {str(e['definisi']).strip()}."
+    if e.get("penyebab"):
+        out += " Penyebab: " + "; ".join(str(p) for p in e["penyebab"][:8]) + "."
+    for nm, blok in (("Mayor", e.get("gejala_mayor")), ("Minor", e.get("gejala_minor"))):
+        if isinstance(blok, dict):
+            s = blok.get("subjektif") or []
+            o = blok.get("objektif") or []
+            if s or o:
+                out += f" Gejala {nm}:"
+                if s:
+                    out += " [S] " + "; ".join(str(x) for x in s[:8]) + "."
+                if o:
+                    out += " [O] " + "; ".join(str(x) for x in o[:8]) + "."
+    return out
+
+
+def bangun_konteks(framework: str, query: str, k: int = 8) -> str:
+    """RAG PRESISI: untuk buku DIAGNOSIS suntikkan KATALOG LENGKAP (kode+nama+kategori) sebagai grounding agar
+    pemilihan diagnosis AKURAT (kode/nama tidak dikarang) + DETAIL KRITERIA entri relevan (yang terisi) untuk
+    verifikasi terhadap data pasien. Buku Luaran/Intervensi memakai retrieval ringkas. Mencakup SDKI/SLKI/SIKI
+    atau NANDA/NOC/NIC bila termuat."""
+    books = FRAMEWORK_BOOKS.get(framework, ())
+    if not books:
+        return ""
     q = _tok(query)
     if not q:
         return ""
+    qstr = (query or "").strip()
+    clinical = len(qstr) >= 40 or "dokumen_pasien" in qstr   # hemat token: katalog penuh hanya untuk kasus klinis, bukan obrolan singkat
     blocks: List[str] = []
-    for buku in FRAMEWORK_BOOKS.get(framework, ()):
+    diag_book = books[0]
+    diag_data = DATA.get(diag_book) or []
+    if diag_data and clinical:
+        cat = [f"KATALOG DIAGNOSIS {diag_book} (WAJIB pilih KODE & NAMA PERSIS dari daftar ini; DILARANG mengarang/menebak kode atau nama):"]
+        for e in diag_data:
+            kk = "/".join(x for x in (e.get("kategori"), e.get("subkategori")) if x)
+            cat.append(f"- {e.get('kode')} {e.get('nama')}" + (f" [{kk}]" if kk else ""))
+        blocks.append("\n".join(cat))
+        detailed = [e for e in diag_data if (e.get("definisi") or e.get("penyebab") or _has_gejala(e))]
+        scored = sorted(((len(q & _tok(_entry_text(e))), e) for e in detailed), key=lambda x: x[0], reverse=True)
+        top = [e for sc, e in scored if sc][:k]
+        if top:
+            blocks.append(f"DETAIL KRITERIA {diag_book} (verifikasi kesesuaian dengan data pasien):\n" + "\n".join(_format_detail(e) for e in top))
+    elif diag_data:
+        scored = sorted(((len(q & _tok(_entry_text(e))), e) for e in diag_data), key=lambda x: x[0], reverse=True)
+        top = [e for sc, e in scored if sc][:5]
+        if top:
+            blocks.append(f"REFERENSI {diag_book} RELEVAN (pakai kode & nama persis):\n" + "\n".join(f"- {e.get('kode')} {e.get('nama')}" for e in top))
+    for buku in books[1:]:
         data = DATA.get(buku) or []
         if not data:
             continue
-        scored: List[Tuple[int, dict]] = []
-        for e in data:
-            sc = len(q & _tok(_entry_text(e)))
-            if sc:
-                scored.append((sc, e))
-        scored.sort(key=lambda x: x[0], reverse=True)
-        top = scored[:k]
+        scored = sorted(((len(q & _tok(_entry_text(e))), e) for e in data), key=lambda x: x[0], reverse=True)
+        top = [e for sc, e in scored if sc][:k]
         if not top:
             continue
         lines = [f"REFERENSI {buku} RELEVAN (pakai kode & nama persis seperti ini, sertakan 'Sumber: {buku}'):"]
-        for _, e in top:
+        for e in top:
             defi = str(e.get("definisi") or "")
             extra = (" — " + defi[:120]) if defi else ""
             lines.append(f"- {e.get('kode')} {e.get('nama')}{extra}")
@@ -410,19 +457,7 @@ ATURAN EKSEKUSI (WAJIB DIPATUHI):
 7. EFISIENSI: Langsung ke Asuhan Keperawatan; jangan bertele-tele. JANGAN menjelaskan patofisiologi KECUALI diminta eksplisit. Lakukan seluruh validasi guardrails secara DIAM (jangan tampilkan proses Triage/validasi) kecuali Red Flag aktif.
 8. SITASI: Saat memberi luaran/intervensi, sertakan sumber standar pada bagian terkait (mis. "Sumber: SLKI Edisi 1" atau "Sumber: SIKI Edisi 1").
 
-FORMAT PENULISAN (HIERARKI VERTIKAL & RAPAT):
-- DILARANG menuliskan narasi proses di dalam jawaban (mis. "sedang membaca/menelaah dokumen..."). Langsung kalimat pengantar singkat lalu isi.
-- Judul bagian: Heading 2 berabjad pada baris sendiri: "## A. ...", "## B. ...", "## C. ...".
-- Bagian "A. Analisis Data" WAJIB disajikan sebagai TABEL Markdown dengan kolom: No. | Data Subjektif | Data Objektif | Masalah. Header kolom pertama ditulis "No." (PAKAI titik); isi kolom itu ditulis "1.", "2.", "3." (dengan titik). Setiap sel Data Subjektif dan Data Objektif WAJIB diakhiri tanda titik (.). Bila satu sel memuat lebih dari satu poin, beri penomoran "1.", "2.", "3." dan pisahkan antar poin dengan tag <br> di dalam sel.
-- Di dalam tiap bagian gunakan DAFTAR MARKDOWN BERTINGKAT (nested ordered list): tulis penanda "1." untuk SETIAP butir dan beri INDENTASI 3 spasi untuk sub-butir di bawah induknya. SETIAP butir WAJIB pada barisnya sendiri (KE BAWAH); DILARANG menulis beberapa butir dalam satu baris (ke samping). Sistem otomatis menampilkan penanda sesuai kedalaman: 1. lalu a. lalu 1) lalu a) lalu i. Contoh:
-  1. Defisit Pengetahuan (D.0111)
-     1. Definisi: ...
-     1. Tanda Mayor (Subjektif):
-        1. Poin pertama
-        1. Poin kedua
-- KETERANGAN TUNGGAL: bila sebuah label/butir hanya memiliki SATU keterangan, tulis keterangan itu LANGSUNG pada baris yang SAMA setelah tanda titik dua — JANGAN dipindah ke baris baru dan JANGAN diberi penanda terpisah. Contoh BENAR: "b. Tanda Mayor (Objektif): Pasangan tampak antusias namun belum mampu menjelaskan pilihan kontrasepsi." Gunakan sub-daftar bernomor (ke bawah) HANYA bila keterangannya LEBIH dari satu.
-- JANGAN memakai bullet (-, •). Sertakan KODE standar. Tulis RAPAT: maksimal SATU baris kosong antar bagian, dan JANGAN ada baris kosong berlebih sebelum kalimat penutup/pertanyaan. **Tebal** hanya untuk label penting. Pakai tabel Markdown bila membandingkan data; pada kolom nomor tabel tulis nomor dengan titik (1., 2., 3.).
-{agents.FEWSHOT_ANALISIS}{GUARDRAILS}{socratic}{books_note(framework)}
+{agents.format_spec(framework)}{GUARDRAILS}{socratic}{books_note(framework)}
 {konteks}{koreksi}"""
 
 
@@ -448,14 +483,16 @@ ATURAN SUMBER (ANTI-HALUSINASI, WAJIB):
 - Semakin banyak jurnal pada daftar yang relevan dengan kasus, semakin banyak yang Anda rekomendasikan; abaikan yang tidak relevan.
 - Bila daftar KOSONG, katakan jujur bahwa pencarian belum menemukan jurnal dan sarankan kata kunci lain. Jangan mengarang.
 
-FORMAT JAWABAN (Markdown rapi & RAPAT, tanpa emoji, maksimal SATU baris kosong antar bagian):
+FORMAT JAWABAN (Markdown rapi & RAPAT, tanpa emoji, maksimal SATU baris kosong antar bagian; PENOMORAN serapi fitur Analisis):
 - Awali SATU kalimat pengantar singkat.
-- "## Jurnal yang Direkomendasikan": DAFTAR BERTINGKAT (tulis "1." untuk tiap jurnal, indentasi 3 spasi untuk sub-butir):
+- "## Strategi Pencarian (Pendekatan PICO)": uraikan PICO kasus sebagai baris label TEBAL TANPA penomoran, masing-masing pada baris sendiri (dipisah <br>):
+  **P (Population/Problem):** [problem/kondisi pasien].<br>**I (Intervention):** [intervensi/topik yang ditelusuri].<br>**C (Comparison):** [pembanding bila ada; jika tidak ada tulis "-"].<br>**O (Outcome):** [luaran yang diharapkan].
+- "## Jurnal yang Direkomendasikan": DAFTAR BERTINGKAT — tiap jurnal satu butir TOP-LEVEL "1." (judul), lalu detail sebagai sub-butir berindentasi 3 spasi (penanda "1." juga; sistem menampilkan a., b., c.):
   1. **Judul jurnal** (nama jurnal, tahun).
-  1. Ringkasan isi: 1-2 kalimat yang menyimpulkan temuan kunci dari abstrak (hasil bacaan Anda).
-  1. Relevansi dengan kasus: satu kalimat.
-  1. Akses: tautan Markdown [Buka jurnal] memakai URL PERSIS dari daftar.
-- WAJIB diakhiri "## Ringkasan Intervensi (EBP)" berupa TABEL Markdown kolom: No. | Problem/Diagnosis | Intervensi (EBP) | Bukti dari Jurnal | Akses. Kolom No. ditulis "1.", "2." (dengan titik). Intervensi DISESUAIKAN dengan problem/diagnosis pasien; kolom Bukti merujuk temuan jurnal terkait; kolom Akses memuat tautan [Buka] ke URL jurnal.
+     1. Ringkasan isi: 1-2 kalimat temuan kunci dari abstrak (hasil bacaan Anda).
+     1. Relevansi dengan kasus (PICO): satu kalimat yang mengaitkan ke P/I/O kasus.
+     1. Akses: SATU tautan Markdown [Buka jurnal] memakai URL PERSIS dari daftar.
+- WAJIB diakhiri "## Ringkasan Intervensi (EBP)" berupa TABEL Markdown kolom: No. | Problem/Diagnosis | Intervensi (EBP) | Bukti dari Jurnal | Akses. Kolom No. ditulis "1.", "2." (dengan titik, satu per baris). Bila sel Intervensi memuat LEBIH DARI SATU poin, tulis sebagai DAFTAR HTML AKTIF dalam SATU baris sel: <ol><li>poin.</li><li>poin.</li></ol> (JANGAN "1." manual). Kolom "Bukti dari Jurnal": tulis nama jurnal/temuan sebagai TEKS BIASA TANPA tautan. Kolom "Akses": HANYA SATU tautan [Buka](URL) per baris — DILARANG menaruh lebih dari satu tautan, menulis URL mentah, atau menaruh tautan di kolom selain Akses. DILARANG karakter "|" di dalam sel. Intervensi DISESUAIKAN dengan problem/diagnosis pasien.
 
 Gunakan Bahasa Indonesia dan istilah klinis baku.
 {konteks}{koreksi}"""
