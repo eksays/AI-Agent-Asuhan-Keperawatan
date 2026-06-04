@@ -19,18 +19,21 @@ import shutil
 import sys
 import textwrap
 import time
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib import error, request
 
 
-API_URL = "https://api.anthropic.com/v1/messages"
-DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
-ANTHROPIC_VERSION = "2023-06-01"
-DEFAULT_BATCH_SIZE = 5
-DEFAULT_MAX_TOKENS = 7000
+API_BASE = os.environ.get("API_BASE", "https://ai.sumopod.com/v1")
+API_KEY  = os.environ.get("API_KEY") or os.environ.get("SUMOPOD_API_KEY")
+MODEL    = os.environ.get("MODEL", "deepseek-v4-flash")  # non-reasoning model, reliable JSON output
+DEFAULT_MODEL = MODEL
+DEFAULT_BATCH_SIZE = 3   # dikurangi dari 5 → 3 agar prompt+output tidak terpotong
+DEFAULT_MAX_TOKENS = 4096
 RETRY_STATUSES = {408, 409, 429, 500, 502, 503, 504}
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = SCRIPT_DIR.parent
@@ -76,8 +79,15 @@ def _gejala_dict(value: Any) -> dict[str, list[str]]:
 
 
 def entry_is_complete_for_gate(entry: dict[str, Any]) -> bool:
+    if not entry_has_definisi(entry):
+        return False
+    # Diagnosa "Risiko" tidak punya gejala mayor — cukup punya definisi + faktor_risiko
+    is_risiko = str(entry.get("nama", "")).strip().lower().startswith("risiko")
+    if is_risiko:
+        return bool(_as_list(entry.get("faktor_risiko"))) or bool(_as_list(entry.get("penyebab")))
     mayor = _gejala_dict(entry.get("gejala_mayor"))
-    return entry_has_definisi(entry) and bool(mayor["objektif"])
+    has_gejala = bool(mayor["objektif"]) or bool(mayor["subjektif"])
+    return has_gejala
 
 
 def has_few_shot_detail(entry: dict[str, Any]) -> bool:
@@ -130,8 +140,10 @@ def system_prompt() -> str:
         - Gunakan Bahasa Indonesia klinis yang baku dan ringkas.
         - Pertahankan kode, nama, kategori, dan subkategori persis seperti input.
         - Isi definisi, penyebab, gejala_mayor, dan gejala_minor sesuai standar SDKI.
-        - Pastikan gejala_mayor.objektif berisi minimal satu tanda objektif klinis yang baku.
-        - Jangan menambahkan field di luar skema.
+        - KHUSUS diagnosa yang namanya diawali "Risiko": diagnosa ini TIDAK memiliki gejala_mayor/minor.
+          Untuk diagnosa Risiko, kosongkan gejala_mayor dan gejala_minor, dan tambahkan field "faktor_risiko": ["..."]
+          berisi minimal 3 faktor risiko klinis yang relevan.
+        - Jangan menambahkan field di luar skema (kecuali faktor_risiko untuk diagnosa Risiko).
         - Jangan mengubah urutan entri.
         - Kembalikan hanya JSON valid, tanpa Markdown, tanpa komentar.
         """
@@ -163,39 +175,52 @@ def user_prompt(examples: list[dict[str, Any]], batch: list[dict[str, Any]]) -> 
     ).strip()
 
 
-def anthropic_messages(
-    *,
-    api_key: str,
-    model: str,
-    system: str,
-    user: str,
-    max_tokens: int,
-    timeout: int,
-) -> str:
+def call_llm(prompt: str, max_tokens: int = DEFAULT_MAX_TOKENS, model: str = MODEL, api_key: str = "", timeout: int = 120) -> str:
+    _key = api_key or API_KEY or ""
     payload = {
         "model": model,
         "max_tokens": max_tokens,
-        "temperature": 0,
-        "system": system,
-        "messages": [{"role": "user", "content": user}],
+        "temperature": 0.1,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Anda adalah spesialis terminologi keperawatan Indonesia. "
+                    "Output HANYA valid JSON array. "
+                    "Tidak ada teks sebelum atau sesudah JSON. "
+                    "Tidak ada markdown fence. Tidak ada komentar. "
+                    "Gunakan standar SDKI PPNI 2017/2022."
+                )
+            },
+            {"role": "user", "content": prompt}
+        ]
     }
-    body = json.dumps(payload).encode("utf-8")
     req = request.Request(
-        API_URL,
-        data=body,
-        method="POST",
+        f"{API_BASE}/chat/completions",
+        data=json.dumps(payload).encode(),
         headers={
-            "anthropic-version": ANTHROPIC_VERSION,
-            "content-type": "application/json",
-            "x-api-key": api_key,
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {_key}"
         },
+        method="POST"
     )
-
     with request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read().decode("utf-8")
-    data = json.loads(raw)
-    parts = data.get("content", [])
-    return "".join(part.get("text", "") for part in parts if part.get("type") == "text")
+        data = json.loads(resp.read())
+    msg = data["choices"][0]["message"]
+    raw = msg.get("content") or msg.get("reasoning_content") or ""
+    if not raw.strip():
+        raise ValueError(f"Empty response from API: {data}")
+    raw = raw.strip()
+    # Strip markdown fences
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-zA-Z]*\n?", "", raw)
+        raw = re.sub(r"```\s*$", "", raw).strip()
+    # Ekstrak JSON array — handles trailing text after closing bracket
+    bracket_start = raw.find("[")
+    bracket_end = raw.rfind("]")
+    if bracket_start >= 0 and bracket_end > bracket_start:
+        raw = raw[bracket_start:bracket_end + 1]
+    return raw
 
 
 def call_with_retries(
@@ -211,14 +236,7 @@ def call_with_retries(
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
         try:
-            return anthropic_messages(
-                api_key=api_key,
-                model=model,
-                system=system,
-                user=user,
-                max_tokens=max_tokens,
-                timeout=timeout,
-            )
+            return call_llm(user, max_tokens=max_tokens, model=model, api_key=api_key, timeout=timeout)
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             last_error = RuntimeError(f"HTTP {exc.code}: {detail}")
@@ -233,7 +251,7 @@ def call_with_retries(
         print(f"[WARN] Batch call failed on attempt {attempt}; retrying in {sleep_for}s", file=sys.stderr)
         time.sleep(sleep_for)
 
-    raise RuntimeError(f"Anthropic request failed after {attempts} attempts: {last_error}")
+    raise RuntimeError(f"API request failed after {attempts} attempts: {last_error}")
 
 
 def parse_json_array(text: str) -> list[dict[str, Any]]:
@@ -263,10 +281,14 @@ def normalize_generated(generated: dict[str, Any], original: dict[str, Any]) -> 
         raise ValueError(f"{original.get('kode')} missing definisi")
     if not penyebab:
         raise ValueError(f"{original.get('kode')} missing penyebab")
-    if not gejala_mayor["objektif"]:
-        raise ValueError(f"{original.get('kode')} missing gejala_mayor.objektif")
+    # Diagnosa "Risiko" tidak memiliki gejala mayor/minor (SDKI standard)
+    # Mereka hanya punya faktor_risiko — skip validasi gejala untuk kategori ini
+    is_risiko = str(original.get("nama", "")).strip().lower().startswith("risiko")
+    if not is_risiko and not gejala_mayor["objektif"] and not gejala_mayor["subjektif"]:
+        raise ValueError(f"{original.get('kode')} missing gejala_mayor (both subjektif and objektif empty)")
 
-    return {
+    is_risiko = str(original.get("nama", "")).strip().lower().startswith("risiko")
+    result = {
         "kode": str(original.get("kode", "")).strip(),
         "nama": str(original.get("nama", "")).strip(),
         "kategori": str(original.get("kategori", "")).strip(),
@@ -276,6 +298,14 @@ def normalize_generated(generated: dict[str, Any], original: dict[str, Any]) -> 
         "gejala_mayor": gejala_mayor,
         "gejala_minor": gejala_minor,
     }
+    if is_risiko:
+        # Ambil faktor_risiko dari generated output jika ada
+        faktor = _as_list(generated.get("faktor_risiko"))
+        if not faktor:
+            # Fallback: gunakan penyebab sebagai faktor_risiko
+            faktor = penyebab
+        result["faktor_risiko"] = faktor
+    return result
 
 
 def align_and_validate(batch: list[dict[str, Any]], generated: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -353,10 +383,10 @@ def make_batches(items: list[tuple[int, dict[str, Any]]], batch_size: int) -> li
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Populate empty SDKI.json entries via Anthropic.")
+    parser = argparse.ArgumentParser(description="Populate empty SDKI.json entries via Sumopod/OpenAI-compatible API.")
     parser.add_argument("--input", type=Path, default=DEFAULT_SDKI_PATH, help="Path to SDKI.json")
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT_PATH, help="Summary report path")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Anthropic model name")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model name")
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help="Entries per API call")
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS, help="Max output tokens per API call")
     parser.add_argument("--timeout", type=int, default=90, help="HTTP timeout seconds per API call")
@@ -368,9 +398,9 @@ def main() -> int:
     parser.add_argument("--stop-on-error", action="store_true", help="Stop immediately when a batch fails")
     args = parser.parse_args()
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    api_key = (os.environ.get("API_KEY") or os.environ.get("SUMOPOD_API_KEY") or "").strip()
     if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY is required", file=sys.stderr)
+        print("ERROR: API_KEY or SUMOPOD_API_KEY is required", file=sys.stderr)
         return 2
     if args.batch_size < 1:
         print("ERROR: --batch-size must be >= 1", file=sys.stderr)
