@@ -702,9 +702,19 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
 
     # Mulai di sini agar error auth/kuota tertangkap SEBELUM body 200 terkirim.
     tier_l = (tier or "medium").lower()
+    ebp_future = None   # [SPRINT2-FIX] EBP dijalankan di background thread
+    ebp_executor = None
+    ebp_t0 = None
     try:
         llm = get_llm(provider, model, key)
-        extra = ebp.retrieve_context(llm, pertanyaan) if (agent or "").lower() == "referensi" else ""   # jurnal NYATA
+        # --- Task 2.3: Decouple EBP dari request path ---
+        if (agent or "").lower() == "referensi":
+            ebp_executor = ThreadPoolExecutor(max_workers=1)
+            ebp_t0 = time.time()
+            ebp_future = ebp_executor.submit(ebp.retrieve_context, llm, pertanyaan)   # [SPRINT2-FIX] non-blocking EBP
+            extra = ""  # streaming dimulai segera tanpa menunggu EBP
+        else:
+            extra = ""
         msgs = build_messages(framework, session_id, pertanyaan, tier, agent, extra)
         if tier_l != "pro":                         # FLASH & MEDIUM: 1 panggilan, streaming token langsung (cepat)
             precomputed = None
@@ -713,10 +723,17 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
                 first = next(it)
             except StopIteration:
                 first = None
-        else:                                       # PRO: draft + 1 audit (blocking) lalu dipancarkan
-            it = first = None
-            precomputed = agents.orchestrate_answer(llm, msgs, pertanyaan, tier_l)
+        else:                                       # [SPRINT2-FIX] PRO: stream draft live, lalu review
+            it = llm.stream(msgs)
+            first = None
+            try:
+                first = next(it)
+            except StopIteration:
+                pass
+            precomputed = None
     except Exception as e:  # noqa
+        if ebp_executor:
+            ebp_executor.shutdown(wait=False)
         code, pesan = err_status(e)
         return JSONResponse({"status": "error", "pesan": pesan}, status_code=code)
 
@@ -740,10 +757,49 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
             except Exception:  # noqa  (stream terputus di tengah)
                 pass
         else:
-            text = precomputed or ""               # jawaban final hasil multi-agen -> dipancarkan bertahap
-            acc.append(text)
-            for i in range(0, len(text), 120):
-                yield text[i:i + 120]
+            # --- Task 2.1: PRO — Phase 1: stream draft live ---
+            def emit_pro(chunk) -> str:
+                c = bersihkan_stream(getattr(chunk, "content", "") or "")
+                if c:
+                    acc.append(c)
+                return c
+            if first is not None:
+                c = emit_pro(first)
+                if c:
+                    yield c
+            try:
+                for ch in it:
+                    c = emit_pro(ch)
+                    if c:
+                        yield c
+            except Exception:  # noqa
+                pass
+            # --- Task 2.1: PRO — Phase 2: review draft ---
+            draft_text = bersihkan("".join(acc))
+            if draft_text:
+                yield "\n\n---\n**[TINJAUAN KLINIS SEDANG DIPROSES...]**\n"   # [SPRINT2-FIX] separator review
+                sys_text = msgs[0].content if msgs else ""
+                review = agents._review_once(llm, sys_text, pertanyaan, draft_text)
+                acc.clear()
+                for i in range(0, len(review), 120):
+                    chunk = review[i:i + 120]
+                    acc.append(chunk)
+                    yield chunk
+        # --- Task 2.3: Append EBP result jika ada ---
+        if ebp_future is not None:
+            try:
+                elapsed = time.time() - ebp_t0 if ebp_t0 else 0
+                remaining = max(0, 30 - elapsed)
+                ebp_result = ebp_future.result(timeout=remaining)
+                if ebp_result:
+                    ebp_block = "\n\n---\n**[REFERENSI EBP]**\n" + ebp_result
+                    acc.append(ebp_block)
+                    yield ebp_block
+            except Exception:
+                print("[WARN] EBP timeout atau gagal — dilewati", file=sys.stderr)
+            finally:
+                if ebp_executor:
+                    ebp_executor.shutdown(wait=False)
         full = "".join(acc)
         if (agent or "analisis").lower() == "analisis" and (not askep_refs_available(framework)) and ("Informasi Sistem" not in full) and _ASKEP_RE.search(full):
             yield DEGRADE_NOTE          # notifikasi degradasi di akhir

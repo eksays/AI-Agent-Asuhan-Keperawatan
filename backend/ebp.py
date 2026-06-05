@@ -237,16 +237,55 @@ def _search_all(query: str, mn, mx, n: int) -> list:
     return arts
 
 
+def _resolve_one(a: dict) -> dict:
+    """Resolve akses URL untuk satu artikel. Mengembalikan artikel dengan _resolved_url."""
+    url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/{a['pmcid']}/" if a.get("pmcid") else ""
+    if not url:
+        url = a.get("oa_url") or ""
+    if not url and a.get("doi"):
+        try:
+            url = _unpaywall_url(a["doi"])
+        except Exception:
+            url = ""
+    a["_resolved_url"] = url
+    return a
+
+
 def _ensure_access(arts: list) -> list:
     """Pastikan SETIAP artikel punya tautan FULL-TEXT GRATIS yang nyata & bisa dibuka user.
     Prioritas: PMC -> tautan OA dari sumber -> resolusi Unpaywall (DOI). Yang tak punya tautan gratis DIBUANG."""
+    from concurrent.futures import as_completed   # [SPRINT2-FIX] paralel Unpaywall
+    candidates = arts[: _MERGED_CAP + 8]
+    # Pisahkan: yang sudah punya tautan langsung vs yang butuh resolusi Unpaywall
+    has_direct = []
+    needs_unpaywall = []
+    for a in candidates:
+        if a.get("pmcid") or a.get("oa_url"):
+            has_direct.append(a)
+        elif a.get("doi"):
+            needs_unpaywall.append(a)
+    # Resolve yang sudah punya tautan langsung (tanpa network)
+    for a in has_direct:
+        _resolve_one(a)
+    # Resolve Unpaywall secara paralel (maks 8 artikel, maks 5 worker)
+    resolved_unpaywall = []
+    if needs_unpaywall:
+        batch = needs_unpaywall[:8]
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            futs = {ex.submit(_resolve_one, a): a for a in batch}
+            try:
+                for fut in as_completed(futs, timeout=15):
+                    try:
+                        resolved_unpaywall.append(fut.result())
+                    except Exception:
+                        pass
+            except TimeoutError:
+                pass
+    # Gabungkan dan bangun output
+    all_resolved = has_direct + resolved_unpaywall
     out = []
-    for a in arts[: _MERGED_CAP + 8]:   # batasi resolusi Unpaywall ke kandidat teratas
-        url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/{a['pmcid']}/" if a.get("pmcid") else ""
-        if not url:
-            url = a.get("oa_url") or ""
-        if not url and a.get("doi"):
-            url = _unpaywall_url(a["doi"])
+    for a in all_resolved:
+        url = a.pop("_resolved_url", "")
         if url:
             a["oa_url"] = url
             a["url"] = url
