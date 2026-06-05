@@ -20,16 +20,17 @@ _EMOJI = re.compile(
 
 
 def bersihkan(t: str) -> str:
-    """Hapus emoji & simbol dekoratif; rapikan spasi. Tanda baca medis tetap aman."""
+    """Hapus emoji & simbol dekoratif; NORMALISASI spasi/baris-kosong/<br> berlebih (cegah space kosong pada output).
+    Content-agnostic -> tetap bekerja meskipun kualitas/format output diperbarui terus-menerus. Tanda baca medis aman."""
     if not t:
         return ""
     t = _EMOJI.sub("", t)
-    # buang bullet dekoratif non-standar di awal baris
-    t = re.sub(r"(?m)^[ \t]*[•▪◦‣·]+[ \t]*", "- ", t)
-    # buang baris pembuka yang seluruhnya huruf miring (pseudo-log "*Membaca dokumen...*")
-    t = re.sub(r"^\s*\*[^*\n]{3,}\*\s*\n+", "", t)
-    # rapatkan: maksimal satu baris kosong antar bagian (hilangkan jarak berlebih)
-    t = re.sub(r"(?:[ \t]*\n){3,}", "\n\n", t)
+    t = re.sub(r"(?m)^[ \t]*[•▪◦‣·]+[ \t]*", "- ", t)                    # bullet dekoratif -> "- "
+    t = re.sub(r"^\s*\*[^*\n]{3,}\*\s*\n+", "", t)                       # baris pembuka miring (pseudo-log) -> buang
+    t = re.sub(r"(?m)[ \t]+$", "", t)                                   # spasi/tab di akhir tiap baris
+    t = re.sub(r"(?i)(?:[ \t]*<br\s*/?>[ \t]*){2,}", "<br>", t)         # <br> beruntun -> satu
+    t = re.sub(r"(?i)<br\s*/?>[ \t]*(?=\n)", "", t)                     # <br> tepat sebelum newline -> buang (redundan)
+    t = re.sub(r"(?:[ \t]*\n){3,}", "\n\n", t)                          # maksimal SATU baris kosong antar bagian
     return t.strip()
 
 
@@ -88,26 +89,38 @@ def format_spec(framework: str) -> str:
             "### Diagnosis Utama: [Nama Diagnosis] ([Kode PERSIS dari KATALOG SDKI])\n"
             "**Kategori:** [kategori]<br>**Subkategori:** [subkategori]\n"
             "1. Definisi: [definisi sesuai SDKI].\n"
-            "1. Penyebab / Faktor Risiko: [pilih sesuai jenis diagnosis (aktual=penyebab; risiko=faktor risiko) yang DIBUKTIKAN data pasien].\n"
-            "1. Kondisi Klinis Terkait: [yang relevan dengan pasien].\n"
+            "1. Penyebab / Faktor Risiko (sebutkan SEMUA yang sesuai kasus — minimal 3 bila didukung data):\n"
+            "   1. [penyebab/faktor 1 yang DIBUKTIKAN data pasien].\n"
+            "   1. [penyebab/faktor 2].\n"
+            "   1. [penyebab/faktor 3 ... dst sebanyak yang relevan].\n"
+            "1. Kondisi Klinis Terkait (sebutkan SEMUA yang relevan — minimal 3 bila ada):\n"
+            "   1. [kondisi 1].\n"
+            "   1. [kondisi 2].\n"
+            "   1. [kondisi 3 ... dst].\n"
             "1. Alasan pemilihan & prioritas: [mengapa diagnosis ini TEPAT untuk pasien ini & mengapa menjadi prioritas — untuk divalidasi & dikritisi perawat].\n"
             "(ULANGI blok sebagai \"### Diagnosis 2: ...\", \"### Diagnosis 3: ...\", dst. sesuai URUTAN PRIORITAS. Baris **Kategori** & **Subkategori** TANPA penomoran.)"
         )
         luaran_block = (
             "  1. **[Nama Luaran] ([Kode, mis. L.12111])** — untuk diagnosis terkait.\n"
             "     1. Definisi: [definisi luaran sesuai SLKI].\n"
-            "     1. Kriteria Hasil: sajikan sebagai TABEL Markdown 3 kolom **Indikator | Awal | Target** (skor 1-5 sesuai SLKI; nilai Awal dari kondisi pasien sekarang, Target realistis).\n"
-            "     1. Keterangan Skor: daftar ke bawah yang menjelaskan arti tiap angka (1-5) pada kolom Awal & Target sesuai SLKI.\n"
+            "     1. Kriteria Hasil: TABEL Markdown 3 kolom **Indikator | Awal | Target** (MINIMAL 3 indikator relevan kasus; skor 1-5 sesuai SLKI; Awal=kondisi pasien sekarang, Target realistis).\n"
+            "     1. Keterangan Skor: daftar ke bawah arti tiap angka (1-5) pada kolom Awal & Target sesuai SLKI.\n"
             "     1. Alasan pemilihan: [keterkaitan dengan diagnosis & data pasien]."
         )
         interv_block = (
             "  1. **[Nama Intervensi] ([Kode, mis. I.12383])** — untuk diagnosis terkait.\n"
             "     1. Definisi: [definisi intervensi sesuai SIKI].\n"
-            "     1. Tindakan:\n"
-            "        1. Observasi: [tindakan disesuaikan data pasien].\n"
-            "        1. Terapeutik: [tindakan].\n"
-            "        1. Edukasi: [tindakan].\n"
-            "        1. Kolaborasi: [tindakan].\n"
+            "     1. Tindakan (SETIAP kelompok minimal 3 butir bila relevan kasus, tiap butir baris sendiri ke bawah):\n"
+            "        1. Observasi:\n"
+            "           1. [butir].\n"
+            "           1. [butir].\n"
+            "           1. [butir ... dst].\n"
+            "        1. Terapeutik:\n"
+            "           1. [butir]. (minimal 3, ke bawah)\n"
+            "        1. Edukasi:\n"
+            "           1. [butir]. (minimal 3, ke bawah)\n"
+            "        1. Kolaborasi:\n"
+            "           1. [butir]. (minimal 3, ke bawah)\n"
             "     1. Alasan pemilihan: [keterkaitan dengan diagnosis, luaran & data pasien]."
         )
     else:
@@ -115,31 +128,44 @@ def format_spec(framework: str) -> str:
             "### Diagnosis Utama: [Nama Diagnosis] ([Kode PERSIS dari KATALOG NANDA-I])\n"
             "**Domain:** [domain]<br>**Kelas:** [kelas]\n"
             "1. Definisi: [definisi sesuai NANDA-I].\n"
-            "1. Batasan Karakteristik: [yang DIBUKTIKAN data pasien].\n"
-            "1. Faktor yang Berhubungan: [yang relevan dengan pasien].\n"
-            "1. Populasi Berisiko: [bila relevan dengan pasien].\n"
-            "1. Kondisi Terkait: [bila relevan dengan pasien].\n"
+            "1. Batasan Karakteristik (sebutkan SEMUA yang DIBUKTIKAN data pasien — minimal 3 bila ada):\n"
+            "   1. [batasan 1].\n"
+            "   1. [batasan 2].\n"
+            "   1. [batasan 3 ... dst].\n"
+            "1. Faktor yang Berhubungan (minimal 3 bila relevan):\n"
+            "   1. [faktor 1].\n"
+            "   1. [faktor 2].\n"
+            "   1. [faktor 3 ... dst].\n"
+            "1. Populasi Berisiko: [sebutkan yang relevan; bila lebih dari satu tulis ke bawah].\n"
+            "1. Kondisi Terkait (minimal 3 bila relevan):\n"
+            "   1. [kondisi 1].\n"
+            "   1. [kondisi 2 ... dst].\n"
             "1. Alasan pemilihan & prioritas: [mengapa diagnosis ini TEPAT untuk pasien ini & mengapa menjadi prioritas — untuk divalidasi & dikritisi perawat].\n"
             "(ULANGI blok sebagai \"### Diagnosis 2: ...\", \"### Diagnosis 3: ...\", dst. sesuai URUTAN PRIORITAS. Baris **Domain** & **Kelas** TANPA penomoran.)"
         )
         luaran_block = (
             "  1. **[Nama Luaran/Outcome] ([Kode, mis. 1805])** — untuk diagnosis terkait.\n"
             "     1. Definisi: [definisi outcome sesuai NOC].\n"
-            "     1. Indikator: sajikan sebagai TABEL Markdown 3 kolom **Indikator | Awal | Target** (skor 1-5 sesuai NOC; nilai Awal dari kondisi pasien sekarang, Target realistis).\n"
-            "     1. Keterangan Skor: daftar ke bawah yang menjelaskan arti tiap angka (1-5) pada kolom Awal & Target sesuai NOC.\n"
+            "     1. Indikator: TABEL Markdown 3 kolom **Indikator | Awal | Target** (MINIMAL 3 indikator relevan kasus; skor 1-5 sesuai NOC; Awal=kondisi pasien sekarang, Target realistis).\n"
+            "     1. Keterangan Skor: daftar ke bawah arti tiap angka (1-5) pada kolom Awal & Target sesuai NOC.\n"
             "     1. Alasan pemilihan: [keterkaitan dengan diagnosis & data pasien]."
         )
         interv_block = (
             "  1. **[Nama Intervensi] ([Kode, mis. 5510])** — untuk diagnosis terkait.\n"
             "     1. Definisi: [definisi intervensi sesuai NIC].\n"
-            "     1. Aktivitas: [daftar aktivitas ke bawah; tiap aktivitas disesuaikan dengan data pasien].\n"
+            "     1. Aktivitas (sebutkan SEBANYAK yang relevan — minimal 3 bila sesuai kasus, tiap aktivitas baris sendiri ke bawah):\n"
+            "        1. [aktivitas 1 disesuaikan data pasien].\n"
+            "        1. [aktivitas 2].\n"
+            "        1. [aktivitas 3 ... dst].\n"
             "     1. Alasan pemilihan: [keterkaitan dengan diagnosis, luaran & data pasien]."
         )
     return (
         f"\n\nFORMAT KELUARAN KLINIS (kerangka {label} — WAJIB DIPATUHI PERSIS):\n"
         f"TERMINOLOGI: gunakan istilah {label} secara KONSISTEN di SELURUH output — {dx} untuk DIAGNOSIS, {lo} untuk LUARAN/OUTCOME, {iv} untuk INTERVENSI. DILARANG mencampur istilah kerangka lain.\n"
         "PERSONALISASI (WAJIB): SETIAP penentuan (diagnosis, luaran, intervensi, indikator, penyebab/faktor risiko, kondisi klinis/terkait, batasan karakteristik, faktor yang berhubungan, populasi berisiko) DIPILIH dari standar lalu DISESUAIKAN butir demi butir dengan DATA REKAM MEDIS/KASUS pasien. Ambil HANYA yang dibuktikan data pasien (jangan menyalin seluruh isi buku). Diagnosis -> Luaran -> Intervensi WAJIB saling nyambung, sinkron, dan logis. Untuk SETIAP pilihan WAJIB ada baris \"Alasan pemilihan\" agar perawat dapat memvalidasi & mengkritisi.\n"
-        "METODE PENEGAKAN DIAGNOSIS (PRESISI — lakukan INTERNAL, JANGAN tampilkan prosesnya): (1) kelompokkan data subjektif & objektif menjadi masalah keperawatan; (2) untuk tiap masalah PILIH diagnosis dari KATALOG DIAGNOSIS pada REFERENSI STANDAR memakai KODE, NAMA, KATEGORI/SUBKATEGORI (atau Domain/Kelas) PERSIS — DILARANG mengarang/menebak kode, dan HANYA pilih diagnosis yang tanda/gejala/batasan karakteristiknya BENAR-BENAR ADA pada data pasien (jangan pilih yang kriterianya tidak terbukti); (3) verifikasi tiap pilihan terhadap data (pakai DETAIL KRITERIA bila tersedia); (4) URUTKAN berdasarkan PRIORITAS — keselamatan/ABC (airway-breathing-circulation) & masalah aktual yang mengancam lebih dulu, lalu hierarki Maslow, lalu risiko: yang PALING prioritas = Diagnosis Utama, sisanya Diagnosis 2, 3, dst; (5) pastikan etiologi & rantai Diagnosis -> Luaran -> Intervensi LOGIS, sinkron, dan spesifik untuk pasien ini.\n"
+        "DETERMINISTIK & KONSISTEN (WAJIB): untuk DATA/KASUS yang SAMA, hasilkan jawaban yang SAMA setiap kali. Lakukan pemilihan & pengurutan secara OBJEKTIF dan dapat-diulang — pilih diagnosis/luaran/intervensi/butir berdasarkan KESESUAIAN dengan data pasien + aturan prioritas TETAP (ABC -> Maslow -> aktual sebelum risiko), BUKAN variasi acak. Urutkan butir secara deterministik (mengikuti urutan kemunculan/relevansi pada data pasien). DILARANG mengubah pilihan atau urutan tanpa alasan klinis yang berasal dari data.\n"
+        "KEDALAMAN & EFFORT (WAJIB — JANGAN DANGKAL): lakukan analisis MENDALAM & menyeluruh. Untuk SETIAP kategori yang secara klinis dapat memuat banyak butir — penyebab, faktor risiko, gejala/tanda, kondisi klinis/terkait, batasan karakteristik, faktor yang berhubungan, populasi berisiko, tindakan (observasi/terapeutik/edukasi/kolaborasi), kriteria hasil/indikator, aktivitas intervensi — sebutkan SEBANYAK butir yang RELEVAN dengan kasus (TARGET minimal 3 butir per kategori bila data/kondisi pasien mendukung), masing-masing pada baris sendiri sebagai sub-daftar bernomor (ke bawah). DILARANG berhenti pada 1 butir kecuali memang secara klinis hanya ada satu. Tiap butir HARUS spesifik & dibuktikan/relevan dengan data pasien (bukan generik atau menyalin buku mentah).\n"
+        "METODE PENEGAKAN DIAGNOSIS (PRESISI — lakukan INTERNAL, JANGAN tampilkan prosesnya): (1) kelompokkan data subjektif & objektif menjadi masalah keperawatan; (2) untuk tiap masalah PILIH diagnosis dari KATALOG DIAGNOSIS pada REFERENSI STANDAR memakai KODE, NAMA, KATEGORI/SUBKATEGORI (atau Domain/Kelas) PERSIS — DILARANG mengarang/menebak kode, dan HANYA pilih diagnosis yang tanda/gejala/batasan karakteristiknya BENAR-BENAR ADA pada data pasien (jangan pilih yang kriterianya tidak terbukti); (3) verifikasi tiap pilihan terhadap data (pakai DETAIL KRITERIA bila tersedia); (4) URUTKAN berdasarkan PRIORITAS — keselamatan/ABC (airway-breathing-circulation) & masalah aktual yang mengancam lebih dulu, lalu hierarki Maslow, lalu risiko: yang PALING prioritas = Diagnosis Utama, sisanya Diagnosis 2, 3, dst (TEGAKKAN SEMUA diagnosis yang didukung data — target >=3 untuk kasus berdata memadai; JANGAN berhenti di 1-2 bila data mendukung lebih); (5) pastikan etiologi & rantai Diagnosis -> Luaran -> Intervensi LOGIS, sinkron, dan spesifik untuk pasien ini.\n"
         "URUTAN & HEADING: awali SATU kalimat pengantar singkat, lalu bagian berheading \"## A. ...\", \"## B. ...\", dst (huruf BERURUTAN untuk bagian yang benar-benar diproduksi). Permintaan DIAGNOSIS, atau LUARAN, atau INTERVENSI, atau KETIGANYA WAJIB SELALU diawali bagian **## A. Analisis Data** (tabel), baru diikuti bagian yang diminta. Bila hanya satu bagian diminta, tampilkan HANYA Analisis Data + bagian itu.\n"
         "DILARANG menuliskan narasi proses (mis. \"sedang membaca dokumen...\").\n\n"
         "## A. Analisis Data -> TABEL Markdown kolom: **No. | Data Subjektif | Data Objektif | Etiologi | Masalah**\n"
@@ -300,17 +326,28 @@ def orchestrate(llm, mode: str, framework: str, data: str, konteks: str = "", ko
 # ============== ORKESTRASI BERBASIS TIER (UNTUK SEMUA FITUR via msgs) ==============
 # msgs[0] = SystemMessage berisi prompt agen aktif (Askep / Pathway / EBP) + konteks + aturan.
 def _review_once(llm, sys_text: str, human: str, draft: str) -> str:
-    sys = (sys_text + "\n\nPERAN ANDA SEKARANG: penyunting/peninjau klinis senior. Tinjau DRAF jawaban terhadap "
-           "PERMINTAAN, lalu perbaiki: ketepatan klinis & kode, kelengkapan, kepatuhan standar/format & SELURUH aturan "
-           "di atas, keselamatan pasien, serta kejelasan. Kembalikan HANYA SATU versi FINAL yang sudah diperbaiki & "
-           "rapi. Jangan menyebut proses peninjauan, draf, atau peran Anda.")
+    """Audit + PENYEMPURNA: menutup kelemahan model lemah (dangkal/tak konsisten) dgn 1 pass berfokus -> andal di SEMUA LLM."""
+    sys = (sys_text + "\n\nPERAN ANDA SEKARANG: AUDITOR & PENYEMPURNA klinis senior. Periksa DRAF terhadap PERMINTAAN & "
+           "SELURUH ATURAN/FORMAT di atas, lalu hasilkan versi FINAL yang LEBIH BAIK & LEBIH DALAM. WAJIB pastikan:\n"
+           "(1) KEDALAMAN — setiap kategori multi-butir (penyebab/faktor risiko, kondisi klinis/terkait, batasan "
+           "karakteristik, faktor yang berhubungan, tindakan Observasi/Terapeutik/Edukasi/Kolaborasi, kriteria hasil, "
+           "aktivitas) berisi SEBANYAK butir yang didukung data — MINIMAL 3 bila data mendukung; bila draf hanya 1-2, "
+           "TAMBAH/EXPAND berdasarkan data pasien.\n"
+           "(2) KELENGKAPAN — tegakkan SEMUA diagnosis yang didukung data (TARGET >=3 untuk kasus berdata memadai), "
+           "berurut prioritas (Diagnosis Utama, 2, 3, ...).\n"
+           "(3) PRESISI — kode & nama PERSIS dari katalog referensi (perbaiki yang dikarang/keliru); tiap butir benar-benar "
+           "terbukti pada data pasien (buang yang generik/tak relevan).\n"
+           "(4) FORMAT & KERAPIAN — heading/penomoran/tabel sesuai aturan; TANPA baris kosong atau space berlebih.\n"
+           "(5) KONSISTEN & deterministik (pilihan objektif sesuai data).\n"
+           "Kembalikan HANYA SATU versi FINAL yang sudah disempurnakan & rapi — jangan menyebut proses/draf/peran, jangan "
+           "menempel draf ganda.")
     return _run(llm, sys, f"PERMINTAAN:\n{human}\n\nDRAF:\n{draft}")
 
 
 def _swarm_review(llm, sys_text: str, human: str, draft: str) -> str:
     critics = [
         ("Akurasi Klinis & Kode", "Tinjau akurasi klinis serta ketepatan kode/standar dan kebenaran isi. Sebutkan kesalahan dan koreksinya secara ringkas (poin-poin)."),
-        ("Kelengkapan & Standar/Format", "Tinjau kelengkapan terhadap permintaan dan kepatuhan standar/format/aturan. Sebutkan yang kurang atau menyimpang beserta perbaikannya, ringkas."),
+        ("Kelengkapan, Kedalaman & Format", "Tinjau KEDALAMAN & kelengkapan: apakah tiap kategori multi-butir (penyebab/faktor risiko, kondisi klinis, batasan karakteristik, tindakan O/T/E/K, kriteria hasil, aktivitas) berisi MINIMAL 3 butir bila data mendukung, dan SEMUA diagnosis yang didukung data ditegakkan (target >=3) berurut prioritas. Sebutkan yang kurang/dangkal/menyimpang format beserta perbaikan konkretnya (poin-poin)."),
         ("Keselamatan Pasien & Bukti", "Tinjau keselamatan pasien dan dukungan bukti. Sebutkan potensi risiko, klaim tanpa dasar atau halusinasi, beserta perbaikannya, ringkas."),
     ]
 
@@ -323,18 +360,23 @@ def _swarm_review(llm, sys_text: str, human: str, draft: str) -> str:
         notes = list(ex.map(_crit, critics))
     crit_block = "\n\n".join(f"== Catatan {label} ==\n{n}" for label, n in notes)
     synth = (sys_text + "\n\nPERAN ANDA SEKARANG: PENYUNTING/AUDITOR FINAL. Susun SATU jawaban FINAL TERBAIK untuk "
-             "PERMINTAAN dengan menerapkan SELURUH CATATAN KRITIK pada DRAF: akurat, lengkap, sesuai standar/format & "
-             "seluruh aturan di atas, aman, dan rapi. Kembalikan HANYA jawaban final — jangan menyebut proses, draf, "
-             "kritik, atau peran.")
+             "PERMINTAAN dengan menerapkan SELURUH CATATAN KRITIK pada DRAF: akurat, lengkap, MENDALAM (tiap kategori "
+             "multi-butir >=3 butir bila data mendukung; tegakkan SEMUA diagnosis yang didukung data, target >=3, berurut "
+             "prioritas), sesuai standar/format & seluruh aturan, aman, rapi, TANPA space berlebih. Kembalikan HANYA "
+             "jawaban final — jangan menyebut proses, draf, kritik, atau peran.")
     return _run(llm, synth, f"PERMINTAAN:\n{human}\n\nDRAF:\n{draft}\n\nCATATAN KRITIK:\n{crit_block}")
 
 
 def orchestrate_answer(llm, msgs, human: str, tier: str) -> str:
-    """Kedalaman vs kecepatan sesuai pilihan model user (konsistensi format dijaga oleh contoh format di prompt):
-    - flash & medium : 1 PANGGILAN (cepat; medium pakai model lebih kuat dari flash).
-    - pro            : draft + 1 AUDIT (2 panggilan) — kualitas/konsistensi ekstra, sedikit lebih lambat."""
+    """Kualitas konsisten di SEMUA model (kuat maupun lemah) lewat pass tambahan yang menutup kelemahan model:
+    - flash : 1 PANGGILAN (tercepat).
+    - medium: draft + AUDIT-PENYEMPURNA (2 panggilan) — kedalaman/presisi/konsistensi andal lintas-LLM (default).
+    - pro   : draft + SWARM kritikus paralel + sintesis — kualitas maksimum."""
     t = (tier or "medium").lower()
     draft = bersihkan(getattr(llm.invoke(msgs), "content", "") or "")
-    if t == "pro" and draft:
-        return _review_once(llm, msgs[0].content if msgs else "", human, draft)
-    return draft
+    if not draft or t == "flash":
+        return draft
+    sys_text = msgs[0].content if msgs else ""
+    if t == "pro":
+        return _swarm_review(llm, sys_text, human, draft)
+    return _review_once(llm, sys_text, human, draft)   # medium

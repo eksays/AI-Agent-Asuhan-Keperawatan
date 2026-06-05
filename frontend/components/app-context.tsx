@@ -193,7 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
     setSending(true);
     const baseStages = STAGES[agent][file ? "file" : "text"].map((s) => s.replace(/3S\/3N/g, framework));   // tampilkan kerangka pilihan user (3S atau 3N)
-    const stages = tier === "pro" ? [...baseStages, "Auditing the answer for quality…"] : baseStages;
+    const stages = tier === "flash" ? baseStages : [...baseStages, "Auditing & refining the answer…"];   // medium/pro: ada pass penyempurna
     let si = 0; const timer = setInterval(() => { si = Math.min(si + 1, stages.length); patch(sid, botId, { status: stages.slice(0, si) }); }, 650);
     const ctx: api.ChatCtx = { provider: creds.provider, apiKey: creds.apiKey, tier, framework };
     // session_id WAJIB diterbitkan backend (CSPRNG). Klien tidak lagi membuat sendiri.

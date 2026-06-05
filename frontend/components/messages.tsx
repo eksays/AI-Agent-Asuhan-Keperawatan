@@ -41,6 +41,20 @@ function rehypeSanitizeStrict() {
 }
 const EMPTY_ATTR = new Set<string>();
 
+/* Normalizer output (content-agnostic): mencegah SPACE KOSONG & <br> berlebih pada jawaban user.
+   Selalu berjalan apa pun isinya -> tetap bekerja walau kualitas/format output terus diperbarui. */
+function normalizeMarkdown(s: string): string {
+  return s
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+$/gm, "")                             // spasi/tab di akhir baris
+    .replace(/(?:[ \t]*<br\s*\/?>[ \t]*){2,}/gi, "<br>")   // <br> beruntun -> satu
+    .replace(/<br\s*\/?>[ \t]*(?=\n)/gi, "")              // <br> tepat sebelum newline -> buang (redundan)
+    .replace(/\n[ \t]+\n/g, "\n\n")                       // baris "kosong" berisi spasi -> benar-benar kosong
+    .replace(/\n{3,}/g, "\n\n")                           // baris kosong berlebih -> satu
+    .replace(/^\s+/, "")
+    .replace(/\s+$/, "");
+}
+
 export function Messages() {
   const { messages, send, setFeedback, submitFeedback, runOnTab, revealMsg } = useApp();
   const endRef = useRef<HTMLDivElement>(null);
@@ -120,7 +134,7 @@ function useTypewriter(text: string, animate: boolean): string {
 
 /* Jawaban AI: font serif + typing effect SEKALI. Setelah selesai (revealed) tampil utuh tanpa mengetik ulang. */
 function BotContent({ content, done, revealed, onReveal, forwardRef }: { content: string; done?: boolean; revealed?: boolean; onReveal: () => void; forwardRef: RefObject<HTMLDivElement | null> }) {
-  const clean = content.replace(/[ \t]+$/gm, "").replace(/(?:\s*<br\s*\/?>\s*){2,}/gi, "<br>").replace(/\n{3,}/g, "\n\n").replace(/^\s+/, "").trimEnd();   // buang spasi/baris kosong & <br> berlebih
+  const clean = normalizeMarkdown(content);   // cegah space kosong & <br> berlebih (selalu jalan, apa pun isinya)
   const typed = useTypewriter(clean, !revealed);
   const caughtUp = typed.length >= clean.length;
   useEffect(() => { if (!revealed && done && caughtUp && clean.length > 0) onReveal(); }, [revealed, done, caughtUp, clean.length, onReveal]);

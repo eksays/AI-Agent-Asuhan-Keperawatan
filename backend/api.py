@@ -225,11 +225,11 @@ def _format_detail(e: dict) -> str:
     return out
 
 
-def bangun_konteks(framework: str, query: str, k: int = 8) -> str:
+def bangun_konteks(framework: str, query: str, tier: str = "medium", k: int = 8) -> str:
     """RAG PRESISI: untuk buku DIAGNOSIS suntikkan KATALOG LENGKAP (kode+nama+kategori) sebagai grounding agar
     pemilihan diagnosis AKURAT (kode/nama tidak dikarang) + DETAIL KRITERIA entri relevan (yang terisi) untuk
     verifikasi terhadap data pasien. Buku Luaran/Intervensi memakai retrieval ringkas. Mencakup SDKI/SLKI/SIKI
-    atau NANDA/NOC/NIC bila termuat."""
+    atau NANDA/NOC/NIC bila termuat. Katalog penuh hanya untuk tier MEDIUM/PRO (FLASH pakai retrieval ringkas demi kecepatan)."""
     books = FRAMEWORK_BOOKS.get(framework, ())
     if not books:
         return ""
@@ -238,10 +238,11 @@ def bangun_konteks(framework: str, query: str, k: int = 8) -> str:
         return ""
     qstr = (query or "").strip()
     clinical = len(qstr) >= 40 or "dokumen_pasien" in qstr   # hemat token: katalog penuh hanya untuk kasus klinis, bukan obrolan singkat
+    full_catalog = clinical and (tier or "medium").lower() in ("medium", "pro")   # FLASH -> retrieval ringkas (prompt lebih kecil = lebih cepat)
     blocks: List[str] = []
     diag_book = books[0]
     diag_data = DATA.get(diag_book) or []
-    if diag_data and clinical:
+    if diag_data and full_catalog:
         cat = [f"KATALOG DIAGNOSIS {diag_book} (WAJIB pilih KODE & NAMA PERSIS dari daftar ini; DILARANG mengarang/menebak kode atau nama):"]
         for e in diag_data:
             kk = "/".join(x for x in (e.get("kategori"), e.get("subkategori")) if x)
@@ -375,6 +376,9 @@ SESI = SessionMemory()
 
 
 # ============================ LLM PROVIDER ===================================
+_LLM_SEED = 7   # benih tetap -> jawaban reproduktif antar-run (provider OpenAI-compatible). Claude/Gemini: temperature=0.
+
+
 def get_llm(provider: str, model: str, api_key: str, temperature: float = 0.0):
     provider = (provider or "").lower().strip()
     if provider == "claude":
@@ -385,7 +389,7 @@ def get_llm(provider: str, model: str, api_key: str, temperature: float = 0.0):
         return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, temperature=temperature, max_output_tokens=4096)
     # OpenAI-compatible: openai / groq / xai / deepseek / mistral / together / openrouter / shopee
     from langchain_openai import ChatOpenAI
-    kw = dict(model=model, api_key=api_key, temperature=temperature, max_tokens=4096)
+    kw = dict(model=model, api_key=api_key, temperature=temperature, max_tokens=4096, seed=_LLM_SEED)   # seed -> konsistensi
     base = OPENAI_COMPATIBLE.get(provider)
     if base:
         kw["base_url"] = base
@@ -428,6 +432,33 @@ def iq_text(tier: str) -> str:
         return (base + "MODE CEPAT (FLASH): single-agent, zero-shot, langsung to-the-point dan seringkas mungkin.")
     return (base + "MODE STANDAR (MEDIUM): pendekatan maker-checker (susun draf lalu audit kesesuaian standar 3S/3N) "
             "sebelum menyajikan jawaban final.")
+
+
+# ---- JALUR CEPAT: deteksi sapaan/obrolan singkat non-klinis (balasan spontan, tanpa RAG/orkestrasi) ----
+_CLIN_RE = re.compile(r"\b(pasien|diagnos\w*|luaran|intervensi|asuhan|keperawatan|askep|sdki|slki|siki|nanda|noc|nic|"
+                      r"rekam|medis|gejala|keluhan|nyeri|sesak|demam|tekanan|nadi|napas|spo2|saturasi|jurnal|ebp|"
+                      r"pathway|patofisiolog\w*|kasus|terapi|obat|luka|infeksi|risiko|kriteria|edukasi|kolaborasi|observasi|"
+                      r"analis\w*|buat\w*|susun\w*|rumus\w*|tegak\w*|carikan)\b", re.I)
+_CASUAL_RE = re.compile(r"^\s*(ha+i+|h[ae]llo+|halo+|hi+|hey+|pagi|siang|sore|malam|selamat\s+\w+|terima\s*kasih|"
+                        r"makasih|thanks?|thx|ok(e|ay)?|sip|baik|mantap|tes|test|ping|permisi|assalam\w*|wa'?alaikum\w*)"
+                        r"\b[\s\W]*$", re.I)
+
+
+def is_casual(text: str) -> bool:
+    """True untuk sapaan/obrolan SANGAT singkat & non-klinis -> jalur cepat (prompt minimal, balasan spontan)."""
+    t = (text or "").strip()
+    if not t or len(t) > 64 or "dokumen_pasien" in t:
+        return False
+    if _CLIN_RE.search(t):
+        return False
+    return bool(_CASUAL_RE.match(t)) or len(t) <= 15
+
+
+def sys_casual() -> str:
+    return ("Anda asisten CDSS keperawatan yang ramah & profesional. Pengguna menyapa atau berbasa-basi singkat. "
+            "Balas HANGAT dan SANGAT SINGKAT (1-2 kalimat) layaknya manusia, lalu tawarkan bantuan klinis bila relevan. "
+            "DILARANG mengeluarkan template, judul, tabel, daftar bernomor, baris status, atau kalimat formal panjang. "
+            "Contoh: \"Halo! Ada kasus atau rekam medis yang bisa saya bantu analisis hari ini?\"")
 
 
 def sys_chat(framework: str, konteks: str, koreksi: str, tier: str = "medium") -> str:
@@ -486,13 +517,16 @@ ATURAN SUMBER (ANTI-HALUSINASI, WAJIB):
 FORMAT JAWABAN (Markdown rapi & RAPAT, tanpa emoji, maksimal SATU baris kosong antar bagian; PENOMORAN serapi fitur Analisis):
 - Awali SATU kalimat pengantar singkat.
 - "## Strategi Pencarian (Pendekatan PICO)": uraikan PICO kasus sebagai baris label TEBAL TANPA penomoran, masing-masing pada baris sendiri (dipisah <br>):
-  **P (Population/Problem):** [problem/kondisi pasien].<br>**I (Intervention):** [intervensi/topik yang ditelusuri].<br>**C (Comparison):** [pembanding bila ada; jika tidak ada tulis "-"].<br>**O (Outcome):** [luaran yang diharapkan].
-- "## Jurnal yang Direkomendasikan": DAFTAR BERTINGKAT — tiap jurnal satu butir TOP-LEVEL "1." (judul), lalu detail sebagai sub-butir berindentasi 3 spasi (penanda "1." juga; sistem menampilkan a., b., c.):
+  **P (Population/Problem):** [KATA/FRASA KUNCI + sinonim, mis. "ibu nifas; postpartum; primipara"].<br>**I (Intervention):** [KATA/FRASA KUNCI + sinonim, mis. "edukasi laktasi; breastfeeding education; lactation counseling"].<br>**C (Comparison):** [kata kunci pembanding bila ada; jika tidak ada tulis "-"].<br>**O (Outcome):** [KATA/FRASA KUNCI + sinonim, mis. "keberhasilan menyusui; breastfeeding self-efficacy"].
+  (Tiap unsur PICO berupa KATA/FRASA KUNCI + SINONIM dipisah titik koma — BUKAN kalimat — sesuai kaidah PICO; tetap disesuaikan kasus pasien.)
+- "## Jurnal yang Direkomendasikan": rekomendasikan SEBANYAK jurnal yang RELEVAN dengan kasus (TARGET minimal 3 bila tersedia di daftar; bila benar-benar hanya 1 yang relevan, cukup 1 — jujur). URUTKAN dari yang PALING RELEVAN dengan kasus (nomor 1 = paling relevan), bukan sekadar paling baru. DAFTAR BERTINGKAT — tiap jurnal satu butir TOP-LEVEL "1." (judul), lalu detail sebagai sub-butir berindentasi 3 spasi (penanda "1." juga; sistem menampilkan a., b., c.):
   1. **Judul jurnal** (nama jurnal, tahun).
      1. Ringkasan isi: 1-2 kalimat temuan kunci dari abstrak (hasil bacaan Anda).
      1. Relevansi dengan kasus (PICO): satu kalimat yang mengaitkan ke P/I/O kasus.
      1. Akses: SATU tautan Markdown [Buka jurnal] memakai URL PERSIS dari daftar.
 - WAJIB diakhiri "## Ringkasan Intervensi (EBP)" berupa TABEL Markdown kolom: No. | Problem/Diagnosis | Intervensi (EBP) | Bukti dari Jurnal | Akses. Kolom No. ditulis "1.", "2." (dengan titik, satu per baris). Bila sel Intervensi memuat LEBIH DARI SATU poin, tulis sebagai DAFTAR HTML AKTIF dalam SATU baris sel: <ol><li>poin.</li><li>poin.</li></ol> (JANGAN "1." manual). Kolom "Bukti dari Jurnal": tulis nama jurnal/temuan sebagai TEKS BIASA TANPA tautan. Kolom "Akses": HANYA SATU tautan [Buka](URL) per baris — DILARANG menaruh lebih dari satu tautan, menulis URL mentah, atau menaruh tautan di kolom selain Akses. DILARANG karakter "|" di dalam sel. Intervensi DISESUAIKAN dengan problem/diagnosis pasien.
+
+- PALING BAWAH SENDIRI, WAJIB tambahkan bagian "## Daftar Pustaka" berisi SEMUA jurnal yang Anda rekomendasikan dalam format APA EDISI KE-7, sebagai daftar bernomor "1." (satu entri per jurnal), DIURUTKAN ALFABETIS menurut nama belakang penulis pertama. Format tiap entri: Nama belakang, Inisial., & Nama belakang, Inisial. (Tahun). Judul artikel. *Nama Jurnal*, *Volume*(Nomor), Halaman. https://doi.org/xxxx — gunakan field SITASI (penulis/volume/nomor/halaman/DOI) PERSIS dari daftar jurnal; ubah nama penulis ke gaya APA (Nama belakang, Inisial.); bila penulis >20 ikuti aturan APA (… & penulis terakhir); bila DOI tidak ada pakai URL akses; bila suatu data tidak tersedia hilangkan dengan rapi sesuai aturan APA. DILARANG mengarang penulis, tahun, judul, atau DOI.
 
 Gunakan Bahasa Indonesia dan istilah klinis baku.
 {konteks}{koreksi}"""
@@ -508,14 +542,25 @@ def sys_for_agent(agent: str, framework: str, konteks: str, koreksi: str, tier: 
 
 
 def build_messages(framework: str, session_id: str, pertanyaan: str, tier: str = "medium", agent: str = "analisis", extra_ctx: str = "") -> list:
-    konteks = bangun_konteks(framework, pertanyaan)
+    a = (agent or "analisis").lower()
+    # JALUR CEPAT: sapaan/obrolan singkat non-klinis -> prompt MINIMAL tanpa RAG (balasan spontan & cepat).
+    if a != "pathway" and not extra_ctx and is_casual(pertanyaan):
+        msgs = [SystemMessage(content=sys_casual() + agents.ANTI_INJECTION)]
+        for role, content in SESI.history(session_id):
+            msgs.append(HumanMessage(content=content) if role == "user" else AIMessage(content=content))
+        msgs.append(HumanMessage(content=phi.sanitize_phi(pertanyaan)))
+        return msgs
+    konteks = bangun_konteks(framework, pertanyaan, tier)   # tier-aware: katalog penuh hanya medium/pro
     konteks = ("\n\nREFERENSI STANDAR:\n" + konteks) if konteks else ""
     if extra_ctx:
         konteks += extra_ctx
     koreksi = memory.recall_block(framework, pertanyaan, session_id) or ""   # isolasi per-sesi (anti poisoning)
     msgs = [SystemMessage(content=sys_for_agent(agent, framework, konteks, koreksi, tier) + agents.ANTI_INJECTION)]
-    for role, content in SESI.history(session_id):
-        msgs.append(HumanMessage(content=content) if role == "user" else AIMessage(content=content))
+    # KONSISTENSI: analisis DOKUMEN BARU dikerjakan MANDIRI & deterministik -> ABAIKAN riwayat percakapan agar jawaban
+    # tidak bervariasi antar-run (riwayat tetap dipakai untuk tindak lanjut teks tanpa dokumen baru).
+    if not (a == "analisis" and "<dokumen_pasien>" in pertanyaan):
+        for role, content in SESI.history(session_id):
+            msgs.append(HumanMessage(content=content) if role == "user" else AIMessage(content=content))
     sanitized_pertanyaan = phi.sanitize_phi(pertanyaan)  # [SEC-FIX] PII redaction sebelum transmisi ke LLM
     msgs.append(HumanMessage(content=sanitized_pertanyaan))
     return msgs
@@ -739,18 +784,19 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
 
     # Mulai di sini agar error auth/kuota tertangkap SEBELUM body 200 terkirim.
     tier_l = (tier or "medium").lower()
+    casual = is_casual(pertanyaan)                  # sapaan/obrolan singkat -> jalur stream cepat (1 panggilan), tanpa orkestrasi/EBP
     try:
         llm = get_llm(provider, model, key)
-        extra = ebp.retrieve_context(llm, pertanyaan) if (agent or "").lower() == "referensi" else ""   # jurnal NYATA
+        extra = ebp.retrieve_context(llm, pertanyaan) if ((agent or "").lower() == "referensi" and not casual) else ""   # jurnal NYATA
         msgs = build_messages(framework, session_id, pertanyaan, tier, agent, extra)
-        if tier_l != "pro":                         # FLASH & MEDIUM: 1 panggilan, streaming token langsung (cepat)
+        if tier_l == "flash" or casual:             # FLASH atau sapaan: 1 panggilan, streaming token langsung (tercepat)
             precomputed = None
             it = llm.stream(msgs)
             try:
                 first = next(it)
             except StopIteration:
                 first = None
-        else:                                       # PRO: draft + 1 audit (blocking) lalu dipancarkan
+        else:                                       # MEDIUM/PRO: orkestrasi (draft + audit/swarm) lalu dipancarkan
             it = first = None
             precomputed = agents.orchestrate_answer(llm, msgs, pertanyaan, tier_l)
     except Exception as e:  # noqa
@@ -759,7 +805,7 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
 
     def gen():
         acc: list[str] = []
-        if tier_l != "pro":
+        if tier_l == "flash" or casual:
             def emit(chunk) -> str:
                 c = bersihkan_stream(getattr(chunk, "content", "") or "")   # JANGAN strip per-token
                 if c:

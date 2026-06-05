@@ -92,11 +92,19 @@ body { background: hsl(var(--background)); color: hsl(var(--foreground)); font-f
 .prose ol > li > ol > li:only-child, .prose ol > li > ul > li:only-child { list-style: none; }
 .prose li > ol { margin-top: 0.1rem; }
 .prose li { margin-top: 0.1rem; margin-bottom: 0.1rem; }
+/* Ritme vertikal RAPAT untuk jawaban AI — cegah space kosong dari margin antar-elemen (berlaku semua isi) */
+.prose h1, .prose h2, .prose h3, .prose h4 { margin-top: 0.55rem; margin-bottom: 0.3rem; line-height: 1.25; }
+.prose p { margin-top: 0.3rem; margin-bottom: 0.3rem; }
+.prose ol, .prose ul { margin-top: 0.25rem; margin-bottom: 0.25rem; }
+.prose table { margin: 0.4rem 0; }
 /* buang jarak berlebih di awal/akhir & paragraf kosong (sumber "space kosong") */
 .prose > :first-child { margin-top: 0; }
 .prose > :last-child { margin-bottom: 0; }
 .prose p:empty, .prose p:blank { display: none; }
 .prose p:has(> br:only-child) { display: none; }
+/* cegah gap dari elemen kosong (heading/butir tanpa isi) yang kadang muncul saat output diperbarui */
+.prose h1:empty, .prose h2:empty, .prose h3:empty, .prose h4:empty, .prose li:empty { display: none; }
+.prose li:has(> br:only-child) { display: none; }
 
 /* Tabel klinis: gridline PUTIH PENUH (semua garis terlihat — vertikal + horizontal) */
 .prose table { width: 100%; border-collapse: collapse; border: 1px solid rgba(255,255,255,0.55); margin: 0.5rem 0; }
