@@ -53,16 +53,29 @@ Completed Phase 4 controls:
 - PDF/Word export HTML is sanitized again at the export boundary.
 - CSP removes production `unsafe-eval`, adds `frame-src 'none'`, preserves required browser hardening directives, and narrows `img-src`.
 - Frontend browser-security regression test and sink scanner are available locally.
+
+Phase 5 local controls with closure evidence prepared:
+
+- Document uploads for `/analisis` and `/analisis_multi` use bounded intake and deterministic content sniffing for PDF, DOCX, and clean UTF-8 text.
+- Filename extension and browser MIME type are treated as non-authoritative hints; mismatches fail closed.
+- DOCX containers are validated before parsing for required OOXML members, unsafe archive paths, symlink-like entries, excessive entries, oversized expansion, compression-ratio risk, nested archives, macro/active content, executable member types, and external relationships.
+- Parser libraries run in a spawned child process with wall-clock timeout, terminate/kill escalation, sanitized outcomes, and temporary workspace cleanup.
+- Parser child runtime guards block sockets, URL openers, and subprocess command execution.
+- Parser failures return structured `upload_status`, `accepted_upload=false`, and browser-safe messages.
+- Clinical photo analysis remains default-off and unsupported server-side.
+- Closure tests cover 20 sequential parser timeouts, queue close/join cleanup, parser crash containment, oversized parser result rejection, DOCX Unicode/duplicate/encrypted/member-size cases, explicit PDF active-content marker rejection, plain-text binary/encoding rejection, parent-controlled copied input, and network/process denial for socket, urllib, requests, httpx, subprocess, `os.system`, and `shell=True` attempts.
 Remaining missing or failing controls:
 
 - PHI firewall completeness beyond tested canary classes and future integrations.
 - Formal clinical review workflow for real/local datasets, including reviewer identity, approval records, license review, durable active release storage, and operational rollback evidence.
 - Extraction-quality debugging and review for real `extraction_unverified`, `ocr_extracted`, and `llm_assisted` registry content.
 - Browser-rendered QA for Mermaid/SVG hardening remains deferred unless a working Browser runtime completes visual verification.
-- Upload isolation with killable parser process.
+- Phase 5 closure review acceptance and checkpoint commit for upload isolation evidence.
+- Hard OS-level parser CPU and memory caps before pilot or production claims.
+- Portable process-tree isolation or equivalent host/container controls before stronger isolation claims.
 - Dedicated validation-status UI and formal clinical/nursing validation of abstention wording.
 
-Gate A is still not passed until registry governance is connected to formally reviewed approved release artifacts, upload isolation controls are implemented and verified, browser-rendered QA is completed or explicitly accepted as deferred for sandbox-only closure, and Phase 1/2/3/4 controls are kept enforced in CI.
+Gate A is still not passed until registry governance is connected to formally reviewed approved release artifacts, Phase 5 closure evidence is accepted, browser-rendered QA is completed or explicitly accepted as deferred for sandbox-only closure, hard parser resource-control residuals are resolved or explicitly accepted for the sandbox boundary, and Phase 1/2/3/4/5 controls are kept enforced in CI.
 
 Phase 2 closure verification improves deterministic clinical validation, trusted evidence containment, machine-readable abstention status, and fail-fast registry-unavailable handling for tested paths. Informal nursing-perspective feedback received on 2026-06-06 says supporting 3S and 3N documents remain insufficiently concrete because extraction issues remain; this reinforces keeping extracted registries non-authoritative and fail-closed. It does not satisfy registry governance, Mermaid/SVG hardening, isolated upload parsing, formal clinical validation, compliance review, hospital readiness, or production readiness. Browser-rendered QA remains deferred.
 

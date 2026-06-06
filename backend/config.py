@@ -34,6 +34,16 @@ class AppConfig:
     harvest_interval_sec: int
     harvest_topics: tuple[str, ...]
     unpaywall_email: str
+    upload_max_bytes: int
+    upload_max_filename_length: int
+    upload_max_extracted_chars: int
+    upload_max_pdf_pages: int
+    upload_max_docx_entries: int
+    upload_max_docx_total_uncompressed_bytes: int
+    upload_max_docx_single_entry_uncompressed_bytes: int
+    upload_max_docx_compression_ratio: float
+    upload_parser_timeout_sec: int
+    upload_max_parser_result_bytes: int
 
     @property
     def external_llm_enabled(self) -> bool:
@@ -57,6 +67,15 @@ def _int_env(env: Mapping[str, str], name: str, default: int) -> int:
         return default
     try:
         return int(raw)
+    except ValueError:
+        return default
+
+def _float_env(env: Mapping[str, str], name: str, default: float) -> float:
+    raw = env.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw)
     except ValueError:
         return default
 
@@ -95,6 +114,16 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         cdss_secret_key=source.get("CDSS_SECRET_KEY", "").strip(),
         harvest_interval_sec=_int_env(source, "HARVEST_INTERVAL_SEC", 0),
         harvest_topics=topics,
+        upload_max_bytes=_int_env(source, 'UPLOAD_MAX_BYTES', 10 * 1024 * 1024),
+        upload_max_filename_length=_int_env(source, 'UPLOAD_MAX_FILENAME_LENGTH', 180),
+        upload_max_extracted_chars=_int_env(source, 'UPLOAD_MAX_EXTRACTED_CHARS', 50_000),
+        upload_max_pdf_pages=_int_env(source, 'UPLOAD_MAX_PDF_PAGES', 30),
+        upload_max_docx_entries=_int_env(source, 'UPLOAD_MAX_DOCX_ENTRIES', 100),
+        upload_max_docx_total_uncompressed_bytes=_int_env(source, 'UPLOAD_MAX_DOCX_TOTAL_UNCOMPRESSED_BYTES', 5 * 1024 * 1024),
+        upload_max_docx_single_entry_uncompressed_bytes=_int_env(source, 'UPLOAD_MAX_DOCX_SINGLE_ENTRY_UNCOMPRESSED_BYTES', 2 * 1024 * 1024),
+        upload_max_docx_compression_ratio=_float_env(source, 'UPLOAD_MAX_DOCX_COMPRESSION_RATIO', 100.0),
+        upload_parser_timeout_sec=_int_env(source, 'UPLOAD_PARSER_TIMEOUT_SEC', 20),
+        upload_max_parser_result_bytes=_int_env(source, 'UPLOAD_MAX_PARSER_RESULT_BYTES', 100 * 1024),
         unpaywall_email=source.get("UNPAYWALL_EMAIL", "cdss.keperawatan@example.com"),
     )
 

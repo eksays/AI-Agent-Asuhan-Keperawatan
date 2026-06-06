@@ -42,8 +42,9 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Tighten markdown link protocols and CSP.
 
 6. **Phase 5 - Isolated Document Upload Parsing**
+   - Status: applied locally on 2026-06-06 for tested document-upload parser isolation and hostile-file rejection; closure review evidence has been prepared, but no checkpoint commit has been created yet.
    - Use content sniffing and magic bytes.
-   - Parse in a killable process with hard resource limits.
+   - Parse in a killable process with bounded parser limits; hard OS-level CPU/RAM caps remain residual work.
    - Disable unsupported clinical photo analysis.
 
 7. **Phase 6 - Authentication, Session Security, Secrets, MFA, and Rate Limits**
@@ -176,3 +177,24 @@ Residuals:
 - Production CSP still permits `script-src 'unsafe-inline'` and `style-src 'unsafe-inline'`. Nonce/hash-based CSP architecture remains required before stronger browser-security or release-gate claims.
 - Browser-rendered QA must be recorded honestly as passed or deferred depending on runtime availability.
 - Gate A remains unmet until upload parser isolation and all gate evidence are completed and verified.
+
+## Phase 5 Implementation Notes
+
+Phase 5 is limited to backend document-upload parsing and hostile-file handling for `/analisis` and `/analisis_multi`. It does not change registry governance, browser-security design, authentication/session/MFA/rate limits, Redis, audit-ledger architecture, OCR quality, embeddings, retrieval ranking, prompts, or frontend layout. External LLM, EBP, Mermaid, clinical-photo analysis, and authoritative registry grounding remain disabled by default.
+
+Implemented scope:
+
+- Added `backend/upload_security.py` with bounded intake, deterministic content sniffing, explicit type allowlist, DOCX ZIP validation, spawned parser child process, timeout termination, sanitized parser outcomes, temporary workspace cleanup, and child runtime guards for sockets, URL openers, and subprocess command execution.
+- Added explicit upload parser limits in `backend/config.py`: 10 MiB upload bytes, 180-character filenames, 50,000 extracted characters, 30 PDF pages, 100 DOCX entries, 5 MiB total DOCX expansion, 2 MiB single-entry DOCX expansion, 100:1 DOCX compression ratio, 20-second parser timeout, and 100 KiB parser result payload.
+- Replaced the `/analisis` and `/analisis_multi` document path with `extract_upload_document`, preserving PHI redaction after extraction and returning structured upload errors before provider construction.
+- Preserved default-off clinical photo analysis and did not add OCR or image analysis.
+- Added synthetic adversarial tests for valid PDF/DOCX/text, spoofed extensions, MIME mismatch, generic ZIP, traversal, macro content, nested archives, zip-bomb indicators, page and extracted-text limits, parser crash, parser hang termination, cleanup, network deny, route integration, and owned-source bypass scanning.
+- Closure review expanded tests for 20 sequential parser timeouts, queue cleanup, oversized parser result payloads, parent-controlled copied input, Unicode traversal variants, encrypted ZIP members, duplicate DOCX entries, active PDF markers, invalid UTF-8/NUL/control-character text, requests/httpx/getaddrinfo/os.system denial, raw parser exception containment, and structured route-level oversize errors.
+
+Residuals:
+
+- The parser boundary is killable but not a full OS sandbox; hard CPU and memory caps remain required before pilot or production claims.
+- Process-tree isolation is not claimed; stronger host/container controls remain required for portable descendant-process containment even though the tested child guard blocks subprocess creation.
+- Parser libraries still execute inside a child process and must remain covered by dependency review and crash tests.
+- Frontend accept hints are not authoritative and may be narrowed later, but server-side validation is the safety control.
+- Gate A remains unmet until Phase 5 closure review accepts the evidence, resource-control residuals are resolved or explicitly accepted for sandbox-only use, browser-rendered QA disposition is settled, and all Phase 1-5 controls remain enforced.

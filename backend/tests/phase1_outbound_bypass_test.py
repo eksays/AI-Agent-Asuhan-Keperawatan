@@ -33,10 +33,10 @@ PATTERNS = {
 ALLOWLIST = {
     ("agents.py", 196, ".invoke("): "Injected LLM is expected to be SafeLLM from active API routes.",
     ("agents.py", 376, ".invoke("): "Injected LLM is expected to be SafeLLM from active API routes.",
-    ("api.py", 394, "ChatAnthropic("): "Raw provider construction is private and wrapped by get_llm().",
-    ("api.py", 394, "Anthropic("): "Substring match inside ChatAnthropic; same reviewed raw provider construction.",
-    ("api.py", 397, "ChatGoogleGenerativeAI("): "Raw provider construction is private and wrapped by get_llm().",
-    ("api.py", 404, "ChatOpenAI("): "Raw provider construction is private and wrapped by get_llm().",
+    ("api.py", 396, "ChatAnthropic("): "Raw provider construction is private and wrapped by get_llm().",
+    ("api.py", 396, "Anthropic("): "Substring match inside ChatAnthropic; same reviewed raw provider construction.",
+    ("api.py", 399, "ChatGoogleGenerativeAI("): "Raw provider construction is private and wrapped by get_llm().",
+    ("api.py", 406, "ChatOpenAI("): "Raw provider construction is private and wrapped by get_llm().",
     ("chaos_monkey.py", 13, "urllib."): "Local-only chaos tool for localhost smoke checks.",
     ("chaos_monkey.py", 20, "urllib."): "Local-only chaos tool for localhost smoke checks.",
     ("chaos_monkey.py", 21, "urllib."): "Local-only chaos tool for localhost smoke checks.",
@@ -63,6 +63,12 @@ ALLOWLIST = {
     ("ekstraksi.py", 72, ".invoke("): "Reviewed registry utility; uses wrap_llm(llm).invoke(...).",
     ("outbound_policy.py", 211, ".invoke("): "Central SafeLLM boundary invokes raw client after sanitization.",
     ("scripts/populate_sdki.py", 232, "request.urlopen("): "Reviewed registry utility; request body is sanitized before urlopen.",
+    ("upload_security.py", 12, "urllib."): "Parser child runtime guard imports urllib only to block urlopen before parsing.",
+    ("upload_security.py", 404, "urllib."): "Parser child runtime guard replaces urlopen with a blocker; no outbound request is made.",
+    ("upload_security.py", 424, "httpx."): "Parser child runtime guard replaces httpx client request with a blocker; no outbound request is made.",
+    ("upload_security.py", 425, "httpx."): "Parser child runtime guard replaces httpx async client request with a blocker; no outbound request is made.",
+    ("upload_security.py", 426, "httpx."): "Parser child runtime guard replaces httpx.get with a blocker; no outbound request is made.",
+    ("upload_security.py", 427, "httpx."): "Parser child runtime guard replaces httpx.post with a blocker; no outbound request is made.",
 }
 
 

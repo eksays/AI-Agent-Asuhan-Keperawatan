@@ -119,3 +119,21 @@ Checkpoint references: Phase 0B `cef16b14166ebc5ad19b67c1a607bbdd9054956a`; Phas
 | Export HTML remains an HTML serialization boundary | Medium | Export HTML is re-sanitized and link-cleaned before insertion/serialization. | Keep export sanitizer tests and avoid adding new export sources without review. |
 | Browser-rendered QA may remain environment-dependent | Medium | Static/unit verification is complete; visual QA must not be claimed if Browser runtime is unavailable. | Re-run with Browser plugin active before Gate A or pilot claims. |
 | Gate A remains unmet | High | Phase 4 addresses browser rendering only; upload isolation and remaining gate evidence are incomplete. | Continue to Phase 5 after closure. |
+
+## Phase 5 Status Update
+
+| ID | Phase 5 Status | Evidence | Residual Risk |
+|---|---|---|---|
+| SEC-UPL-001 | Partially mitigated for tested upload parser paths | `backend/upload_security.py` parses documents through a spawned child process with wall-clock timeout, termination/kill escalation, sanitized parser outcomes, child runtime guards for sockets/URL openers/subprocess command execution, and temporary workspace cleanup. `/analisis` and `/analisis_multi` use the structured parser result before provider construction. | This is a killable process boundary, not a full OS sandbox. Portable CPU and memory quotas are not implemented yet. Parser libraries still run with inherited package code inside the child process. |
+| SEC-UPL-002 | Partially mitigated for tested content-type spoofing cases | Upload dispatch now uses PDF signature, DOCX OOXML container structure, or clean UTF-8 text. Filename extension and browser MIME type are not authoritative; mismatches fail closed. Tests cover valid PDF/DOCX/text, fake PDF, fake DOCX, generic ZIP, image-as-PDF, executable-as-text, empty file, binary garbage, and MIME mismatch. | Frontend accept hints still include some legacy extensions, but backend remains authoritative. Future upload surfaces must call the same parser boundary. |
+| CLI-IMG-001 | Preserved fail-closed behavior | Phase 5 API regression confirms `file_foto` still returns `clinical_photo_analysis` unavailable and does not call providers. | No OCR or clinical photo analysis exists; implementing it remains out of scope and would require separate safety/privacy validation. |
+| SEC-UPL-003 | Partially mitigated for tested hostile parser lifecycle cases | Closure tests cover single and 20 sequential parser timeouts, child exit, queue close/join, workspace deletion, crash-safe responses, oversized parser result rejection, active PDF marker rejection, encrypted/duplicate/Unicode-path DOCX rejection, runtime network/command deny, and parent-controlled copied input. | Process-tree isolation and hard CPU/RAM limits are still absent; parser dependency vulnerabilities remain possible inside the child process. |
+
+## Phase 5 Residuals
+
+| Risk | Severity | Status | Next Action |
+|---|---|---|---|
+| Process isolation lacks hard CPU/RAM quotas | High | Parser process can be terminated on timeout, but portable memory and CPU caps are not implemented. | Add container, Linux cgroup, Windows job-object, or equivalent hard resource controls before pilot. |
+| Parser dependency risk remains | Medium | PDF and DOCX libraries run only in the child process, but dependency parser bugs can still crash the child. | Keep dependency scanning and parser crash tests in CI; consider hardened parser containers. |
+| Frontend accept hints are advisory | Low | Backend rejects unsupported or mismatched content regardless of browser metadata. | Optionally narrow frontend accept hints later without redesign, but do not rely on them. |
+| Gate A remains unmet after closure evidence | High | Phase 5 closure evidence is prepared locally, but Gate A still requires accepted closure, CI enforcement, hard parser resource-control resolution or explicit sandbox residual acceptance, registry/formal clinical review, and browser-rendered QA disposition. | Obtain Phase 5 closure acceptance, checkpoint the phase, and plan CI/resource-control follow-up before any gate claim. |
