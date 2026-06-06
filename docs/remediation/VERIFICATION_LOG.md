@@ -453,3 +453,77 @@ Dedicated closure test run:
 | Command | Exit Code | Summary |
 |---|---:|---|
 | `node --test frontend\tests\browser-security.test.mjs` | 0 | 11 Phase 4 browser-security tests passed; Node emitted experimental TypeScript type-stripping/module warnings only. |
+
+## Phase 5 Verification - 2026-06-06
+
+Phase 5 used synthetic upload fixtures only. No real patient documents, licensed PDFs, OCR source PDFs, external LLMs, EBP services, Mermaid rendering, clinical photo analysis, or authoritative registry activation were used.
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase5_upload_security_test -v` | 0 | 10016 ms | 22 Phase 5 upload-security tests passed. Covers repeated timeouts, parser result limit, copied workspace input, expanded DOCX/PDF/text adversarial cases, route error containment, photo unsupported, network/process deny, and bypass scanning. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.populate_sdki_url_policy_test -v` | 0 | 1 ms | 3 URL-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 93 ms | 56 Phase 3 governance tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase2_clinical_validation_test -v` | 0 | 161 ms | 55 Phase 2 clinical-safety tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 1184 ms | 27 Phase 1 outbound-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_bypass_test -v` | 0 | 523 ms | 1 outbound bypass scanner test passed after reviewed allowlist updates for provider line drift and the upload parser runtime guard. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 6137 ms | 174 backend tests passed. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | 774 ms | Backend source compiled. |
+| `bandit -r backend -ll -x backend/env,backend/venv` | 0 | 1623 ms | Run with `backend\venv\Scripts` prepended to PATH; Bandit reported Medium 0 and High 0. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 168 ms | 4 frontend capability fallback tests passed. |
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 1847 ms | 11 browser-security static/unit tests passed; Node emitted existing experimental/module-type warnings. |
+| `npm --prefix frontend run lint` | 0 | 5275 ms | ESLint reported no errors or warnings. |
+| `npm --prefix frontend run build` | 0 | Not captured by progress wrapper | Build exit code captured through temp status-file wrapper: 0. `.next/BUILD_ID` refreshed on 2026-06-06 18:43:23 local time. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 1379 ms | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | 77 ms | No whitespace errors. Git emitted CRLF normalization warnings for edited tracked files. |
+
+## Phase 5 Boundary Evidence
+
+| Boundary | Evidence | Residual Limit |
+|---|---|---|
+| Content sniffing | `backend/upload_security.py` accepts only PDF magic bytes, DOCX OOXML required members, or clean UTF-8 text. Extension and browser MIME are not authoritative. | Frontend accept hints remain advisory and may still list legacy extensions. |
+| DOCX validation | Container validation rejects unsafe member paths, drive-letter paths, symlink-like entries, missing `word/document.xml`, excessive entries, oversized expansion, high compression ratio, nested archives, macro/active content, executable extensions, and external relationships. | Validation is deterministic containment, not a guarantee that DOCX parser dependencies are bug-free. |
+| Parser isolation | Parser libraries run in a spawned child process with temporary workspace cleanup. Timeout terminates the child and escalates to kill where available. | Portable hard CPU/RAM quotas are not implemented; OS/container/job-object caps remain required before pilot claims. |
+| Network and command deny | Parser child runtime guard blocks socket connects, `urllib.request.urlopen`, and subprocess command execution before parsing. | This is a runtime guard inside the child, not a network namespace or kernel sandbox. |
+| API integration | `/analisis` and `/analisis_multi` return structured upload errors before provider construction and keep clinical photo analysis unavailable by default. | External LLM and registry grounding remain default-off/incomplete; this phase does not change clinical validation or registry approval. |
+
+## Phase 5 Closure Review Evidence - 2026-06-06
+
+Closure review strengthened the parser boundary evidence without enabling external LLM, EBP, Mermaid rendering, clinical photo analysis, or authoritative registry grounding. All hostile-file fixtures are synthetic.
+
+Additional closure evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Parser lifecycle | PASS | Parent creates a unique `cdss_upload_parse_` workspace, copies bounded bytes to `upload.bin`, starts a spawned child, waits with timeout, terminates and then kills if needed, joins, closes/joins the result queue, and deletes the workspace. |
+| Repeated timeout cleanup | PASS | Test performs 20 sequential parser hangs and verifies every result is `parser_timeout`, child PIDs exit, no workspace remains, and parent `multiprocessing.active_children()` is empty. |
+| Crash/error containment | PASS | Parser crashes and raw parser exceptions return `parser_crashed` with browser-safe messages; temporary paths and synthetic patient-like canaries are not exposed. |
+| DOCX adversarial handling | PASS | Coverage includes traversal, backslash/UNC/drive paths, Unicode traversal variants, duplicate entries, encrypted ZIP members, size/entry/compression limits, nested archives, macros, external relationships, missing OOXML members, and generic ZIP renamed as DOCX. |
+| PDF adversarial handling | PASS | Valid minimal PDF is accepted; fake, malformed, encrypted, page-overflow, embedded-file marker, and JavaScript/action-marker PDFs are rejected safely. Active markers are explicitly rejected as policy-disallowed content. |
+| Plain-text policy | PASS | Valid bounded UTF-8 is accepted; empty text, binary garbage, NUL bytes, excessive controls, executable signatures, oversized decoded text, and invalid UTF-8 are rejected without silent truncation. |
+| Network and command deny | PASS | Parser child guard blocks socket connect/create/getaddrinfo, urllib, requests, httpx, subprocess run/Popen, `os.system`, and `shell=True` attempts. |
+| TOCTOU/workspace behavior | PASS | Child parses a parent-created copied `upload.bin` in a unique workspace and the probe verifies it is not a symlink. DOCX members are validated in memory and are not extracted. |
+| API route containment | PASS | `/analisis` and `/analisis_multi` return structured `upload_status` and `accepted_upload=false` for fake PDF, oversized upload, parser timeout, parser crash, and raw parser exceptions before provider construction. Photo upload remains unavailable. |
+| Bypass scanner | PASS | Owned-source scanner flags dangerous timeout/thread, extension-dispatch, archive-extraction, shell/subprocess, eval/exec/compile patterns with a narrow allowlist for the fixed parser process boundary. |
+
+Closure regression commands:
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase5_upload_security_test -v` | 0 | 10016 ms | 22 Phase 5 upload-security tests passed after scoped `B604` annotation for the intentional shell probe. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.populate_sdki_url_policy_test -v` | 0 | 1 ms | 3 URL-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 93 ms | 56 Phase 3 governance tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase2_clinical_validation_test -v` | 0 | 161 ms | 55 Phase 2 clinical-safety tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 1184 ms | 27 Phase 1 outbound-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_bypass_test -v` | 0 | 523 ms | 1 outbound bypass scanner test passed. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p *_test.py -v` | 0 | 12937 ms | 181 backend tests passed. |
+| `python -m compileall backend -q -x .*(venv|__pycache__).*` | 0 | 1000 ms | Backend source compiled. |
+| `bandit -r backend -ll -x backend/env,backend/venv` | 0 | 1900 ms | Bandit reported Medium 0 and High 0; the only new suppression is scoped to the intentional `shell=True` rejection probe. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 96 ms | 4 capability fallback tests passed. |
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 1677 ms | 11 browser-security tests passed; Node emitted existing experimental/module warnings. |
+| `npm --prefix frontend run lint` | 0 | 5300 ms | ESLint reported 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 0 | 8900 ms | Build status-file wrapper returned exit code 0; `.next/BUILD_ID` refreshed at 2026-06-06 19:14 local time. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 1600 ms | `found 0 vulnerabilities`. |
+
+Residual limits: Phase 5 does not provide OS-level sandboxing, container isolation, hard CPU/RAM quotas, or portable process-tree containment. These remain required before pilot, hospital, compliance, or production claims. Gate A remains unmet.
+
+Gate A remains unmet pending Phase 5 closure acceptance, hard parser resource-control residuals, formal registry/clinical review requirements, browser-rendered QA disposition, and CI enforcement of the full safety suite.

@@ -13,9 +13,8 @@ Fitur:
 Jalankan:  uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 """
 from __future__ import annotations
-import os, io, re, json, glob, threading, secrets, sys, time, hashlib, datetime
+import os, re, json, glob, threading, secrets, sys, time, hashlib, datetime
 from typing import Optional, List, Tuple
-from concurrent.futures import ThreadPoolExecutor
 from collections import deque
 
 from fastapi import FastAPI, Form, File, UploadFile, Header
@@ -35,6 +34,7 @@ import harvester
 from clinical_registry import ClinicalRegistry
 from clinical_validator import STANDARD_MAP, safe_abstention, validate_clinical_output, render_clinical_response
 from outbound_policy import DEFAULT_OUTBOUND_POLICY, OutboundPolicyError, wrap_llm
+from upload_security import UploadParseResult, config_from_app, parse_document_bytes, rejection
 from agents import bersihkan, bersihkan_stream, GUARDRAILS
 
 # ============================ KONFIGURASI ====================================
@@ -45,6 +45,8 @@ DATA_DIR = os.path.join(BASE, "data_terstruktur")
 MAX_UPLOAD = 10 * 1024 * 1024     # 10 MB — divalidasi di BACKEND (jangan percaya frontend)
 _PARSE_TIMEOUT = 20               # detik — sandbox parsing PDF/DOCX agar file jebakan tak menggantung server
 _LEDGER = os.path.join(BASE, "audit_ledger.jsonl")   # Tamper-evident local hash-chain audit ledger, not WORM.
+UPLOAD_PARSER_CONFIG = config_from_app(CONFIG)
+MAX_UPLOAD = UPLOAD_PARSER_CONFIG.max_upload_bytes
 _ledger_lock = threading.Lock()
 _GENESIS = "0" * 64
 _last_hash = None
@@ -695,43 +697,52 @@ def build_messages(framework: str, session_id: str, pertanyaan: str, tier: str =
 
 
 # ============================ EKSTRAKSI FILE =================================
-def _parse_doc(raw: bytes, name: str) -> str:
-    if name.endswith(".pdf"):
-        try:
-            import pdfplumber
-            with pdfplumber.open(io.BytesIO(raw)) as pdf:
-                return "\n".join((p.extract_text() or "") for p in pdf.pages[:30]).strip()
-        except Exception:
-            from PyPDF2 import PdfReader
-            rd = PdfReader(io.BytesIO(raw))
-            return "\n".join((pg.extract_text() or "") for pg in rd.pages[:30]).strip()
-    if name.endswith(".docx"):
-        import docx
-        d = docx.Document(io.BytesIO(raw))
-        return "\n".join(p.text for p in d.paragraphs).strip()
-    if name.endswith((".txt", ".md", ".csv", ".json")):
-        return raw.decode("utf-8", "ignore").strip()
-    return ""
 
+def _upload_status_code(result: UploadParseResult) -> int:
+    if result.status == "file_too_large":
+        return 413
+    if result.status in {"parser_timeout", "parser_crashed", "extracted_text_too_large"}:
+        return 422
+    return 400
+
+def _upload_error_response(result: UploadParseResult, session_id: str):
+    audit_log(session_id, "Upload", f"Fail({result.status})")
+    return JSONResponse(
+        {
+            "status": "error",
+            "pesan": result.message,
+            "upload_status": result.status,
+            "accepted_upload": False,
+        },
+        status_code=_upload_status_code(result),
+    )
+
+def extract_upload_document(up: Optional[UploadFile]) -> UploadParseResult | None:
+    if up is None:
+        return None
+    try:
+        raw = up.file.read(MAX_UPLOAD + 1)
+    except Exception:
+        return rejection("parser_crashed")
+    try:
+        result = parse_document_bytes(raw, up.filename or "", up.content_type or "", UPLOAD_PARSER_CONFIG)
+    except Exception:
+        return rejection("parser_crashed")
+    if not result.ok:
+        return result
+    return UploadParseResult(
+        status=result.status,
+        message=result.message,
+        text=phi.sanitize_phi(result.text or ""),
+        detected_type=result.detected_type,
+        parser_invoked=result.parser_invoked,
+        temp_workspace_removed=result.temp_workspace_removed,
+        child_pid=result.child_pid,
+    )
 
 def extract_text(up: Optional[UploadFile]) -> str:
-    if up is None:
-        return ""
-    name = (up.filename or "").lower()
-    try:
-        raw = up.file.read(MAX_UPLOAD + 1)   # baca TERBATAS -> cegah DoS memori (file raksasa)
-    except Exception:
-        return ""
-    if not raw or len(raw) > MAX_UPLOAD:
-        return ""
-    # SANDBOX: parsing di thread terpisah dengan TIMEOUT ketat (cegah PDF jebakan/zip-bomb/loop tak henti).
-    try:
-        with ThreadPoolExecutor(max_workers=1) as ex:
-            text = ex.submit(_parse_doc, raw, name).result(timeout=_PARSE_TIMEOUT)
-    except Exception as e:                    # timeout/parser error -> JANGAN bocorkan detail teknis ke user/LLM
-        _log_err(e)
-        return ""
-    return phi.sanitize_phi(text or "")       # REDAKSI PII sebelum teks dipakai/dikirim ke LLM
+    result = extract_upload_document(up)
+    return result.text if result and result.ok else ""
 
 
 # ============================ APP ============================================
@@ -1020,18 +1031,25 @@ def analisis_multi(provider: str = Form(...), api_key: str = Form(""), model: st
         return _session_invalid()
     if _too_big(file_dokumen) or _too_big(file_foto):
         audit_log(session_id, "Upload", "Fail(TooLarge)")
-        return JSONResponse({"status": "error", "pesan": "Ukuran file melebihi batas 10MB."}, status_code=413)
+        return JSONResponse({
+            "status": "error",
+            "pesan": "Ukuran file melebihi batas upload.",
+            "upload_status": "file_too_large",
+            "accepted_upload": False,
+        }, status_code=413)
     if (consent or "").strip().lower() in ("true", "1"):   # CONSENT LOGGING (UU PDP Pasal 20/22)
         audit_log(session_id, "Consent", "Granted")
     if file_foto is not None and not capability_enabled("clinical_photo_analysis", CONFIG):
         audit_log(session_id, "PhotoAnalysis", "Unavailable")
         return _unavailable("clinical_photo_analysis")
+    cmd = (gejala or "").strip()
+    doc_result = extract_upload_document(file_dokumen)
+    if doc_result and not doc_result.ok:
+        return _upload_error_response(doc_result, session_id)
+    doc = doc_result.text if doc_result else ""
     blocked = _blocked_llm_capability(agent)
     if blocked:
         return _unavailable(blocked)
-
-    cmd = (gejala or "").strip()
-    doc = extract_text(file_dokumen)
     doc_block = ("\n\n<dokumen_pasien>\n" + doc + "\n</dokumen_pasien>") if doc else ""   # isolasi anti-injeksi (T4)
     if file_foto is not None:
         return _unavailable("clinical_photo_analysis")
@@ -1089,12 +1107,21 @@ def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Fo
         return _session_invalid()
     if _too_big(file_dokumen) or _too_big(file_foto):
         audit_log(session_id, "Upload", "Fail(TooLarge)")
-        return JSONResponse({"status": "error", "pesan": "Ukuran file melebihi batas 10MB."}, status_code=413)
+        return JSONResponse({
+            "status": "error",
+            "pesan": "Ukuran file melebihi batas upload.",
+            "upload_status": "file_too_large",
+            "accepted_upload": False,
+        }, status_code=413)
     if (consent or "").strip().lower() in ("true", "1"):   # CONSENT LOGGING (UU PDP Pasal 20/22)
         audit_log(session_id, "Consent", "Granted")
     if file_foto is not None and not capability_enabled("clinical_photo_analysis", CONFIG):
         audit_log(session_id, "PhotoAnalysis", "Unavailable")
         return _unavailable("clinical_photo_analysis")
+    doc_result = extract_upload_document(file_dokumen)
+    if doc_result and not doc_result.ok:
+        return _upload_error_response(doc_result, session_id)
+    doc = doc_result.text if doc_result else ""
     blocked = _blocked_llm_capability("analisis")
     if blocked:
         return _unavailable(blocked)
@@ -1105,7 +1132,6 @@ def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Fo
     if not framework_available(framework):
         hasil, meta = _registry_unavailable_answer(framework)
         return _clinical_payload({"status": "sukses", "hasil": hasil}, meta)
-    doc = extract_text(file_dokumen)
     data = (gejala or "").strip()
     if doc:
         data += ("\n\n<dokumen_pasien>\n" + doc + "\n</dokumen_pasien>")   # isolasi anti-injeksi (T4)
