@@ -49,7 +49,11 @@ export default function DirectorDashboard() {
   const [err, setErr] = useState("");
   const [m, setM] = useState<Metrics | null>(null);
 
-  useEffect(() => { try { const t = sessionStorage.getItem(SS); if (t) setToken(t); } catch {} }, []);
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => { try { const t = sessionStorage.getItem(SS); if (active && t) setToken(t); } catch {} });
+    return () => { active = false; };
+  }, []);
 
   const login = async (e: React.FormEvent) => {
     e.preventDefault(); setErr("");
@@ -71,7 +75,12 @@ export default function DirectorDashboard() {
     } catch {}
   }, [token]);
 
-  useEffect(() => { if (!token) return; poll(); const i = setInterval(poll, 3000); return () => clearInterval(i); }, [token, poll]);
+  useEffect(() => {
+    if (!token) return;
+    const first = setTimeout(() => { void poll(); }, 0);
+    const i = setInterval(poll, 3000);
+    return () => { clearTimeout(first); clearInterval(i); };
+  }, [token, poll]);
 
   if (!token) {
     return (

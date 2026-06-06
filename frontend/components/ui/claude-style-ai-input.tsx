@@ -2,7 +2,7 @@
 
 import type React from "react";
 import { useState, useRef, useEffect, useCallback, type RefObject } from "react";
-import { Plus, ArrowUp, X, FileText, ImageIcon, ChevronDown, Check, Loader2, Camera, Aperture, Globe } from "lucide-react";
+import { Plus, ArrowUp, X, FileText, ChevronDown, Check, Camera, Aperture, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -219,6 +219,7 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
               ))}
               {files.map((f) => (
                 <div key={f.id} className="group relative size-[92px] flex-shrink-0 overflow-hidden rounded-xl bg-[#3A3937]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   {f.preview ? <img src={f.preview} alt={f.file.name} className="h-full w-full object-cover" /> : (
                     <div className="flex h-full flex-col justify-between p-2"><FileText className="h-4 w-4 text-zinc-400" /><span className="truncate text-[9px] text-zinc-300">{f.file.name}</span></div>
                   )}

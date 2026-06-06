@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Menu, X, Plus, Settings, NotebookPen, Workflow, BookOpen,
+  Menu, Plus, Settings, NotebookPen, Workflow, BookOpen,
   Trash2, KeyRound, User, AlertTriangle, Upload, ImageIcon, Camera,
   ExternalLink, Pin, Pencil, Folder, MoreVertical, Search, PanelLeftClose, PanelLeft, LogOut, ChevronsUpDown,
 } from "lucide-react";
@@ -12,7 +12,6 @@ import { Banner } from "@/components/ui/banner";
 import { Messages } from "@/components/messages";
 import { ChatboxMaster } from "@/components/chatbox-master";
 import { CameraCapture } from "@/components/ui/claude-style-ai-input";
-import { API_BASE } from "@/lib/api";
 import { type Tab } from "@/lib/types";
 
 const TABS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -22,9 +21,13 @@ const TAB_ICON: Record<Tab, React.ComponentType<{ className?: string }>> = { Ana
 const ease = [0.16, 1, 0.3, 1] as const;
 
 function Typewriter({ text }: { text: string }) {
+  return <TypewriterText key={text} text={text} />;
+}
+
+function TypewriterText({ text }: { text: string }) {
   const [n, setN] = useState(0);
   const done = n >= text.length;
-  useEffect(() => { setN(0); const t = setInterval(() => setN((p) => { if (p >= text.length) { clearInterval(t); return p; } return p + 1; }), 35); return () => clearInterval(t); }, [text]);
+  useEffect(() => { const t = setInterval(() => setN((p) => { if (p >= text.length) { clearInterval(t); return p; } return p + 1; }), 35); return () => clearInterval(t); }, [text]);
   return <span>{text.slice(0, n)}{!done && <span className="ml-0.5 inline-block h-[1em] w-[2px] -translate-y-[2px] animate-pulse bg-zinc-400 align-middle" />}</span>;
 }
 
@@ -187,19 +190,27 @@ export function Dashboard() {
                     <p className="mt-3 text-[0.95rem] text-zinc-500">Ada yang bisa saya bantu?</p>
                   </div>
                   <div className="grid w-full gap-3 sm:grid-cols-3">
-                    {[
-                      { icon: Upload, title: "Unggah Dokumen", sub: analysisReason || "PDF, Word, atau teks rekam medis", onClick: openDocumentUpload, disabled: !!analysisReason },
-                      { icon: ImageIcon, title: "Pilih dari Galeri", sub: photoReason, onClick: openGalleryUpload, disabled: !capabilityAvailable("clinical_photo_analysis") },
-                      { icon: Camera, title: "Buka Kamera", sub: photoReason, onClick: () => capabilityAvailable("clinical_photo_analysis") && setCameraOpen(true), disabled: !capabilityAvailable("clinical_photo_analysis") },
-                    ].map(({ icon: Icon, title, sub, onClick, disabled }) => (
-                      <button key={title} disabled={disabled} title={disabled ? sub : undefined} onClick={onClick} className={`glass flex flex-col items-start gap-3 rounded-2xl p-5 text-left ${disabled ? "cursor-not-allowed opacity-55" : ""}`}>
-                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><Icon className="h-5 w-5 text-zinc-200" /></span>
-                        <div>
-                          <div className="text-[0.92rem] font-semibold text-zinc-100">{title}</div>
-                          <div className="mt-0.5 text-[0.76rem] text-zinc-400">{sub}</div>
-                        </div>
-                      </button>
-                    ))}
+                    <button disabled={!!analysisReason} title={analysisReason || undefined} onClick={openDocumentUpload} className={`glass flex flex-col items-start gap-3 rounded-2xl p-5 text-left ${analysisReason ? "cursor-not-allowed opacity-55" : ""}`}>
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><Upload className="h-5 w-5 text-zinc-200" /></span>
+                      <div>
+                        <div className="text-[0.92rem] font-semibold text-zinc-100">Unggah Dokumen</div>
+                        <div className="mt-0.5 text-[0.76rem] text-zinc-400">{analysisReason || "PDF, Word, atau teks rekam medis"}</div>
+                      </div>
+                    </button>
+                    <button disabled={!capabilityAvailable("clinical_photo_analysis")} title={!capabilityAvailable("clinical_photo_analysis") ? photoReason : undefined} onClick={openGalleryUpload} className={`glass flex flex-col items-start gap-3 rounded-2xl p-5 text-left ${!capabilityAvailable("clinical_photo_analysis") ? "cursor-not-allowed opacity-55" : ""}`}>
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><ImageIcon className="h-5 w-5 text-zinc-200" /></span>
+                      <div>
+                        <div className="text-[0.92rem] font-semibold text-zinc-100">Pilih dari Galeri</div>
+                        <div className="mt-0.5 text-[0.76rem] text-zinc-400">{photoReason}</div>
+                      </div>
+                    </button>
+                    <button disabled={!capabilityAvailable("clinical_photo_analysis")} title={!capabilityAvailable("clinical_photo_analysis") ? photoReason : undefined} onClick={() => { if (capabilityAvailable("clinical_photo_analysis")) setCameraOpen(true); }} className={`glass flex flex-col items-start gap-3 rounded-2xl p-5 text-left ${!capabilityAvailable("clinical_photo_analysis") ? "cursor-not-allowed opacity-55" : ""}`}>
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><Camera className="h-5 w-5 text-zinc-200" /></span>
+                      <div>
+                        <div className="text-[0.92rem] font-semibold text-zinc-100">Buka Kamera</div>
+                        <div className="mt-0.5 text-[0.76rem] text-zinc-400">{photoReason}</div>
+                      </div>
+                    </button>
                   </div>
                 </div>
               ) : <Messages />)}

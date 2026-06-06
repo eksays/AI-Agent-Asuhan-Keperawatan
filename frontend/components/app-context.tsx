@@ -130,7 +130,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const consentRef = useRef(false);
 
   // Kredensial HANYA di sessionStorage (per-tab, hilang saat tab ditutup) + bersihkan jejak lama di localStorage.
-  useEffect(() => { try { localStorage.removeItem(LS); const r = sessionStorage.getItem(LS); if (r) { const c = JSON.parse(r) as Credentials; if (c?.apiKey) { setCreds(c); setPhase("dashboard"); } } if (sessionStorage.getItem(CONSENT_KEY) === "1") { setConsentState(true); consentRef.current = true; } } catch {} }, []);
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      try {
+        localStorage.removeItem(LS);
+        const r = sessionStorage.getItem(LS);
+        if (r) {
+          const c = JSON.parse(r) as Credentials;
+          if (c?.apiKey) { setCreds(c); setPhase("dashboard"); }
+        }
+        if (sessionStorage.getItem(CONSENT_KEY) === "1") { setConsentState(true); consentRef.current = true; }
+      } catch {}
+    });
+    return () => { active = false; };
+  }, []);
   useEffect(() => { let active = true; api.getCapabilities().then((d) => { if (active) setCapabilities(d); }); return () => { active = false; }; }, []);
   useEffect(() => { if (phase === "dashboard" && creds?.apiKey) api.getStatus(creds.apiKey).then((d) => setStatus(d.detail || {})).catch(() => {}); }, [phase, creds]);
 

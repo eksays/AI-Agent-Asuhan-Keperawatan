@@ -132,8 +132,8 @@ function useTypewriter(text: string, animate: boolean): string {
     const t = setInterval(() => setN((p) => (p >= tokens.length ? p : p + 2)), 24);
     return () => clearInterval(t);
   }, [tokens, n, animate]);
-  useEffect(() => { setN((p) => Math.min(p, tokens.length)); }, [tokens.length]);
-  return animate ? tokens.slice(0, n).join("") : text;
+  const visibleN = Math.min(n, tokens.length);
+  return animate ? tokens.slice(0, visibleN).join("") : text;
 }
 
 /* Jawaban AI: font serif + typing effect SEKALI. Setelah selesai (revealed) tampil utuh tanpa mengetik ulang. */
@@ -156,7 +156,7 @@ function Bot({ m, onFeedback, onCorrect, onRegen, onReveal, onPathway, onEbp, pa
   const [copied, setCopied] = useState(false);
   // Tombol aksi (PDF/Word/Pathway/EBP) HANYA untuk Askep hasil generate — bukan obrolan biasa, sapaan, atau daftar fitur.
   const showActions = m.done && m.kind === "askep";
-  async function ex(k: "pdf" | "word") { const html = ref.current?.innerHTML; if (!html) return; setBusy(k); try { k === "pdf" ? await exportPDF(deriveTitle(m.content), html) : exportWord(deriveTitle(m.content), html); } finally { setBusy(""); } }
+  async function ex(k: "pdf" | "word") { const html = ref.current?.innerHTML; if (!html) return; setBusy(k); try { if (k === "pdf") await exportPDF(deriveTitle(m.content), html); else exportWord(deriveTitle(m.content), html); } finally { setBusy(""); } }
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full">
