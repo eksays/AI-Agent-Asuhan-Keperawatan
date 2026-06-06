@@ -2,22 +2,17 @@
 import { useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type RefObject } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
 import { motion } from "framer-motion";
 import { Loader2, CheckCircle2, ThumbsUp, ThumbsDown, FileText, FileDown, ExternalLink, Send, Copy, RotateCcw, ChevronDown, Clock } from "lucide-react";
 import { useApp, type Msg } from "@/components/app-context";
 import { Mermaid } from "@/components/ui/mermaid";
 import { exportPDF, exportWord } from "@/lib/export";
+import { isExternalHref, toSafeHref } from "@/lib/safe-url";
 
-/* ====== SANITASI DOM DETERMINISTIK (allowlist) — menutup XSS (K1) ======
-   Dijalankan SETELAH rehype-raw: HTML mentah dari output AI di-parse lalu DIBERSIHKAN.
-   - Hanya tag dalam allowlist yang dipertahankan (script/iframe/img/object/style dll. DIBUANG total).
-   - Default-deny atribut: semua atribut dihapus kecuali yang diizinkan per-tag -> membunuh on* (onerror/onclick),
-     style, class, src secara deterministik. Tautan javascript:/data:/vbscript: ditolak. */
+/* Deterministic Markdown allowlist. Raw HTML parsing stays disabled; this pass keeps allowed Markdown nodes and attributes narrow if renderer behavior changes. */
 type HastNode = { type?: string; tagName?: string; properties?: Record<string, unknown>; children?: HastNode[]; [k: string]: unknown };
 const ALLOWED_TAGS = new Set(["p", "br", "hr", "b", "strong", "i", "em", "u", "s", "del", "ins", "mark", "sub", "sup", "small", "span", "blockquote", "code", "pre", "kbd", "a", "ul", "ol", "li", "table", "thead", "tbody", "tfoot", "tr", "th", "td", "h1", "h2", "h3", "h4", "h5", "h6"]);
 const ALLOWED_ATTR: Record<string, Set<string>> = { a: new Set(["href", "title"]) };
-const SAFE_HREF = /^(?:https?:|mailto:|tel:|#|\/)/i;
 function rehypeSanitizeStrict() {
   const clean = (node: HastNode): void => {
     if (!Array.isArray(node.children)) return;
@@ -29,7 +24,11 @@ function rehypeSanitizeStrict() {
         const allow = ALLOWED_ATTR[tag] || EMPTY_ATTR;
         for (const key of Object.keys(props)) {
           if (!allow.has(key.toLowerCase())) { delete props[key]; continue; }   // default-deny (on*, style, class, src, ...)
-          if (key.toLowerCase() === "href" && !SAFE_HREF.test(String(props[key] ?? "").trim())) delete props[key];
+          if (key.toLowerCase() === "href") {
+            const safeHref = toSafeHref(props[key]);
+            if (safeHref) props[key] = safeHref;
+            else delete props[key];
+          }
         }
         child.properties = props;
         clean(child);
@@ -89,13 +88,18 @@ export function Messages() {
 
 const JOURNAL = ["pubmed", "ncbi.nlm", "doi.org", "europepmc", "ebi.ac.uk", "semanticscholar", "researchgate", "biomedcentral", "springer", "nature.com", "sciencedirect"];
 function MdLink({ href = "", children }: ComponentPropsWithoutRef<"a">) {
-  if (JOURNAL.some((h) => href.toLowerCase().includes(h)))
-    return <a href={href} target="_blank" rel="noreferrer" className="mx-0.5 inline-flex items-center gap-1.5 rounded-full border border-zinc-600/50 bg-[#3A3937] px-2.5 py-0.5 align-middle text-[0.78rem] font-medium text-zinc-100 no-underline hover:bg-[#45443F]"><ExternalLink className="h-3 w-3 text-zinc-400" />{children}</a>;
-  return <a href={href} target="_blank" rel="noreferrer">{children}</a>;
+  const safeHref = toSafeHref(href);
+  if (!safeHref) return <span>{children}</span>;
+  const external = isExternalHref(safeHref);
+  const rel = external ? "noopener noreferrer" : undefined;
+  const target = external ? "_blank" : undefined;
+  if (external && JOURNAL.some((h) => safeHref.toLowerCase().includes(h)))
+    return <a href={safeHref} target={target} rel={rel} className="mx-0.5 inline-flex items-center gap-1.5 rounded-full border border-zinc-600/50 bg-[#3A3937] px-2.5 py-0.5 align-middle text-[0.78rem] font-medium text-zinc-100 no-underline hover:bg-[#45443F]"><ExternalLink className="h-3 w-3 text-zinc-400" />{children}</a>;
+  return <a href={safeHref} target={target} rel={rel}>{children}</a>;
 }
 const deriveTitle = (c: string) => { const h = c.match(/^#{1,3}\s+(.+)$/m); return h ? h[1].replace(/[*_`]/g, "").trim().slice(0, 60) : "Asuhan Keperawatan"; };
 
-/* Agentic "Thought Process" dropdown — log status proses (font mono, English, ikon clock/check). */
+/* Agentic "Thought Process" dropdown - log status proses (font mono, English, ikon clock/check). */
 function ThoughtProcess({ status }: { status: string[] }) {
   const [open, setOpen] = useState(true);
   const last = status[status.length - 1];
@@ -103,7 +107,7 @@ function ThoughtProcess({ status }: { status: string[] }) {
     <div className="mb-3 max-w-md rounded-xl border border-zinc-700/50 bg-white/[0.02] font-mono">
       <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-400">
         <Clock className="h-3.5 w-3.5 flex-shrink-0 animate-pulse text-zinc-500" />
-        <span className="flex-1 truncate">{last || "Working…"}</span>
+        <span className="flex-1 truncate">{last || "Working..."}</span>
         <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 text-zinc-500 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
@@ -144,7 +148,7 @@ function BotContent({ content, done, revealed, onReveal, forwardRef }: { content
   useEffect(() => { if (!revealed && done && caughtUp && clean.length > 0) onReveal(); }, [revealed, done, caughtUp, clean.length, onReveal]);
   return (
     <div ref={forwardRef} className="prose prose-invert max-w-4xl bg-transparent font-serif text-[17px] leading-7 text-zinc-100 prose-headings:font-serif prose-headings:mb-1.5 prose-headings:mt-3 prose-p:my-1 prose-p:leading-7 prose-ol:my-1 prose-ul:my-1 prose-ol:list-outside">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitizeStrict]} components={{ a: MdLink }}>{revealed ? clean : typed}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitizeStrict]} components={{ a: MdLink, img: () => null }}>{revealed ? clean : typed}</ReactMarkdown>
     </div>
   );
 }
@@ -154,7 +158,7 @@ function Bot({ m, onFeedback, onCorrect, onRegen, onReveal, onPathway, onEbp, pa
   const [cor, setCor] = useState("");
   const [busy, setBusy] = useState<"" | "pdf" | "word">("");
   const [copied, setCopied] = useState(false);
-  // Tombol aksi (PDF/Word/Pathway/EBP) HANYA untuk Askep hasil generate — bukan obrolan biasa, sapaan, atau daftar fitur.
+  // Tombol aksi (PDF/Word/Pathway/EBP) HANYA untuk Askep hasil generate - bukan obrolan biasa, sapaan, atau daftar fitur.
   const showActions = m.done && m.kind === "askep";
   async function ex(k: "pdf" | "word") { const html = ref.current?.innerHTML; if (!html) return; setBusy(k); try { if (k === "pdf") await exportPDF(deriveTitle(m.content), html); else exportWord(deriveTitle(m.content), html); } finally { setBusy(""); } }
 
@@ -168,7 +172,7 @@ function Bot({ m, onFeedback, onCorrect, onRegen, onReveal, onPathway, onEbp, pa
         )}
         {m.done && m.mermaid && !pathwayEnabled && <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">{pathwayReason}</div>}
 
-        {/* AI toolbar ikon — baris tersendiri, RATA KIRI, tepat di bawah teks */}
+        {/* AI toolbar ikon - baris tersendiri, RATA KIRI, tepat di bawah teks */}
         {m.done && (
           <div className="mt-2 flex w-full items-center justify-start gap-2">
             <button onClick={() => { navigator.clipboard?.writeText(m.content); setCopied(true); setTimeout(() => setCopied(false), 2000); }} aria-label="Salin" className="rounded-md border-none bg-transparent p-1.5 text-zinc-500 transition-colors hover:bg-[#3F3E3A] hover:text-zinc-200">{copied ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}</button>
@@ -178,7 +182,7 @@ function Bot({ m, onFeedback, onCorrect, onRegen, onReveal, onPathway, onEbp, pa
           </div>
         )}
 
-        {/* Tombol aksi besar — HANYA untuk Askep hasil generate. Pathway -> tab Pathway, EBP -> tab Referensi. */}
+        {/* Tombol aksi besar - HANYA untuk Askep hasil generate. Pathway -> tab Pathway, EBP -> tab Referensi. */}
         {showActions && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button onClick={() => ex("pdf")} disabled={!!busy} className="glass inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[0.76rem] font-medium text-zinc-200 disabled:opacity-50">{busy === "pdf" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />} PDF</button>

@@ -36,6 +36,7 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Disable missing datasets instead of simulating them.
 
 5. **Phase 4 - Mermaid, Markdown, and Browser Rendering Hardening**
+   - Status: applied on 2026-06-06 for tested browser rendering sinks, strict Mermaid settings, SVG sanitization, Markdown raw-HTML disabling, safe URL validation, export HTML sanitization, CSP tightening, and sink scanning.
    - Switch Mermaid to strict mode.
    - Sanitize generated SVG before DOM insertion.
    - Tighten markdown link protocols and CSP.
@@ -153,3 +154,25 @@ Closure review evidence added after conditional acceptance:
 Active release storage remains an in-memory test abstraction. A durable governed release store remains required before any controlled pilot claim.
 
 Next phase remains Phase 4 only after Phase 3 closure review. Phase 8 remains required for completing and validating governed clinical registries.
+
+## Phase 4 Closure Notes
+
+Phase 4 verification is frontend/browser-rendering hardening only. It does not enable Mermaid, EBP, external LLM, clinical photo analysis, OCR, embeddings, retrieval, upload parsing, authentication/session/MFA/rate limits, Redis, audit-ledger redesign, registry activation, prompt tuning, or UI redesign.
+
+Implemented scope:
+
+- Mermaid is configured with strict security mode and HTML labels disabled when explicitly capability-enabled in controlled paths.
+- Mermaid SVG output is treated as untrusted and sanitized through a DOMPurify SVG allowlist before insertion.
+- Sanitization failure renders an inert fallback instead of the original SVG.
+- Markdown raw HTML parsing is disabled by removing `rehypeRaw`; Markdown links pass through a narrow safe-URL allowlist; Markdown images are disabled.
+- Exported PDF/Word HTML is re-sanitized at the export boundary and title text is escaped.
+- CSP removes production `unsafe-eval`, adds `frame-src 'none'`, keeps required `object-src`, `base-uri`, `form-action`, and `frame-ancestors` directives, and narrows `img-src`.
+- A Phase 4 bypass scanner documents allowed raw DOM sinks and flags unsafe protocols or sink regressions.
+- Closure review expanded static/unit coverage for SVG namespace handling, nested SVG rejection, `xml:base`/`xlink:href`, encoded and control-character URL schemes, Mermaid callback/HTML-label-like SVG output, export re-sanitization, and source-wide frontend sink scanning.
+- The dev Bandit B310 hotfix is now an ancestor of the Phase 4 branch; local Bandit reports Medium 0 and High 0.
+
+Residuals:
+
+- Production CSP still permits `script-src 'unsafe-inline'` and `style-src 'unsafe-inline'`. Nonce/hash-based CSP architecture remains required before stronger browser-security or release-gate claims.
+- Browser-rendered QA must be recorded honestly as passed or deferred depending on runtime availability.
+- Gate A remains unmet until upload parser isolation and all gate evidence are completed and verified.
