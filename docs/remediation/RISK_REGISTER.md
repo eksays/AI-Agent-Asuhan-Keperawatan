@@ -85,3 +85,21 @@ Checkpoint references: Phase 0B `cef16b14166ebc5ad19b67c1a607bbdd9054956a`; Phas
 | Complete care-plan abstention wording still needs formal review | Medium | Interim policy reduces automation-bias risk by not accepting diagnosis-only output when SLKI/SIKI or NOC/NIC are missing; informal feedback did not constitute formal clinical approval. | Use the recorded feedback to refine wording later, then conduct formal clinical validation before pilot/production claims. |
 | Frontend renders abstention as ordinary markdown | Medium | Existing frontend can display the abstention text, but it does not yet have a dedicated validation-status UI. | Minimal UI status work may be considered later without hiding failures. |
 | Gate A remains unmet | High | Phase 2 adds basic schema/registry validation, but registry quarantine workflow, Mermaid hardening, and isolated upload parsing remain incomplete. | Continue to Phase 3/4/5 as separate closures. |
+
+## Phase 3 Status Update
+
+| ID | Phase 3 Status | Evidence | Residual Risk |
+|---|---|---|---|
+| CLI-VAL-002 | Governance infrastructure added, real data still not approved | `backend/registry_governance.py` adds lifecycle/provenance/quarantine controls, source-path safety, import resource limits, canonical hashing, and batch duplicate/conflict handling; `backend/scripts/registry_import.py` dry-runs local data without activation; `backend/registry_release.py` validates release manifests, complete framework release sets, and rollback. Local ignored SDKI dry-run: 152 entries, 152 quarantined, 2 malformed-code records, 0 release-eligible, 0 authoritative. | Real SDKI/SLKI/SIKI/NANDA/NOC/NIC content still requires formal source licensing, provenance verification, clinical review, approval records, durable release storage, release artifacts, and operational activation controls. |
+| CLI-VAL-001 | Strict abstention preserved | Phase 3 regression tests verify local ignored registry presence does not activate grounding and incomplete 3S registry set returns `registry_incomplete` with no accepted recommendations. | Schema/quarantine checks still do not prove clinical correctness. Formal clinical validation remains required. |
+| OPS-CI-001 | More tests available, not yet CI-enforced | `backend/tests/phase3_registry_governance_test.py` covers dry-run import, quarantine, release validation, rollback, network-deny, and Phase 2 abstention regression. | CI still needs expansion to enforce Phase 1/2/3 tests before release claims. |
+
+## Phase 3 Closure Residuals
+
+| Risk | Severity | Status | Next Action |
+|---|---|---|---|
+| Governance model is not a real registry approval | Critical | Phase 3 creates controls and testable abstractions only. No real registry has license approval, formal clinical review, or active release status. | Phase 8 governed registry completion and formal review. |
+| Active release pointer is in-memory for tests | High | Rollback behavior and complete-family activation are testable, but no durable release-store adapter exists. | Add persistent governed release storage before controlled pilot. |
+| Local SDKI data remains extraction-unverified | High | Dry-run quarantines all local SDKI current/backups and reports extraction/provenance gaps. | Phase 3/8 extraction debugging, provenance verification, content review, and release approval. |
+| Informal nursing feedback remains non-authoritative | Medium | Feedback is documented as disclaimer/design input only. | Formal clinical review workflow and approval records remain required. |
+| Gate A remains unmet | High | Registry governance infrastructure exists, but Mermaid hardening and upload isolation remain incomplete. | Continue to Phase 4 and Phase 5 after Phase 3 closure. |

@@ -33,18 +33,30 @@ Completed Phase 2 controls:
 - `/chat`, `/chat_stream`, `/analisis_multi`, and `/analisis` apply clinical validation before returning accepted clinical analysis output.
 - Invalid clinical output returns abstention with nurse-review requirement instead of accepted recommendations.
 
+Completed Phase 3 controls:
+
+- Registry lifecycle states and provenance schema support are implemented for governance dry runs.
+- Deterministic quarantine rules cover malformed/duplicate/missing metadata, wrong component type, missing provenance, unknown license status, OCR-derived content, LLM-assisted content, extraction-unverified content, code-name conflicts, content-hash mismatch, deprecated entries, and manual quarantine.
+- Dry-run registry import is default and does not mutate source files, activate registries, create approved releases, recurse arbitrary directories, import backups implicitly, or contact external providers.
+- Registry import source paths are constrained to an approved import root, and registry-import parsing has explicit Phase 3 resource limits.
+- Versioned release manifest and rollback abstractions reject quarantined entries, missing approval records, unknown license status, duplicate release entries, incomplete 3S/3N component families, and implicit activation.
+- Local ignored SDKI data and backups dry-run as fully quarantined, zero release-eligible, and zero authoritative.
+- Informal nursing feedback remains non-authoritative and cannot become an approval record.
+
 Remaining missing or failing controls:
 
 - PHI firewall completeness beyond tested canary classes and future integrations.
-- Registry quarantine workflow for real/local datasets, including import, clinical review, versioned release, and rollback.
-- Extraction-quality debugging and review for `extraction_unverified`, `ocr_extracted`, and `llm_assisted` registry content.
+- Formal clinical review workflow for real/local datasets, including reviewer identity, approval records, license review, durable active release storage, and operational rollback evidence.
+- Extraction-quality debugging and review for real `extraction_unverified`, `ocr_extracted`, and `llm_assisted` registry content.
 - Mermaid/SVG hardening.
 - Upload isolation with killable parser process.
 - Dedicated validation-status UI and formal clinical/nursing validation of abstention wording.
 
-Gate A is still not passed until registry quarantine workflow, Mermaid/SVG hardening, and upload isolation controls are implemented and verified, and Phase 1/2 controls are kept enforced in CI.
+Gate A is still not passed until registry governance is connected to formally reviewed approved release artifacts, Mermaid/SVG hardening and upload isolation controls are implemented and verified, and Phase 1/2/3 controls are kept enforced in CI.
 
 Phase 2 closure verification improves deterministic clinical validation, trusted evidence containment, machine-readable abstention status, and fail-fast registry-unavailable handling for tested paths. Informal nursing-perspective feedback received on 2026-06-06 says supporting 3S and 3N documents remain insufficiently concrete because extraction issues remain; this reinforces keeping extracted registries non-authoritative and fail-closed. It does not satisfy registry governance, Mermaid/SVG hardening, isolated upload parsing, formal clinical validation, compliance review, hospital readiness, or production readiness. Browser-rendered QA remains deferred.
+
+Phase 3 closure verification adds governance infrastructure and dry-run evidence. It does not provide formal clinical validation, license approval, active real registry releases, compliance review, hospital readiness, or production readiness.
 
 ## Gate B - Controlled Pilot Candidate
 

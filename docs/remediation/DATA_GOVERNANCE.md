@@ -96,3 +96,36 @@ Still required in Phase 3/8:
 - Versioned registry release artifacts.
 - Rollback and release traceability.
 - Reviewer identity, source licensing checks, and content-hash verification for real datasets.
+
+## Phase 3 Position
+
+Phase 3 adds governance infrastructure, dry-run import, deterministic quarantine rules, release manifest validation, and rollback abstractions. It does not activate real registry data and does not approve local SDKI content.
+
+Implemented controls:
+
+- `backend/registry_governance.py` defines lifecycle states: `draft`, `ocr_extracted`, `llm_assisted`, `extraction_unverified`, `under_clinical_review`, `approved`, `deprecated`, and `quarantined`.
+- All lifecycle states except `approved` are non-authoritative. `approved` means release-eligible only after provenance, license, clinical-review, content-hash, approval-record, and release-manifest checks pass.
+- `backend/scripts/registry_import.py` performs dry-run-only imports by default and emits safe metadata without activating registries or mutating source files.
+- Import source resolution is constrained to an approved import root. Explicit files are imported directly; directory imports require an explicit framework and load only `<FRAMEWORK>.json`, excluding backups by default.
+- Registry import parsing is bounded by maximum file size, entry count, JSON depth, string length, and quarantine-report size. These are Phase 3 registry-import limits only, not upload-parser sandboxing.
+- Quarantine reason codes include malformed code, duplicate code, missing name/framework/provenance, wrong component type, unknown license status, OCR review required, LLM-assisted review required, extraction unverified, code-name conflict, content-hash mismatch, deprecated entry, and manual quarantine.
+- Canonical content hashes are stable across JSON whitespace/key-order changes, change when stable clinical/source identity fields change, and exclude documented volatile workflow fields such as reviewer identity, review date, release id, approval status, and lifecycle state.
+- `backend/registry_release.py` models candidate, approved-for-activation, active, deprecated, and rolled-back release states. Activation requires an explicit approved-for-activation release artifact and rejects quarantined entries, missing approval records, and unknown license status.
+- Framework release validation requires complete component families: SDKI+SLKI+SIKI for 3S and NANDA+NOC+NIC for 3N. Diagnosis-only active releases are rejected for the normal hospital-facing care-plan workflow.
+- Rollback restores the previous active release pointer in synthetic tests.
+
+Local dry-run result for ignored SDKI data:
+
+- Current `SDKI.json`: 152 entries, 152 quarantined, 2 malformed-code records, 0 release-eligible, 0 authoritative.
+- Ignored SDKI backups: 152 entries each, 152 quarantined each, 2 malformed-code records each, 0 release-eligible, 0 authoritative.
+- `SDKI_population_report.json` remains local LLM-assisted metadata only and is not an approval record.
+
+Phase 3 preserves the strict Phase 2 abstention contract. Missing, unapproved, quarantined, extraction-unverified, or not-active SDKI/SLKI/SIKI/NANDA/NOC/NIC registry families keep the complete care-plan workflow in abstention.
+
+Still required after Phase 3:
+
+- Formal clinical review queue with reviewer identities and non-repudiable approval records.
+- License review and source-access documentation for real reference datasets.
+- Approved release artifacts for each registry family before authoritative grounding.
+- Operational storage for active release pointers; Phase 3 uses testable in-memory abstractions only.
+- Durable governed release storage remains required before controlled pilot evaluation; the Phase 3 active-release store is an in-memory test abstraction only.

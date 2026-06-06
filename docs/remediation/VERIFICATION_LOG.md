@@ -297,3 +297,84 @@ Governance interpretation:
 | Debugging dilanjutkan nanti | deferred implementation | preserve fail-closed behavior now |
 
 Strict policy preserved: missing, unapproved, quarantined, or extraction-unverified SDKI/SLKI/SIKI/NANDA/NOC/NIC registries require complete care-plan abstention with `clinical_status=registry_incomplete`, `accepted_recommendations=false`, and `nurse_review_required=true` for incomplete registry families. Diagnosis-only accepted output remains disallowed in the normal hospital-facing workflow, and missing components must not be completed from model memory.
+
+## Phase 3 Dataset Quarantine and Clinical Governance - 2026-06-06
+
+No real registry data was modified, staged, approved, or activated. No external LLM, EBP, OCR, Mermaid, authentication, Redis, MFA, rate-limit, audit-ledger, embedding, vector, upload-parser, or production release service was contacted or enabled.
+
+Read-only guidance practices adopted:
+
+| Source | Practice Adopted |
+|---|---|
+| `https://github.com/openai/skills` | Secure-by-default boundary review; no third-party scripts executed. |
+| `https://github.com/trailofbits/skills` | Bottom-up registry-data-flow mapping and insecure-default review. |
+| `https://github.com/GSTT-CSC/QMS-Template` | Hazard/residual-risk tracking, change evidence, release traceability, and rollback framing. |
+| `https://github.com/johner-institut/ai-guideline` | Data-management, exclusion/quarantine, provenance, and verification framing as non-authoritative reference guidance. |
+
+Implemented evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Lifecycle states | PASS | `backend/registry_governance.py` defines `draft`, `ocr_extracted`, `llm_assisted`, `extraction_unverified`, `under_clinical_review`, `approved`, `deprecated`, and `quarantined`. |
+| Provenance enforcement | PASS | Mandatory provenance includes source, license, extraction, reviewer, approval, content hash, registry version, release id, and lifecycle fields; missing fields quarantine entries. |
+| Quarantine rules | PASS | Reason codes cover malformed/duplicate/missing metadata, wrong component type, missing provenance, unknown license, OCR/LLM/extraction review, code-name conflict, hash mismatch, deprecated, and manual quarantine. |
+| Dry-run import | PASS | `backend/scripts/registry_import.py` defaults to dry-run and emits safe metadata only. Dedicated test verifies no source mutation or registry activation. |
+| Release and rollback | PASS | `backend/registry_release.py` validates release manifests, requires explicit `approved_for_activation`, preserves previous release pointer, and supports rollback in synthetic tests. |
+| Strict abstention regression | PASS | Phase 3 tests verify local ignored registry presence does not activate grounding and incomplete 3S registry set returns `registry_incomplete`. |
+| Network deny | PASS | Dry-run import test patches socket and URL open calls to fail; counters remain zero. |
+
+Local ignored data dry-run summary:
+
+| Dataset | Entries | Quarantined | Release Eligible | Authoritative | Notes |
+|---|---:|---:|---:|---:|---|
+| `backend/data_terstruktur/SDKI.json` | 152 | 152 | 0 | 0 | 2 malformed-code records; all entries missing framework/provenance/license approval. |
+| `backend/data_terstruktur/SDKI.json.bak-*` | 152 each | 152 each | 0 | 0 | Same dry-run quarantine profile as current SDKI file. |
+| `backend/data_terstruktur/SDKI_population_report.json` | metadata object | N/A | 0 | 0 | LLM-assisted population report only, not an approval record. |
+
+Dedicated Phase 3 test run before full regression:
+
+| Command | Exit Code | Summary |
+|---|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 27 Phase 3 governance tests passed. |
+
+Final Phase 3 regression commands:
+
+| Command | Exit Code | Summary |
+|---|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 27 Phase 3 governance tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase2_clinical_validation_test -v` | 0 | 55 Phase 2 clinical-safety tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 27 Phase 1 privacy tests passed; expected error-log test used sanitized placeholders only. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_bypass_test -v` | 0 | 1 outbound bypass scanner test passed. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 127 tests passed across Phase 0B, Phase 1, Phase 2, and Phase 3. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | Backend compiled. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 4 frontend capability fallback tests passed. |
+| `npm --prefix frontend run lint` | 0 | ESLint returned 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 0 | Build executed and refreshed `.next` build artifacts; shell capture showed Next progress output through TypeScript completion. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | No whitespace errors; CRLF normalization warnings only. |
+
+## Phase 3 Closure Review Hardening - 2026-06-06
+
+Conditional closure review added stronger fail-closed proof for registry import safety, release completeness, rollback integrity, API grounding, and metadata-only reporting. No real registry data was activated, modified, or staged.
+
+Additional closure evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Branch isolation | PASS | Branch is `audit/phase3-registry-governance`. |
+| Import path safety | PASS | Tests cover explicit source file, directory primary-file import with backups excluded, traversal rejection, absolute outside-root rejection, symlink-resolved escape rejection, unsupported extension rejection, and missing-file rejection. |
+| Import resource limits | PASS | Tests cover oversized JSON file, deeply nested JSON, excessive entry count, oversized field quarantine, and bounded quarantine report reason-code count. |
+| Canonical hashing | PASS | Tests prove stable hash across whitespace/key order, hash change on clinical name change, and documented exclusion of volatile workflow fields. |
+| Batch duplicates/conflicts | PASS | Tests cover duplicate/conflicting code in one file and across two explicit import files; release set rejects duplicate entry hash across component manifests. |
+| Lifecycle non-promotion | PASS | Tests cover `draft`, `ocr_extracted`, `llm_assisted`, `extraction_unverified`, `under_clinical_review`, `deprecated`, and `quarantined` as non-authoritative and non-release-eligible. |
+| Framework completeness | PASS | Tests reject SDKI-only, SDKI+SLKI, SDKI+SIKI, NANDA-only, NANDA+NOC, and NANDA+NIC release sets; complete SDKI+SLKI+SIKI and NANDA+NOC+NIC may proceed in synthetic tests. |
+| Explicit activation and rollback | PASS | Tests verify candidate and approved-for-activation artifacts are inactive until explicit activation, previous pointer preservation, rollback restore, no-previous rollback rejection, quarantined/missing-approval/deprecated activation rejection. |
+| API fail-closed grounding | PASS | Tests verify local ignored data, dry-run report, candidate release, and non-activated approved-for-activation release do not alter API registry availability; synthetic complete registry injection still passes through Phase 2 validation. |
+| Metadata-only reports | PASS | Reports contain counts, reason codes, framework/component metadata, eligibility, and authority status only; no registry body dump, PHI, secrets, fabricated reviewer identity, or fabricated license approval. |
+| Network deny | PASS | Dry-run import test patches sockets, urllib, requests, httpx, LLM factory, and EBP retrieval; counters remain zero. |
+
+Expanded dedicated Phase 3 test run:
+
+| Command | Exit Code | Summary |
+|---|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 56 Phase 3 closure tests passed, with no skips after symlink escape was tested via resolved-path escape simulation. |
