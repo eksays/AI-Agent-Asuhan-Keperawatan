@@ -1,6 +1,6 @@
 # Risk Register
 
-Commit reference for Phase 0A documentation evidence: pending.
+Checkpoint references: Phase 0B `cef16b14166ebc5ad19b67c1a607bbdd9054956a`; Phase 1 `1fd224367457e7db50e15d1cc87d76d599c4e2ff`; frontend lint-clean `a3f11dcd36c7c5c2b5d4504104514a6578fbe324`. Phase 0A documentation evidence has no separate checkpoint commit recorded here.
 
 | ID | Domain | Severity | Evidence | Affected Files | Impact | Root Cause | Proposed Fix | Acceptance Test | Status | Residual Risk |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -63,3 +63,25 @@ Commit reference for Phase 0A documentation evidence: pending.
 | Bypass scanner is allowlist-based | Medium | Scanner fails on new outbound primitives outside reviewed files, but allowlist line numbers must be maintained when files change. | Add scanner to CI and update allowlist only with security review. |
 | Utility scripts still generate non-authoritative clinical data | Critical | Utility outbound payloads/errors are sanitized, but generated registry content remains unapproved. | Phase 3/8 registry quarantine, provenance, clinical review, and release workflow. |
 | Gate A remains unmet | High | Phase 1 closure improves PHI containment and safe buffered streaming only. | Complete Phase 2, Phase 4, and Phase 5 controls before Gate A claims. |
+
+## Phase 2 Status Update
+
+| ID | Phase 2 Status | Evidence | Residual Risk |
+|---|---|---|---|
+| CLI-VAL-001 | Partially mitigated with closure hardening | `backend/clinical_schema.py` and `backend/clinical_validator.py` add typed clinical response models, deterministic parse/schema checks, registry lookup, trusted evidence binding, server-derived status fields, and safe abstention. `/chat`, `/chat_stream`, `/analisis_multi`, and `/analisis` apply validation for clinical analysis outputs and expose machine-readable clinical status. Phase 2 closure tests cover malformed JSON, raw prose, Markdown-fenced JSON, duplicate JSON keys, oversized/deeply nested output, `D.xxxx`, `D.L`, unknown codes, code-name mismatch, wrong framework family, missing evidence, contradictory numeric/negated evidence, provider-authored status/provenance attempts, fail-fast registry unavailable behavior, and invented-code API rejection. | This is deterministic containment, not clinical validation certification. The default registry remains unavailable, so real clinical recommendations abstain unless a controlled approved fixture is supplied. Nursing review is still mandatory. |
+| CLI-VAL-002 | Contained for authoritative use, not remediated as governance | `backend/clinical_registry.py` distinguishes approved, quarantined, and unavailable entries and rejects duplicates, malformed codes, missing framework/name, missing provenance, unapproved, and quarantined entries in synthetic fixtures. Local ignored registry files are not approved, committed, or allowed to activate grounding. API routes fail fast before provider construction with `registry_unavailable` when diagnosis registry is missing and `registry_incomplete` when outcome/intervention registries are missing. Informal nursing-perspective feedback on 2026-06-06 states supporting 3S/3N documents are not concrete enough because writing extraction remains problematic. | Phase 3 still must implement governed import/review/release/rollback workflow. Existing SDKI and future extracted 3S/3N data remain non-authoritative, may be incomplete/invalid, and must stay inactive until extraction debugging, provenance verification, clinical review, and release approval are complete. |
+| SEC-PHI-002 | Extended for clinical validation path | `/chat_stream` now validates the complete clinical analysis output before chunking. Malformed clinical prose streams abstention text rather than accepted recommendations. | Streaming transport is safer for clinical recommendations, but Mermaid/XSS hardening and upload-parser isolation remain unresolved. |
+
+## Phase 2 Closure Residuals
+
+| Risk | Severity | Status | Next Action |
+|---|---|---|---|
+| Schema validity is not clinical correctness | Critical | Pydantic and registry checks can reject malformed or unsupported output but cannot prove a recommendation is clinically appropriate. | Nursing review, clinical validation study, and governed registry release workflow remain required. |
+| Default registry is unavailable | High | `CLINICAL_REGISTRY` defaults to unavailable and only synthetic fixtures are approved in tests. | Phase 3/8 registry governance and reviewer approval. |
+| Raw provider prose is rejected for clinical analysis | Medium | This improves safety but may reduce apparent feature completeness until model output is structured and approved registries exist. | Add structured generation prompts only after validators are authoritative; do not bypass abstention. |
+| Evidence binding is deterministic containment only | High | It preserves numeric measurements and negation for tested synthetic cases, but does not prove clinical reasoning correctness or complete natural-language entailment. | Nursing review and clinical validation study remain required before pilot/production claims. |
+| Provider-authored confidence is not authoritative | Medium | `confidence_band` is overwritten to `unknown` for accepted diagnoses unless future deterministic confidence rules exist; invalid values fail schema validation. | Define clinical confidence policy only with governance/reviewer input. |
+| Informal nursing feedback is not formal validation | High | Nursing-perspective feedback was received on 2026-06-06 with a disclaimer that 3S/3N supporting documents remain insufficiently concrete due to extraction issues. | Keep registries non-authoritative; complete Phase 3 quarantine/review workflow and Phase 8 governed registry validation before activation. |
+| Complete care-plan abstention wording still needs formal review | Medium | Interim policy reduces automation-bias risk by not accepting diagnosis-only output when SLKI/SIKI or NOC/NIC are missing; informal feedback did not constitute formal clinical approval. | Use the recorded feedback to refine wording later, then conduct formal clinical validation before pilot/production claims. |
+| Frontend renders abstention as ordinary markdown | Medium | Existing frontend can display the abstention text, but it does not yet have a dedicated validation-status UI. | Minimal UI status work may be considered later without hiding failures. |
+| Gate A remains unmet | High | Phase 2 adds basic schema/registry validation, but registry quarantine workflow, Mermaid hardening, and isolated upload parsing remain incomplete. | Continue to Phase 3/4/5 as separate closures. |

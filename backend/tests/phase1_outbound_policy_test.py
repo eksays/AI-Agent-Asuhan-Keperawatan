@@ -20,6 +20,7 @@ import config  # noqa: E402
 import ebp  # noqa: E402
 import ekstraksi  # noqa: E402
 import memory  # noqa: E402
+from clinical_registry import ClinicalRegistry  # noqa: E402
 from outbound_policy import OutboundDataPolicy, OutboundPolicyError, SafeLLM, wrap_llm  # noqa: E402
 from scripts import populate_sdki  # noqa: E402
 
@@ -173,6 +174,48 @@ def enabled_config(**extra: str):
     }
     env.update(extra)
     return config.load_config(env)
+
+def phase1_synthetic_registry() -> ClinicalRegistry:
+    return ClinicalRegistry.from_entries([{
+        "framework": "SDKI",
+        "code": "D.0001",
+        "name": "Synthetic Phase 1 Diagnosis",
+        "source_title": "Synthetic Phase 1 registry fixture",
+        "source_version": "phase1-fixture-v1",
+        "source_page": "1",
+        "source_section": "synthetic",
+        "extraction_method": "manual_test_fixture",
+        "reviewer": "synthetic reviewer",
+        "review_date": "2026-01-01",
+        "approval_status": "approved",
+        "content_hash": "phase1-fixture-hash",
+    }, {
+        "framework": "SLKI",
+        "code": "L.0001",
+        "name": "Synthetic Phase 1 Outcome",
+        "source_title": "Synthetic Phase 1 registry fixture",
+        "source_version": "phase1-fixture-v1",
+        "source_page": "1",
+        "source_section": "synthetic",
+        "extraction_method": "manual_test_fixture",
+        "reviewer": "synthetic reviewer",
+        "review_date": "2026-01-01",
+        "approval_status": "approved",
+        "content_hash": "phase1-fixture-hash-slki",
+    }, {
+        "framework": "SIKI",
+        "code": "I.0001",
+        "name": "Synthetic Phase 1 Intervention",
+        "source_title": "Synthetic Phase 1 registry fixture",
+        "source_version": "phase1-fixture-v1",
+        "source_page": "1",
+        "source_section": "synthetic",
+        "extraction_method": "manual_test_fixture",
+        "reviewer": "synthetic reviewer",
+        "review_date": "2026-01-01",
+        "approval_status": "approved",
+        "content_hash": "phase1-fixture-hash-siki",
+    }])
 
 
 class Phase1PolicyTests(unittest.TestCase):
@@ -431,6 +474,7 @@ class Phase1ApiStreamingTests(unittest.TestCase):
              mock.patch.object(api, "framework_available", return_value=True), \
              mock.patch.object(api, "askep_refs_available", return_value=True), \
              mock.patch.object(api, "bangun_konteks", return_value=""), \
+             mock.patch.object(api, "CLINICAL_REGISTRY", phase1_synthetic_registry()), \
              mock.patch.object(api.memory, "recall_block", return_value=""):
             response = self.client.post(
                 "/chat_stream",
@@ -440,7 +484,7 @@ class Phase1ApiStreamingTests(unittest.TestCase):
                     "framework": "3S",
                     "session_id": self._session_id(),
                     "tier": "flash",
-                    "agent": "analisis",
+                    "agent": "general",
                     "pertanyaan": CANARY,
                 },
                 headers={"Authorization": "Bearer test-key"},
@@ -465,6 +509,7 @@ class Phase1ApiStreamingTests(unittest.TestCase):
              mock.patch.object(api, "framework_available", return_value=True), \
              mock.patch.object(api, "askep_refs_available", return_value=True), \
              mock.patch.object(api, "bangun_konteks", return_value=""), \
+             mock.patch.object(api, "CLINICAL_REGISTRY", phase1_synthetic_registry()), \
              mock.patch.object(api.memory, "recall_block", return_value=""):
             response = self.client.post(
                 "/chat_stream",
@@ -474,7 +519,7 @@ class Phase1ApiStreamingTests(unittest.TestCase):
                     "framework": "3S",
                     "session_id": self._session_id(),
                     "tier": "flash",
-                    "agent": "analisis",
+                    "agent": "general",
                     "pertanyaan": "lanjutkan analisis klinis",
                 },
                 headers={"Authorization": "Bearer test-key"},
@@ -502,6 +547,7 @@ class Phase1ApiNonStreamTests(unittest.TestCase):
             framework_available=mock.Mock(return_value=True),
             askep_refs_available=mock.Mock(return_value=True),
             bangun_konteks=mock.Mock(return_value=""),
+            CLINICAL_REGISTRY=phase1_synthetic_registry(),
         )
 
     def test_chat_json_response_sanitizes_provider_output_and_memory(self):

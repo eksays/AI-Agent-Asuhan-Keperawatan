@@ -48,3 +48,51 @@ Required controls for future phases:
 - Provenance fields for source title, source version, page/section, extraction method, reviewer, review date, approval status, content hash, and registry version.
 - Quarantine invalid/malformed/duplicate/unapproved entries at load time.
 - Disable missing frameworks instead of generating content from model memory.
+
+## Phase 2 Position
+
+Phase 2 introduces a registry-validation abstraction but does not approve, enrich, import, or commit local registry data.
+
+Implemented controls:
+
+- `backend/clinical_registry.py` can load controlled synthetic entries and separate approved entries from quarantined or unavailable entries.
+- Approved synthetic entries require framework, valid code format, name, approval status, source title, source version, reviewer, review date, and content hash.
+- Duplicate codes, malformed codes, missing names, missing frameworks, missing provenance, unapproved states, and quarantined states are excluded from authoritative lookup.
+- `backend/clinical_validator.py` refuses clinical output when the approved registry for the requested framework is unavailable.
+- API clinical-analysis routes fail fast before provider construction when the approved registry set is unavailable or incomplete, even if ignored local files are present. Missing diagnosis registry returns `registry_unavailable`; missing outcome/intervention registries return `registry_incomplete`.
+- Provider-authored registry version/source/provenance claims are not trusted. Accepted diagnosis metadata is overwritten from the approved registry object; provider-authored confidence is not treated as clinical truth.
+- Provider-authored evidence is bound deterministically to trusted patient input or extracted document text using allowed evidence sources, clinical measurement matching, negation preservation, and conservative token containment.
+
+Current governance stance:
+
+- `backend/data_terstruktur/*` is still ignored or local-only and must not be treated as an approved registry release.
+- The default application registry object is unavailable; tests patch synthetic approved fixtures explicitly.
+- Missing SLKI, SIKI, NANDA, NOC, and NIC registries block fabricated outcomes/interventions rather than allowing model-memory completion.
+- Partial registry availability safe default: complete care-plan abstention. For 3S, approved SDKI without approved SLKI and SIKI returns `registry_incomplete`; for 3N, approved NANDA without approved NOC and NIC returns `registry_incomplete`. Diagnosis-only output is not accepted for the normal hospital-facing care-plan workflow while outcome/intervention registries are missing.
+- Phase 2 schema/registry validation is a safety gate, not formal clinical validation, not licensing approval, and not production registry governance.
+
+Informal nursing-perspective feedback received on 2026-06-06 adds a specific disclaimer: supporting 3S and 3N documents are not yet concrete enough because writing extraction issues remain, so extraction quality and completeness are not maximal. This feedback is non-authoritative design input only, but it reinforces the current fail-closed position: extracted registries must not be activated for hospital care-plan generation until extraction debugging, content review, provenance verification, and further validation are complete.
+
+Extraction-quality states that remain non-authoritative until Phase 3 governance exists:
+
+| State | Authoritative | Required Handling |
+|---|---|---|
+| `extraction_unverified` | No | Quarantine or disable for grounding; require extraction debugging, provenance checks, and review before approval. |
+| `ocr_extracted` | No | Treat as raw extraction output; require schema validation, deduplication, provenance, clinical review, and release approval. |
+| `llm_assisted` | No | Treat as generated assistance only; do not use as authoritative content without human review, provenance verification, and approved release. |
+
+Conservative registry rules:
+
+- File presence is not approved registry availability.
+- OCR output is not approved registry content.
+- LLM-assisted population is not approved registry content.
+- Only explicitly reviewed and approved release artifacts may become authoritative.
+- Missing, unapproved, quarantined, or extraction-unverified SDKI/SLKI/SIKI/NANDA/NOC/NIC registries must preserve complete care-plan abstention.
+
+Still required in Phase 3/8:
+
+- Governed import workflow.
+- Clinical review queue and approval records.
+- Versioned registry release artifacts.
+- Rollback and release traceability.
+- Reviewer identity, source licensing checks, and content-hash verification for real datasets.

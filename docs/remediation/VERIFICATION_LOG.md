@@ -174,3 +174,126 @@ No real external LLM, EBP, PubMed, Europe PMC, Semantic Scholar, Unpaywall, Anth
 | Bypass detection | PASS | Owned backend source scanner excludes venv/cache/tests and requires an explicit allowlist for `.invoke`, streaming, `urllib`, provider constructors, and HTTP request primitives. |
 
 Known limitations remain documented in `docs/remediation/PHI_BOUNDARY_MAP.md`: this is regex/canary containment, not complete de-identification, compliance certification, clinical validation, or production readiness.
+
+## Frontend Lint-Clean Checkpoint - 2026-06-06
+
+| Command | Result | Notes |
+|---|---|---|
+| `git rev-parse HEAD` | PASS | `a3f11dcd36c7c5c2b5d4504104514a6578fbe324`. |
+| `npm --prefix frontend run lint` | PASS | ESLint reported 0 errors and 0 warnings after the dedicated lint-clean phase. |
+| `npm --prefix frontend run build` | PASS | Build exit code captured as 0. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | PASS | 4 tests passed. |
+| `git status --short` | PASS | Only pre-existing `?? AUDIT.md` remained. |
+
+## Phase 2 Verification - 2026-06-06
+
+No real external LLM, EBP, OCR, Mermaid, vector, Redis, authentication, MFA, or audit-ledger service was contacted or enabled for Phase 2 verification. Registry tests use synthetic fixtures only.
+
+| Command | Result | Notes |
+|---|---|---|
+| `git merge-base --is-ancestor cef16b14166ebc5ad19b67c1a607bbdd9054956a HEAD` | PASS | Phase 0B containment checkpoint is an ancestor of HEAD. |
+| `git merge-base --is-ancestor 1fd224367457e7db50e15d1cc87d76d599c4e2ff HEAD` | PASS | Phase 1 privacy-firewall checkpoint is an ancestor of HEAD. |
+| `git merge-base --is-ancestor a3f11dcd36c7c5c2b5d4504104514a6578fbe324 HEAD` | PASS | Frontend lint-clean checkpoint is HEAD before Phase 2 edits. |
+| `git tag --list` | PASS | `phase-0b-sandbox-checkpoint`, `phase-1-phi-firewall-checkpoint`, and `phase-q1-frontend-lint-clean-checkpoint` exist locally. |
+| `backend\venv\Scripts\python.exe -m unittest backend\tests\phase2_clinical_validation_test.py -v` | PASS | 17 Phase 2 schema, registry, abstention, and API integration tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | PASS | 62 tests passed: Phase 0B, Phase 1, and Phase 2. |
+
+## Phase 2 Boundary Evidence
+
+| Boundary | Evidence | Residual Limit |
+|---|---|---|
+| Typed schema | `backend/clinical_schema.py` defines Pydantic `ClinicalResponse`, diagnosis, outcome, intervention, evidence, missing-data, and validation-issue structures. | A schema-valid object is not clinical validation or formal approval. |
+| Registry abstraction | `backend/clinical_registry.py` supports synthetic fixture loading, code-format checks, duplicate detection, provenance checks, and approved/quarantined/unavailable states. | Local `backend/data_terstruktur/*` remains non-authoritative and is not loaded as approved registry data. |
+| Deterministic validation | `backend/clinical_validator.py` rejects malformed JSON, raw prose, malformed/unknown/mismatched codes, wrong framework, missing evidence, unsupported evidence, and fabricated outcomes/interventions when registries are unavailable. | It is a deterministic guardrail, not a complete clinical reasoning engine. |
+| Abstention | Invalid or insufficiently evidenced clinical output returns a human-readable abstention requiring nurse review and missing-data confirmation. | Abstention wording requires nursing-informatics review before pilot use. |
+| API integration | `/chat`, `/chat_stream`, `/analisis_multi`, and `/analisis` apply validation for clinical analysis outputs before returning/displaying recommendations. | EBP, Mermaid, upload isolation, auth hardening, and audit redesign remain later phases. |
+
+## Phase 2 Final Regression Commands
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 4223 ms | 62 tests passed: Phase 0B, Phase 1, and Phase 2. Existing Starlette/httpx deprecation warning remains. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | 1676 ms | Backend source compiled with the requested exclusion pattern. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 334 ms | 4 tests passed. |
+| `npm --prefix frontend run lint` | 0 | 9386 ms | ESLint returned 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 0 | 19741 ms | Build passed; output was suppressed to avoid terminal progress-control artifacts. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 2391 ms | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | 127 ms | No whitespace errors. Git reported CRLF normalization warnings only. |
+
+## Phase 2 Closure Review - 2026-06-06
+
+No real external LLM, EBP, OCR, Mermaid, vector, Redis, authentication, MFA, rate-limit, audit-ledger service, or registry import workflow was contacted or enabled. Registry validation used synthetic fixtures only. The default approved registry remains unavailable.
+
+Interim regression note: an initial full regression run failed three Phase 1 provider-path tests because the new Phase 2 fail-fast registry-unavailable guard correctly returned abstention before provider construction. The Phase 1 privacy tests were updated to supply a synthetic approved registry only for tests that intentionally exercise mocked provider/output sanitization, or to use a non-clinical mocked agent path where the test target is streaming output sanitization rather than clinical validation. The API fail-fast behavior remains covered by new Phase 2 tests.
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase2_clinical_validation_test -v` | 0 | 1719 ms | 51 Phase 2 closure tests passed, including trusted evidence binding, server-authoritative fields, fail-fast registry-unavailable routes, framework-family mapping, strict parsing, API status envelope, and privacy containment. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 1920 ms | 27 Phase 1 privacy tests passed with mocked providers and synthetic registry fixtures where provider paths were intentionally exercised. Console error output showed sanitized placeholders only. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_bypass_test -v` | 0 | 813 ms | 1 outbound bypass allowlist test passed. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 2890 ms | 96 tests passed across Phase 0B, Phase 1, and Phase 2. Existing Starlette/httpx deprecation warning remains. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | 1424 ms | Backend source compiled with requested exclusion pattern. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 208 ms | 4 frontend capability fallback tests passed. |
+| `npm --prefix frontend run lint` | 0 | 6544 ms | ESLint reported 0 errors and 0 warnings. Historical Phase 0B/Phase 1 lint failures remain historical evidence only; lint-clean checkpoint `a3f11dcd36c7c5c2b5d4504104514a6578fbe324` is still the current baseline ancestor. |
+| `npm --prefix frontend run build` | 0 | 14582 ms | Next.js build passed; static routes generated. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 1663 ms | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | 102 ms | No whitespace errors; Git reported CRLF normalization warnings only. |
+
+## Phase 2 Closure Evidence
+
+| Area | Result | Evidence |
+|---|---|---|
+| Trusted evidence binding | PASS | Tests reject contradictory RR/SpO2, positive evidence for negated sesak/ronki/nyeri dada, hallucinated demam/sianosis, and provider-draft-only evidence; matching RR 28 and SpO2 90 passes with a synthetic registry fixture. |
+| Server-authoritative status/provenance | PASS | Tests force `nurse_review_required=true`, reject unsupported evidence despite provider `validation_status="validated"`, overwrite fake registry version/source from registry fixture, and reject invalid confidence `certain`. |
+| Fail-fast registry handling | PASS | `/chat`, `/chat_stream`, `/analisis`, and `/analisis_multi` return `registry_unavailable` when diagnosis registry is unavailable and `registry_incomplete` when outcome/intervention registries are missing, with zero provider invocation. |
+| Strict parsing | PASS | Raw prose, malformed JSON, Markdown fences, leading/trailing prose, duplicate keys, unknown extra fields, empty objects, oversized output, and deeply nested output fail closed. |
+| Machine-readable API status | PASS | JSON routes expose top-level `clinical_status`, `accepted_recommendations`, `nurse_review_required`, `message`, and `validation_issue_codes`; stream route exposes equivalent headers. |
+| Privacy regression | PASS | Phase 1 canary tests still pass; Phase 2 validation issues, registry errors, and abstention responses do not echo synthetic PHI canaries. |
+
+## Phase 2 Interim Partial-Registry Policy Update - 2026-06-06
+
+Interim product-safety decision pending informal nursing-informatics review: complete care-plan abstention is the selected safe default when outcome/intervention registries are missing. This is not formal clinical approval, registry approval, legal approval, compliance certification, or production authorization.
+
+| Policy Case | Required Behavior | Verification |
+|---|---|---|
+| 3S: SDKI approved, SLKI or SIKI unavailable | `clinical_status=registry_incomplete`, `accepted_recommendations=false`, `nurse_review_required=true`, missing registries listed | Added Phase 2 validator and API tests. |
+| 3N: NANDA approved, NOC or NIC unavailable | `clinical_status=registry_incomplete`, `accepted_recommendations=false`, `nurse_review_required=true`, missing registries listed | Framework registry completeness now requires diagnosis, outcome, and intervention registry families. |
+| Missing components | Never fabricated from model memory | Existing fabricated outcome/intervention tests remain passing; fail-fast route tests prevent provider invocation under incomplete registries. |
+
+Verification after policy update:
+
+| Command | Exit Code | Summary |
+|---|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase2_clinical_validation_test -v` | 0 | 55 Phase 2 tests passed, including new `registry_incomplete` route tests. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 27 Phase 1 privacy tests passed with complete synthetic registry fixture for mocked clinical provider paths. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 100 tests passed across Phase 0B, Phase 1, and Phase 2. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | Backend compiled. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 4 tests passed. |
+| `npm --prefix frontend run lint` | 0 | ESLint returned 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 0 | Build exit code captured as 0 with output suppressed. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | No whitespace errors; CRLF normalization warnings only. |
+
+## Phase 2 Nursing Disclaimer Integration - 2026-06-06
+
+Informal nursing-perspective feedback was received and recorded in `docs/remediation/NURSING_REVIEW_PHASE2.md`. The feedback is non-authoritative design input only and is not formal clinical approval, registry approval, legal approval, compliance certification, hospital readiness approval, or production authorization.
+
+Recorded feedback summary:
+
+```text
+Dokumen pendukung 3S dan 3N belum begitu konkret karena masih terdapat
+masalah pada ekstraksi tulisan, sehingga hasil dokumennya belum maksimal.
+Untuk overall seperti itu terlebih dahulu; debugging ekstraksi akan
+dilanjutkan pada tahap berikutnya.
+```
+
+Governance interpretation:
+
+| Reviewer Note | Classification | Applied Action |
+|---|---|---|
+| Dokumen pendukung 3S/3N belum konkret | requires formal clinical review | keep registries non-authoritative |
+| Ekstraksi tulisan masih bermasalah | deferred to Phase 3 and Phase 8 | quarantine and governed extraction review workflow |
+| Hasil dokumen belum maksimal | requires extraction-quality debugging | do not activate registry |
+| Debugging dilanjutkan nanti | deferred implementation | preserve fail-closed behavior now |
+
+Strict policy preserved: missing, unapproved, quarantined, or extraction-unverified SDKI/SLKI/SIKI/NANDA/NOC/NIC registries require complete care-plan abstention with `clinical_status=registry_incomplete`, `accepted_recommendations=false`, and `nurse_review_required=true` for incomplete registry families. Diagnosis-only accepted output remains disallowed in the normal hospital-facing workflow, and missing components must not be completed from model memory.

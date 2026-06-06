@@ -32,6 +32,8 @@ from config import CONFIG, SAFETY_NOTICE, build_capabilities, capability_enabled
 import metrics
 import director
 import harvester
+from clinical_registry import ClinicalRegistry
+from clinical_validator import STANDARD_MAP, safe_abstention, validate_clinical_output, render_clinical_response
 from outbound_policy import DEFAULT_OUTBOUND_POLICY, OutboundPolicyError, wrap_llm
 from agents import bersihkan, bersihkan_stream, GUARDRAILS
 
@@ -174,6 +176,7 @@ DEGRADE_NOTE = ("\n\n⚠️ **Informasi Sistem:** Dokumen referensi SLKI dan SIK
 
 # ============================ DATA / RAG =====================================
 DATA: dict[str, list] = {}
+CLINICAL_REGISTRY = ClinicalRegistry.unavailable()
 
 
 def muat_data():
@@ -408,6 +411,115 @@ def _external_safe_text(text: str) -> str:
 
 def _browser_safe_text(text: str) -> str:
     return DEFAULT_OUTBOUND_POLICY.sanitize_for_browser(phi.sanitize_phi(text or "")).text
+
+def _clinical_status_message(status: str, accepted: bool) -> str:
+    if accepted:
+        return "Clinical candidates passed deterministic schema, registry, and evidence checks; nurse review remains required."
+    if status == "registry_unavailable":
+        return "Approved clinical registry is unavailable; recommendations are not accepted."
+    if status == "registry_incomplete":
+        return "Approved clinical registry set is incomplete; the care plan cannot be generated safely."
+    if status == "malformed_output":
+        return "Provider output was malformed or ambiguous; recommendations are not accepted."
+    if status == "rejected":
+        return "Provider clinical output was rejected by deterministic validation."
+    return "Clinical evidence is insufficient; recommendations are not accepted."
+
+def _registry_names_from_response(response) -> list[str]:
+    order = ["SDKI", "SLKI", "SIKI", "NANDA", "NOC", "NIC"]
+    text_parts = []
+    for issue in getattr(response, "validation_issues", []) or []:
+        text_parts.extend([getattr(issue, "message", ""), getattr(issue, "code", "")])
+    for item in getattr(response, "missing_data", []) or []:
+        text_parts.extend([getattr(item, "reason", ""), getattr(item, "question_for_nurse", "")])
+    text = "\n".join(text_parts)
+    return [name for name in order if re.search(rf"\b{re.escape(name)}\b", text)]
+
+def _clinical_meta_from_response(response, accepted: bool, missing_registries: list[str] | None = None) -> dict:
+    issue_codes = [issue.code for issue in response.validation_issues]
+    missing = list(missing_registries) if missing_registries is not None else _registry_names_from_response(response)
+    return {
+        "status": response.status,
+        "accepted": accepted,
+        "clinical_status": response.status,
+        "accepted_recommendations": bool(accepted),
+        "nurse_review_required": True,
+        "missing_registries": missing,
+        "message": _clinical_status_message(response.status, accepted),
+        "issue_codes": issue_codes,
+        "validation_issue_codes": issue_codes,
+    }
+
+def _clinical_meta(outcome) -> dict:
+    return _clinical_meta_from_response(outcome.response, outcome.accepted)
+
+def _validate_clinical_answer(raw: str, framework: str, patient_context: str):
+    outcome = validate_clinical_output(raw, framework, CLINICAL_REGISTRY, patient_context=patient_context)
+    return _browser_safe_text(outcome.display_text), _clinical_meta(outcome)
+
+def _registry_abstention_answer(framework: str, status: str, missing_registries: list[str]):
+    missing = ", ".join(missing_registries) or "unknown"
+    if status == "registry_incomplete":
+        reason = "Missing approved registries for complete care-plan grounding: " + missing + "."
+        issue_code = "registry_incomplete"
+        question = "Approved registries missing: " + missing + ". The care plan cannot be generated safely until these registries are approved."
+    else:
+        reason = "Approved registry is unavailable for authoritative grounding. Missing approved registries: " + missing + "."
+        issue_code = "registry_unavailable"
+        question = "Approved registries missing: " + missing + ". Clinical recommendations cannot be generated safely."
+    response = safe_abstention(
+        framework,
+        reason=reason,
+        status=status,
+        issue_code=issue_code,
+        field="approved_registries",
+        question=question,
+    )
+    return _browser_safe_text(render_clinical_response(response)), _clinical_meta_from_response(response, False, missing_registries)
+
+def _registry_unavailable_answer(framework: str):
+    status, missing = _clinical_registry_block(framework)
+    return _registry_abstention_answer(framework, status or "registry_unavailable", missing)
+
+def _clinical_payload(base: dict, meta: dict | None) -> dict:
+    if not meta:
+        return base
+    base["clinical_validation"] = meta
+    base.update({
+        "clinical_status": meta["clinical_status"],
+        "accepted_recommendations": meta["accepted_recommendations"],
+        "nurse_review_required": True,
+        "missing_registries": meta.get("missing_registries", []),
+        "message": meta["message"],
+        "validation_issue_codes": meta["validation_issue_codes"],
+    })
+    return base
+
+def _stream_clinical_headers(meta: dict | None) -> dict[str, str]:
+    headers = {"X-Accel-Buffering": "no", "Cache-Control": "no-cache, no-transform"}
+    if meta:
+        headers.update({
+            "X-Clinical-Status": str(meta["clinical_status"]),
+            "X-Accepted-Recommendations": "true" if meta["accepted_recommendations"] else "false",
+            "X-Nurse-Review-Required": "true",
+            "X-Validation-Issue-Codes": ",".join(meta.get("validation_issue_codes") or []),
+            "X-Missing-Registries": ",".join(meta.get("missing_registries") or []),
+        })
+    return headers
+
+def _clinical_registry_block(framework: str) -> tuple[str | None, list[str]]:
+    standard = (framework or "3S").strip().upper()
+    expected = STANDARD_MAP.get(standard, {})
+    ordered = [expected.get("diagnosis", ""), expected.get("outcome", ""), expected.get("intervention", "")]
+    missing = [item for item in ordered if item and not CLINICAL_REGISTRY.approved_available(item)]
+    if not missing:
+        return None, []
+    if expected.get("diagnosis", "") in missing:
+        return "registry_unavailable", missing
+    return "registry_incomplete", missing
+
+def _requires_clinical_registry(agent: str, text: str = "") -> bool:
+    return (agent or "analisis").lower() == "analisis" and not is_casual(text)
 
 
 def resolve_key(authorization: Optional[str], api_key_form: str) -> str:
@@ -800,21 +912,32 @@ def chat(provider: str = Form(...), api_key: str = Form(""), model: str = Form(.
     blocked = _blocked_llm_capability(agent)
     if blocked:
         return _unavailable(blocked)
+    registry_status, missing_registries = _clinical_registry_block(framework)
+    if _requires_clinical_registry(agent, pertanyaan) and registry_status:
+        ans, meta = _registry_abstention_answer(framework, registry_status, missing_registries)
+        return _clinical_payload({"status": "sukses", "jawaban": ans}, meta)
     if not framework_available(framework):
-        return {"status": "sukses", "jawaban": REF_REFUSAL}
+        ans, meta = _registry_unavailable_answer(framework)
+        return _clinical_payload({"status": "sukses", "jawaban": ans}, meta)
     try:
         llm = get_llm(provider, model, key)
         safe_question = _external_safe_text(pertanyaan)
         extra = ebp.retrieve_context(llm, safe_question) if (agent or "").lower() == "referensi" else ""   # jurnal NYATA
         msgs = build_messages(framework, session_id, pertanyaan, tier, agent, extra)
         ans = agents.orchestrate_answer(llm, msgs, safe_question, tier)   # kedalaman sesuai tier (flash/medium/pro)
-        if (agent or "analisis").lower() == "analisis":
+        clinical_meta = None
+        if (agent or "analisis").lower() == "analisis" and not is_casual(pertanyaan):
+            ans, clinical_meta = _validate_clinical_answer(ans, framework, safe_question)
+        elif (agent or "analisis").lower() == "analisis":
             ans = maybe_degrade_note(framework, ans)
-        ans = _browser_safe_text(ans)   # redaksi PII pada OUTPUT (jaring pengaman akhir)
+            ans = _browser_safe_text(ans)   # redaksi PII pada OUTPUT (jaring pengaman akhir)
+        else:
+            ans = _browser_safe_text(ans)
         SESI.add(session_id, "user", safe_question)
         SESI.add(session_id, "assistant", ans)
         metrics.record_job(agent, tier, True, (len(pertanyaan) + len(ans)) // 4)
-        return {"status": "sukses", "jawaban": ans}
+        payload = {"status": "sukses", "jawaban": ans}
+        return _clinical_payload(payload, clinical_meta)
     except Exception as e:  # noqa
         code, pesan = err_status(e)
         return JSONResponse({"status": "error", "pesan": pesan}, status_code=code)
@@ -836,22 +959,32 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
     blocked = _blocked_llm_capability(agent)
     if blocked:
         return _unavailable(blocked)
+    registry_status, missing_registries = _clinical_registry_block(framework)
+    if _requires_clinical_registry(agent, pertanyaan) and registry_status:
+        ans, meta = _registry_abstention_answer(framework, registry_status, missing_registries)
+        return StreamingResponse(iter([ans]), media_type="text/plain; charset=utf-8", headers=_stream_clinical_headers(meta))
     if not framework_available(framework):
-        return StreamingResponse(iter([REF_REFUSAL]), media_type="text/plain; charset=utf-8")
+        ans, meta = _registry_unavailable_answer(framework)
+        return StreamingResponse(iter([ans]), media_type="text/plain; charset=utf-8", headers=_stream_clinical_headers(meta))
 
     # Mulai di sini agar error auth/kuota tertangkap SEBELUM body 200 terkirim.
     tier_l = (tier or "medium").lower()
     casual = is_casual(pertanyaan)                  # sapaan/obrolan singkat -> jalur stream cepat (1 panggilan), tanpa orkestrasi/EBP
     try:
+        clinical_meta = None
         llm = get_llm(provider, model, key)
         safe_question = _external_safe_text(pertanyaan)
         extra = ebp.retrieve_context(llm, safe_question) if ((agent or "").lower() == "referensi" and not casual) else ""   # jurnal NYATA
         msgs = build_messages(framework, session_id, pertanyaan, tier, agent, extra)
         effective_tier = "flash" if casual else tier_l
         precomputed = agents.orchestrate_answer(llm, msgs, safe_question, effective_tier)
-        if (agent or "analisis").lower() == "analisis":
+        if (agent or "analisis").lower() == "analisis" and not casual:
+            precomputed, clinical_meta = _validate_clinical_answer(precomputed, framework, safe_question)
+        elif (agent or "analisis").lower() == "analisis":
             precomputed = maybe_degrade_note(framework, precomputed)
-        precomputed = _browser_safe_text(precomputed)
+            precomputed = _browser_safe_text(precomputed)
+        else:
+            precomputed = _browser_safe_text(precomputed)
     except Exception as e:  # noqa
         code, pesan = err_status(e)
         return JSONResponse({"status": "error", "pesan": pesan}, status_code=code)
@@ -867,7 +1000,7 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
     # Header anti-buffering agar token mengalir real-time (tanpa ditahan proxy/uvicorn).
     return StreamingResponse(
         gen(), media_type="text/plain; charset=utf-8",
-        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache, no-transform"},
+        headers=_stream_clinical_headers(clinical_meta),
     )
 
 
@@ -904,14 +1037,18 @@ def analisis_multi(provider: str = Form(...), api_key: str = Form(""), model: st
         return _unavailable("clinical_photo_analysis")
     if not (cmd or doc_block.strip()):
         return JSONResponse({"status": "error", "pesan": "Tidak ada data untuk dianalisis."}, status_code=400)
-    if not framework_available(framework):
-        return {"status": "sukses", "hasil": REF_REFUSAL}
-    # File diunggah TANPA teks -> interaktif: simpan dokumen ke memori lalu tanya (tidak auto-analisis).
     if not cmd:
         SESI.add(session_id, "user", _external_safe_text("[Dokumen rekam medis diunggah]" + doc_block))
         SESI.add(session_id, "assistant", DOC_RECEIVED)
         audit_log(session_id, "Upload", "Success")
         return {"status": "sukses", "hasil": DOC_RECEIVED}
+    registry_status, missing_registries = _clinical_registry_block(framework)
+    if _requires_clinical_registry(agent, cmd + doc_block) and registry_status:
+        hasil, meta = _registry_abstention_answer(framework, registry_status, missing_registries)
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, meta)
+    if not framework_available(framework):
+        hasil, meta = _registry_unavailable_answer(framework)
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, meta)
     try:
         llm = get_llm(provider, model, key)
         safe_case = _external_safe_text(cmd + doc_block)
@@ -919,14 +1056,17 @@ def analisis_multi(provider: str = Form(...), api_key: str = Form(""), model: st
         # file + perintah spesifik; kedalaman multi-agen mengikuti tier (flash/medium/pro).
         msgs = build_messages(framework, session_id, cmd + doc_block, tier, agent, extra)
         hasil = agents.orchestrate_answer(llm, msgs, safe_case, tier)
+        clinical_meta = None
         if (agent or "analisis").lower() == "analisis":
-            hasil = maybe_degrade_note(framework, hasil)
-        hasil = _browser_safe_text(hasil)   # redaksi PII pada OUTPUT
+            hasil, clinical_meta = _validate_clinical_answer(hasil, framework, safe_case)
+        else:
+            hasil = _browser_safe_text(hasil)   # redaksi PII pada OUTPUT
         SESI.add(session_id, "user", _external_safe_text(cmd))
         SESI.add(session_id, "assistant", hasil)
         audit_log(session_id, "Analisis", "Success")
         metrics.record_job(agent, tier, True, (len(cmd) + len(hasil)) // 4, doc=True)
-        return {"status": "sukses", "hasil": hasil}
+        payload = {"status": "sukses", "hasil": hasil}
+        return _clinical_payload(payload, clinical_meta)
     except Exception as e:  # noqa
         audit_log(session_id, "Analisis", "Fail")
         code, pesan = err_status(e)
@@ -958,8 +1098,13 @@ def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Fo
     blocked = _blocked_llm_capability("analisis")
     if blocked:
         return _unavailable(blocked)
+    registry_status, missing_registries = _clinical_registry_block(framework)
+    if registry_status:
+        hasil, meta = _registry_abstention_answer(framework, registry_status, missing_registries)
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, meta)
     if not framework_available(framework):
-        return {"status": "sukses", "hasil": REF_REFUSAL}
+        hasil, meta = _registry_unavailable_answer(framework)
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, meta)
     doc = extract_text(file_dokumen)
     data = (gejala or "").strip()
     if doc:
@@ -973,12 +1118,13 @@ def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Fo
     koreksi = (memory.recall_block(framework, data, session_id) or "") + books_note(framework)   # isolasi per-sesi + degradasi anggun
     try:
         llm = get_llm(provider, model, key)
-        hasil = _browser_safe_text(maybe_degrade_note(framework, bersihkan(agents.single_askep(llm, framework, data, konteks, koreksi, iq_text(tier)))))
+        raw_hasil = bersihkan(agents.single_askep(llm, framework, data, konteks, koreksi, iq_text(tier)))
+        hasil, clinical_meta = _validate_clinical_answer(raw_hasil, framework, _external_safe_text(data))
         SESI.add(session_id, "user", _external_safe_text(gejala.strip()) if gejala.strip() else "[analisis rekam medis terlampir]")
         SESI.add(session_id, "assistant", hasil)
         audit_log(session_id, "Analisis", "Success")
         metrics.record_job("analisis", tier, True, (len(data) + len(hasil)) // 4, doc=True)
-        return {"status": "sukses", "hasil": hasil}
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, clinical_meta)
     except Exception as e:  # noqa
         audit_log(session_id, "Analisis", "Fail")
         code, pesan = err_status(e)
