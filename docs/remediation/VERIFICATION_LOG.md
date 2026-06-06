@@ -378,3 +378,78 @@ Expanded dedicated Phase 3 test run:
 | Command | Exit Code | Summary |
 |---|---:|---|
 | `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 56 Phase 3 closure tests passed, with no skips after symlink escape was tested via resolved-path escape simulation. |
+
+## Phase 4 Browser Rendering Hardening - 2026-06-06
+
+No backend clinical logic, registry governance, upload parser isolation, authentication/session/MFA/rate-limit, Redis, audit-ledger design, OCR, embeddings, retrieval, prompt behavior, or external capability enablement was changed. Mermaid remains disabled by default through capability metadata.
+
+Read-only guidance practices adopted:
+
+| Source | Practice Adopted |
+|---|---|
+| `https://github.com/openai/skills` | Treat skills as guidance only; do not install broad collections or execute scripts. |
+| `https://github.com/trailofbits/skills` | Bottom-up sink mapping before mitigation. |
+| `https://github.com/OWASP/secure-agent-playbook` | Web sink review, output-control verification, and CSP/security-misconfiguration checks. |
+
+Implemented evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Mermaid strict mode | PASS | `frontend/components/ui/mermaid.tsx` uses `securityLevel: "strict"` and `flowchart.htmlLabels=false`. |
+| SVG sanitizer | PASS | `frontend/lib/svg-sanitize.ts` uses DOMPurify with SVG tag/attribute allowlists, forbidden active tags, size cap, and post-sanitize unsafe-content checks. |
+| Markdown hardening | PASS | `frontend/components/messages.tsx` removes `rehypeRaw`, disables Markdown images, and uses `toSafeHref` for links. |
+| Safe URL validation | PASS | `frontend/lib/safe-url.ts` blocks `javascript:`, mixed/encoded JavaScript schemes, `data:`, `vbscript:`, `file:`, `blob:`, `about:`, protocol-relative URLs, controls, and HTTPS credentials. |
+| Export boundary | PASS | `frontend/lib/export.ts` escapes title text, sanitizes export HTML with an explicit allowlist, removes unsafe hrefs, and adds `noopener noreferrer` to external export links. |
+| CSP hardening | PASS with residual | Production removes `unsafe-eval`, `img-src` no longer permits arbitrary `https:`, and `frame-src 'none'` was added. `unsafe-inline` remains documented as residual. |
+| Bypass scanner | PASS | `frontend/tests/browser-security.test.mjs` flags dangerous sinks/protocols and allows only documented Mermaid/export boundaries. |
+| Capability gating | PASS | `FEATURE_MERMAID_PATHWAY_RENDERING` remains disabled by default through existing capability fallback tests. |
+
+Dedicated Phase 4 test run:
+
+| Command | Exit Code | Summary |
+|---|---:|---|
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 9 Phase 4 browser-security tests passed; Node emitted experimental TypeScript type-stripping warnings only. |
+
+## Phase 4 Final Verification - 2026-06-06
+
+Browser-rendered QA status: DEFERRED. The Browser plugin was available and its skill was followed, but runtime setup failed with `failed to write kernel assets: The system cannot find the path specified`. A temporary Next dev server was started for local smoke verification only; `Invoke-WebRequest http://localhost:3000` returned 200 and the served HTML contained sandbox/default-disabled capability wording. The dev server and spawned Node listener were stopped after the smoke check. This HTTP smoke is not visual/browser-rendered QA and must not be claimed as such.
+
+| Command | Exit Code | Summary |
+|---|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 56 Phase 3 governance tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase2_clinical_validation_test -v` | 0 | 55 Phase 2 clinical-safety tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 27 Phase 1 privacy tests passed; expected sanitized-placeholder error-log output only. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_bypass_test -v` | 0 | 1 outbound bypass scanner test passed. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 156 tests passed across Phase 0B through Phase 3. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | Backend source compiled. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 4 fail-closed capability fallback tests passed. |
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 9 Phase 4 browser-security tests passed; Node emitted experimental TypeScript type-stripping warnings only. |
+| `npm --prefix frontend run lint` | 0 | ESLint returned 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 1 then 0 | Initial run failed on DOMPurify `WindowLike` type mismatch in `frontend/lib/export.ts`; sanitizer boundary cast was corrected and rerun with suppressed progress output exited 0. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | Final run clean; Git reported CRLF normalization warnings only. |
+
+Phase 4 remains a browser-rendering hardening checkpoint only. Mermaid, external LLM, EBP, and clinical photo analysis remain disabled by default. Gate A remains unmet.
+
+## Phase 4 Closure Review Evidence - 2026-06-06
+
+Closure review strengthened the existing Phase 4 evidence without enabling Mermaid or other external capabilities by default. The Bandit B310 hotfix is present as an ancestor of the Phase 4 branch, and the local Bandit baseline reports Medium 0 and High 0.
+
+Additional closure evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Sanitizer dependency boundary | PASS | One direct sanitizer dependency: `dompurify@3.4.8`, locked in `frontend/package-lock.json`. No second overlapping sanitizer was added. |
+| SVG adversarial coverage | PASS | `frontend/tests/browser-security.test.mjs` now covers script, event handlers, iframe/srcdoc, `foreignObject`, external references, encoded JavaScript protocol attempts, `xlink:href`, `xml:base`, nested SVG, unknown namespace, malformed active SVG, Mermaid callback-like links, and HTML-label-like `foreignObject`. |
+| Safe URL canonicalization | PASS | `toSafeHref` decodes protocol syntax before validation and rejects mixed-case, percent-encoded, double-encoded, leading-whitespace, control-character, credentialed HTTPS, protocol-relative, and unknown-scheme URLs. |
+| Markdown boundary | PASS | Tests verify `rehypeRaw` absence, disabled Markdown images, inert unsafe links, and external HTTPS link hygiene. |
+| Mermaid boundary | PASS | Tests verify `securityLevel: "strict"`, `htmlLabels=false`, sanitizer use, inert rejection fallback, and sanitizer-bound raw insertion only. |
+| Export boundary | PASS | Tests verify export HTML is re-sanitized, unsafe hrefs are removed, external links receive `noopener noreferrer`, active tags are forbidden, and export title is escaped. |
+| CSP | PASS with residual | Production removes `unsafe-eval`; required object/base/frame/form directives exist. Production CSP still permits `script-src 'unsafe-inline'` and `style-src 'unsafe-inline'`. Nonce/hash-based CSP architecture remains required before stronger browser-security or release-gate claims. |
+| Browser-rendered QA | DEFERRED | Previous Browser runtime attempt failed with `failed to write kernel assets: The system cannot find the path specified`; do not claim visual/browser QA passed until the runtime is available. |
+
+Dedicated closure test run:
+
+| Command | Exit Code | Summary |
+|---|---:|---|
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 11 Phase 4 browser-security tests passed; Node emitted experimental TypeScript type-stripping/module warnings only. |

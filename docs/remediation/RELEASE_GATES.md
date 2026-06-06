@@ -43,20 +43,30 @@ Completed Phase 3 controls:
 - Local ignored SDKI data and backups dry-run as fully quarantined, zero release-eligible, and zero authoritative.
 - Informal nursing feedback remains non-authoritative and cannot become an approval record.
 
+
+Completed Phase 4 controls:
+
+- Mermaid strict security mode and HTML labels disabled for explicitly capability-enabled rendering paths.
+- Mermaid SVG output is sanitized through a strict SVG allowlist before the only allowed `dangerouslySetInnerHTML` boundary.
+- Unsafe SVG payload categories including script, event handlers, `foreignObject`, iframe/srcdoc, JavaScript URLs, encoded JavaScript URL attempts, `data:text/html`, `xlink:href`, `xml:base`, nested SVG, unknown namespaces, external references, and style imports are covered by tests.
+- Markdown raw HTML parsing is disabled; Markdown images are disabled; Markdown links use a narrow safe-URL allowlist and external links use `noopener noreferrer`.
+- PDF/Word export HTML is sanitized again at the export boundary.
+- CSP removes production `unsafe-eval`, adds `frame-src 'none'`, preserves required browser hardening directives, and narrows `img-src`.
+- Frontend browser-security regression test and sink scanner are available locally.
 Remaining missing or failing controls:
 
 - PHI firewall completeness beyond tested canary classes and future integrations.
 - Formal clinical review workflow for real/local datasets, including reviewer identity, approval records, license review, durable active release storage, and operational rollback evidence.
 - Extraction-quality debugging and review for real `extraction_unverified`, `ocr_extracted`, and `llm_assisted` registry content.
-- Mermaid/SVG hardening.
+- Browser-rendered QA for Mermaid/SVG hardening remains deferred unless a working Browser runtime completes visual verification.
 - Upload isolation with killable parser process.
 - Dedicated validation-status UI and formal clinical/nursing validation of abstention wording.
 
-Gate A is still not passed until registry governance is connected to formally reviewed approved release artifacts, Mermaid/SVG hardening and upload isolation controls are implemented and verified, and Phase 1/2/3 controls are kept enforced in CI.
+Gate A is still not passed until registry governance is connected to formally reviewed approved release artifacts, upload isolation controls are implemented and verified, browser-rendered QA is completed or explicitly accepted as deferred for sandbox-only closure, and Phase 1/2/3/4 controls are kept enforced in CI.
 
 Phase 2 closure verification improves deterministic clinical validation, trusted evidence containment, machine-readable abstention status, and fail-fast registry-unavailable handling for tested paths. Informal nursing-perspective feedback received on 2026-06-06 says supporting 3S and 3N documents remain insufficiently concrete because extraction issues remain; this reinforces keeping extracted registries non-authoritative and fail-closed. It does not satisfy registry governance, Mermaid/SVG hardening, isolated upload parsing, formal clinical validation, compliance review, hospital readiness, or production readiness. Browser-rendered QA remains deferred.
 
-Phase 3 closure verification adds governance infrastructure and dry-run evidence. It does not provide formal clinical validation, license approval, active real registry releases, compliance review, hospital readiness, or production readiness.
+Phase 3 closure verification adds governance infrastructure and dry-run evidence. Phase 4 browser rendering hardening reduces tested XSS/browser-sink risk and restores the Bandit Medium 0/High 0 baseline on the synced branch, but production CSP still permits `script-src 'unsafe-inline'` and `style-src 'unsafe-inline'`; nonce/hash-based CSP architecture remains required before stronger browser-security or release-gate claims. Phase 4 does not provide formal clinical validation, license approval, active real registry releases, compliance review, hospital readiness, Gate A approval, or production readiness.
 
 ## Gate B - Controlled Pilot Candidate
 
