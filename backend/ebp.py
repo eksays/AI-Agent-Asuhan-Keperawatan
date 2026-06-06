@@ -18,7 +18,8 @@ import os, re, json, time, threading, datetime, urllib.parse, urllib.request
 try:
     from defusedxml.ElementTree import fromstring as _xml_fromstring   # parsing XML AMAN (anti XML-bomb / XXE)
 except Exception:   # fallback bila defusedxml belum terpasang (sumber XML sudah dibatasi host allowlist)
-    from xml.etree.ElementTree import fromstring as _xml_fromstring  # nosec
+    # B405: fallback only if defusedxml is unavailable; HTTP XML sources use host allowlists.
+    from xml.etree.ElementTree import fromstring as _xml_fromstring  # nosec B405
 from concurrent.futures import ThreadPoolExecutor
 from langchain_core.messages import SystemMessage, HumanMessage
 import crypto_store
