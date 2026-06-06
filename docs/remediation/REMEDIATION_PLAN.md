@@ -30,6 +30,7 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Implement abstention for insufficient evidence or unavailable approved registry data.
 
 4. **Phase 3 - Dataset Quarantine and Clinical Governance**
+   - Status: applied on 2026-06-06 for governance infrastructure, dry-run import, deterministic quarantine rules, release-manifest validation, and rollback abstraction using synthetic fixtures only.
    - Add registry lifecycle states and provenance metadata.
    - Quarantine invalid, LLM-assisted, OCR-derived, or unapproved entries.
    - Disable missing datasets instead of simulating them.
@@ -118,3 +119,37 @@ Operational follow-ups:
 - Consider a minimal validation-status UI later, but do not hide validation failures.
 - Preserve the recorded nursing-perspective feedback in `docs/remediation/NURSING_REVIEW_PHASE2.md`; treat it as design input, not formal clinical validation.
 - Gate A remains unmet until registry governance, Mermaid hardening, and isolated upload parsing are completed and verified.
+
+## Phase 3 Closure Notes
+
+Phase 3 verification uses synthetic fixtures and local dry-run metadata only. It does not import, modify, stage, or activate real local registry files.
+
+Implemented scope:
+
+- Added a governance model with explicit lifecycle states, mandatory provenance fields, quarantine reason codes, and dry-run import reporting.
+- Added importer source-path safety, registry import resource limits, canonical content hashing, and batch duplicate/conflict detection across explicit import files.
+- Added a versioned release manifest and rollback abstraction that rejects quarantined entries, missing approval records, unknown license status, implicit activation, incomplete 3S/3N component families, and duplicate release entries across component manifests.
+- Added synthetic registry governance fixtures and tests covering OCR-derived, LLM-assisted, extraction-unverified, under-review, malformed, duplicate, missing-provenance, unknown-license, hash-mismatch, deprecated, and manually quarantined entries.
+- Added safe local dry-run reports for ignored SDKI files. All local SDKI current/backups remain quarantined, not release eligible, and non-authoritative.
+
+Out of scope for Phase 3:
+
+- No real registry activation.
+- No formal clinical approval.
+- No license approval.
+- No OCR implementation or parser isolation changes.
+- No Mermaid hardening, authentication changes, retrieval changes, embeddings, or external capability enablement.
+- No Gate A claim yet.
+
+Closure review evidence added after conditional acceptance:
+
+- Explicit source file import is allowed; directory import excludes backups by default.
+- Traversal, absolute outside-root paths, symlink-resolved escapes, unsupported extensions, missing files, oversized files, deep JSON, excessive entries, and oversized fields fail closed.
+- Canonical hashes remain stable across harmless JSON formatting changes and change when stable clinical content changes.
+- Candidate and approved-for-activation release artifacts do not become active until explicit activation is called.
+- Complete 3S and 3N release families are required before framework activation can proceed.
+- API grounding remains unavailable unless a synthetic complete registry is injected in tests; Phase 2 validation still applies.
+
+Active release storage remains an in-memory test abstraction. A durable governed release store remains required before any controlled pilot claim.
+
+Next phase remains Phase 4 only after Phase 3 closure review. Phase 8 remains required for completing and validating governed clinical registries.

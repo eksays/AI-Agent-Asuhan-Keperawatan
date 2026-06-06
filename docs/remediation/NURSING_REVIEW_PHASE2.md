@@ -202,3 +202,17 @@ Reviewer questions:
 ## Reviewer Scope Reminder
 
 Please assess clarity, clinical usefulness of missing-data prompts, evidence-trace readability, and automation-bias risk. Do not approve registry content, code implementation, licensing status, or production deployment in this sheet.
+
+## Phase 3 Review Queue Placeholder
+
+| Item | Status |
+|---|---|
+| Formal clinical reviewer identity | pending |
+| License review | pending |
+| Registry provenance verification | pending |
+| Extraction-quality debugging | pending |
+| Approval record id | pending |
+| Release approval date | pending |
+| Authority | no approval granted by this placeholder |
+
+Phase 3 governance work must not convert the informal nursing-perspective feedback above into formal approval. No reviewer identity, approval record, approval date, license approval, clinical sign-off, hospital readiness, or production authorization is recorded here.

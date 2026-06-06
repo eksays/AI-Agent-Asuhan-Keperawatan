@@ -11,6 +11,7 @@ REGISTRY_STATES = {
     "draft",
     "ocr_extracted",
     "llm_assisted",
+    "extraction_unverified",
     "under_clinical_review",
     "approved",
     "deprecated",
