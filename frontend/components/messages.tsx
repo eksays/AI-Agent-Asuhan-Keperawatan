@@ -56,7 +56,7 @@ function normalizeMarkdown(s: string): string {
 }
 
 export function Messages() {
-  const { messages, send, setFeedback, submitFeedback, runOnTab, revealMsg } = useApp();
+  const { messages, send, setFeedback, submitFeedback, runOnTab, revealMsg, capabilityAvailable, capabilityReason } = useApp();
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   const regen = (id: string) => { const i = messages.findIndex((x) => x.id === id); for (let j = i - 1; j >= 0; j--) if (messages[j].role === "user") { send(messages[j].content, []); break; } };
@@ -77,7 +77,11 @@ export function Messages() {
             onFeedback={setFeedback} onCorrect={submitFeedback} onRegen={regen}
             onReveal={() => revealMsg(m.id)}
             onPathway={() => runOnTab("Pathway", "Buatkan clinical pathway berdasarkan asuhan keperawatan berikut:\n\n" + m.content)}
-            onEbp={() => runOnTab("Referensi", "Carikan jurnal EBP terbaru yang relevan untuk kasus/asuhan berikut:\n\n" + m.content)} />)}
+            onEbp={() => runOnTab("Referensi", "Carikan jurnal EBP terbaru yang relevan untuk kasus/asuhan berikut:\n\n" + m.content)}
+            pathwayEnabled={capabilityAvailable("mermaid_pathway_rendering")}
+            ebpEnabled={capabilityAvailable("ebp_external_search")}
+            pathwayReason={capabilityReason("mermaid_pathway_rendering")}
+            ebpReason={capabilityReason("ebp_external_search")} />)}
       <div ref={endRef} />
     </div>
   );
@@ -128,8 +132,8 @@ function useTypewriter(text: string, animate: boolean): string {
     const t = setInterval(() => setN((p) => (p >= tokens.length ? p : p + 2)), 24);
     return () => clearInterval(t);
   }, [tokens, n, animate]);
-  useEffect(() => { setN((p) => Math.min(p, tokens.length)); }, [tokens.length]);
-  return animate ? tokens.slice(0, n).join("") : text;
+  const visibleN = Math.min(n, tokens.length);
+  return animate ? tokens.slice(0, visibleN).join("") : text;
 }
 
 /* Jawaban AI: font serif + typing effect SEKALI. Setelah selesai (revealed) tampil utuh tanpa mengetik ulang. */
@@ -145,23 +149,24 @@ function BotContent({ content, done, revealed, onReveal, forwardRef }: { content
   );
 }
 
-function Bot({ m, onFeedback, onCorrect, onRegen, onReveal, onPathway, onEbp }: { m: Msg; onFeedback: (id: string, fb: "up" | "down") => void; onCorrect: (id: string, k: string) => void; onRegen: (id: string) => void; onReveal: () => void; onPathway: () => void; onEbp: () => void }) {
+function Bot({ m, onFeedback, onCorrect, onRegen, onReveal, onPathway, onEbp, pathwayEnabled, ebpEnabled, pathwayReason, ebpReason }: { m: Msg; onFeedback: (id: string, fb: "up" | "down") => void; onCorrect: (id: string, k: string) => void; onRegen: (id: string) => void; onReveal: () => void; onPathway: () => void; onEbp: () => void; pathwayEnabled: boolean; ebpEnabled: boolean; pathwayReason: string; ebpReason: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [cor, setCor] = useState("");
   const [busy, setBusy] = useState<"" | "pdf" | "word">("");
   const [copied, setCopied] = useState(false);
   // Tombol aksi (PDF/Word/Pathway/EBP) HANYA untuk Askep hasil generate — bukan obrolan biasa, sapaan, atau daftar fitur.
   const showActions = m.done && m.kind === "askep";
-  async function ex(k: "pdf" | "word") { const html = ref.current?.innerHTML; if (!html) return; setBusy(k); try { k === "pdf" ? await exportPDF(deriveTitle(m.content), html) : exportWord(deriveTitle(m.content), html); } finally { setBusy(""); } }
+  async function ex(k: "pdf" | "word") { const html = ref.current?.innerHTML; if (!html) return; setBusy(k); try { if (k === "pdf") await exportPDF(deriveTitle(m.content), html); else exportWord(deriveTitle(m.content), html); } finally { setBusy(""); } }
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full">
       <div className="min-w-0">
         {!m.content && !m.mermaid && m.status && m.status.length > 0 && <ThoughtProcess status={m.status} />}
         {m.content && <BotContent content={m.content} done={m.done} revealed={m.revealed} onReveal={onReveal} forwardRef={ref} />}
-        {m.done && m.mermaid && (
+        {m.done && m.mermaid && pathwayEnabled && (
           <div className="mt-3 overflow-x-auto rounded-2xl bg-white/[0.04] p-4"><Mermaid code={m.mermaid} /></div>
         )}
+        {m.done && m.mermaid && !pathwayEnabled && <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">{pathwayReason}</div>}
 
         {/* AI toolbar ikon — baris tersendiri, RATA KIRI, tepat di bawah teks */}
         {m.done && (
@@ -178,8 +183,8 @@ function Bot({ m, onFeedback, onCorrect, onRegen, onReveal, onPathway, onEbp }: 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button onClick={() => ex("pdf")} disabled={!!busy} className="glass inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[0.76rem] font-medium text-zinc-200 disabled:opacity-50">{busy === "pdf" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />} PDF</button>
             <button onClick={() => ex("word")} disabled={!!busy} className="glass inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[0.76rem] font-medium text-zinc-200 disabled:opacity-50"><FileText className="h-3.5 w-3.5" /> Word</button>
-            <button onClick={onPathway} className="glass rounded-full px-3 py-1.5 text-[0.78rem] text-zinc-200">Buat Clinical Pathway</button>
-            <button onClick={onEbp} className="glass rounded-full px-3 py-1.5 text-[0.78rem] text-zinc-200">Cari Jurnal EBP</button>
+            <button onClick={onPathway} disabled={!pathwayEnabled} title={pathwayEnabled ? undefined : pathwayReason} className={`glass rounded-full px-3 py-1.5 text-[0.78rem] text-zinc-200 ${!pathwayEnabled ? "cursor-not-allowed opacity-55" : ""}`}>Buat Clinical Pathway</button>
+            <button onClick={onEbp} disabled={!ebpEnabled} title={ebpEnabled ? undefined : ebpReason} className={`glass rounded-full px-3 py-1.5 text-[0.78rem] text-zinc-200 ${!ebpEnabled ? "cursor-not-allowed opacity-55" : ""}`}>Cari Jurnal EBP</button>
           </div>
         )}
         {m.done && m.feedback === "down" && !m.feedbackSent && (

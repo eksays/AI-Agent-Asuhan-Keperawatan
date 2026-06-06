@@ -1,5 +1,6 @@
 import type { ProviderId, Tier, Framework } from "./types";
 import { resolveModel } from "./types";
+import { FAIL_CLOSED_CAPABILITIES, normalizeCapabilities, type CapabilitiesResponse } from "./capabilities";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://127.0.0.1:8000";
 
@@ -20,6 +21,16 @@ async function postForm<T>(path: string, apiKey: string, fields: Record<string, 
 export async function getStatus(apiKey: string): Promise<StatusResponse> {
   const r = await fetch(`${API_BASE}/status`, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined });
   return (await r.json()) as StatusResponse;
+}
+
+export async function getCapabilities(): Promise<CapabilitiesResponse> {
+  try {
+    const r = await fetch(`${API_BASE}/capabilities`);
+    if (!r.ok) throw new Error(String(r.status));
+    return normalizeCapabilities((await r.json()) as Partial<CapabilitiesResponse>);
+  } catch {
+    return FAIL_CLOSED_CAPABILITIES;
+  }
 }
 
 /** Minta session_id kriptografis (CSPRNG) yang diterbitkan backend. Klien TIDAK membuat session_id sendiri. */

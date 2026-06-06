@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Menu, X, Plus, Settings, NotebookPen, Workflow, BookOpen,
+  Menu, Plus, Settings, NotebookPen, Workflow, BookOpen,
   Trash2, KeyRound, User, AlertTriangle, Upload, ImageIcon, Camera,
   ExternalLink, Pin, Pencil, Folder, MoreVertical, Search, PanelLeftClose, PanelLeft, LogOut, ChevronsUpDown,
 } from "lucide-react";
@@ -12,7 +12,6 @@ import { Banner } from "@/components/ui/banner";
 import { Messages } from "@/components/messages";
 import { ChatboxMaster } from "@/components/chatbox-master";
 import { CameraCapture } from "@/components/ui/claude-style-ai-input";
-import { API_BASE } from "@/lib/api";
 import { type Tab } from "@/lib/types";
 
 const TABS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -22,9 +21,13 @@ const TAB_ICON: Record<Tab, React.ComponentType<{ className?: string }>> = { Ana
 const ease = [0.16, 1, 0.3, 1] as const;
 
 function Typewriter({ text }: { text: string }) {
+  return <TypewriterText key={text} text={text} />;
+}
+
+function TypewriterText({ text }: { text: string }) {
   const [n, setN] = useState(0);
   const done = n >= text.length;
-  useEffect(() => { setN(0); const t = setInterval(() => setN((p) => { if (p >= text.length) { clearInterval(t); return p; } return p + 1; }), 35); return () => clearInterval(t); }, [text]);
+  useEffect(() => { const t = setInterval(() => setN((p) => { if (p >= text.length) { clearInterval(t); return p; } return p + 1; }), 35); return () => clearInterval(t); }, [text]);
   return <span>{text.slice(0, n)}{!done && <span className="ml-0.5 inline-block h-[1em] w-[2px] -translate-y-[2px] animate-pulse bg-zinc-400 align-middle" />}</span>;
 }
 
@@ -94,7 +97,7 @@ function ChatRowMenu({ sessionId }: { sessionId: string }) {
 }
 
 export function Dashboard() {
-  const { creds, tab, setTab, sessions, activeId, messages, newChat, selectSession, sidebarOpen, setSidebarOpen, settingsOpen, setSettingsOpen, send, banner, dismissBanner, logoutCreds, hardReset, changeName, deleteMyData } = useApp();
+  const { creds, tab, setTab, sessions, activeId, messages, newChat, selectSession, sidebarOpen, setSidebarOpen, settingsOpen, setSettingsOpen, send, banner, dismissBanner, logoutCreds, hardReset, changeName, deleteMyData, capabilityAvailable, capabilityReason } = useApp();
   const [editName, setEditName] = useState(false);
   const [nameDraft, setNameDraft] = useState(creds?.name ?? "");
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -104,6 +107,13 @@ export function Dashboard() {
   const name = creds?.name ?? "Perawat";
   const initials = name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   const empty = messages.length === 0;
+  const analysisReason = !capabilityAvailable("external_llm") ? capabilityReason("external_llm") : !capabilityAvailable("sdki_authoritative_grounding") ? capabilityReason("sdki_authoritative_grounding") : "";
+  const photoReason = capabilityReason("clinical_photo_analysis");
+  const pathwayReason = capabilityReason("mermaid_pathway_rendering");
+  const ebpReason = capabilityReason("ebp_external_search");
+  const tabReason = (id: Tab) => id === "Pathway" && !capabilityAvailable("mermaid_pathway_rendering") ? pathwayReason : id === "Referensi" && !capabilityAvailable("ebp_external_search") ? ebpReason : "";
+  const openDocumentUpload = () => { if (!analysisReason) docInputRef.current?.click(); };
+  const openGalleryUpload = () => { if (capabilityAvailable("clinical_photo_analysis")) galleryInputRef.current?.click(); };
 
   const Sidebar = (
     <div className="relative m-2 flex h-[calc(100dvh-1rem)] w-[340px] flex-col rounded-2xl border-r border-white/10 bg-[#1F1E1D]">
@@ -111,8 +121,8 @@ export function Dashboard() {
       <div className="p-3">
         <div className="mb-4 flex w-full items-center rounded-xl bg-white/5 p-1">
           {TABS.map(({ id, icon: Icon }) => (
-            <button key={id} onClick={() => setTab(id)}
-              className={`relative flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg py-1.5 text-sm transition-all ${tab === id ? "bg-white/10 font-medium text-white shadow-sm" : "text-zinc-400 hover:text-zinc-200"}`}>
+            <button key={id} disabled={!!tabReason(id) && tab !== id} title={tabReason(id) || undefined} onClick={() => !tabReason(id) && setTab(id)}
+              className={`relative flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg py-1.5 text-sm transition-all ${tabReason(id) && tab !== id ? "cursor-not-allowed text-zinc-600" : tab === id ? "bg-white/10 font-medium text-white shadow-sm" : "text-zinc-400 hover:text-zinc-200"}`}>
               <Icon className="h-4 w-4 flex-shrink-0" />
               <span>{id}</span>
             </button>
@@ -180,19 +190,27 @@ export function Dashboard() {
                     <p className="mt-3 text-[0.95rem] text-zinc-500">Ada yang bisa saya bantu?</p>
                   </div>
                   <div className="grid w-full gap-3 sm:grid-cols-3">
-                    {[
-                      { icon: Upload, title: "Unggah Dokumen", sub: "PDF, Word, atau teks rekam medis", onClick: () => docInputRef.current?.click() },
-                      { icon: ImageIcon, title: "Pilih dari Galeri", sub: "Foto rekam medis dari galeri", onClick: () => galleryInputRef.current?.click() },
-                      { icon: Camera, title: "Buka Kamera", sub: "Ambil gambar klinis langsung", onClick: () => setCameraOpen(true) },
-                    ].map(({ icon: Icon, title, sub, onClick }) => (
-                      <button key={title} onClick={onClick} className="glass flex flex-col items-start gap-3 rounded-2xl p-5 text-left">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><Icon className="h-5 w-5 text-zinc-200" /></span>
-                        <div>
-                          <div className="text-[0.92rem] font-semibold text-zinc-100">{title}</div>
-                          <div className="mt-0.5 text-[0.76rem] text-zinc-400">{sub}</div>
-                        </div>
-                      </button>
-                    ))}
+                    <button disabled={!!analysisReason} title={analysisReason || undefined} onClick={openDocumentUpload} className={`glass flex flex-col items-start gap-3 rounded-2xl p-5 text-left ${analysisReason ? "cursor-not-allowed opacity-55" : ""}`}>
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><Upload className="h-5 w-5 text-zinc-200" /></span>
+                      <div>
+                        <div className="text-[0.92rem] font-semibold text-zinc-100">Unggah Dokumen</div>
+                        <div className="mt-0.5 text-[0.76rem] text-zinc-400">{analysisReason || "PDF, Word, atau teks rekam medis"}</div>
+                      </div>
+                    </button>
+                    <button disabled={!capabilityAvailable("clinical_photo_analysis")} title={!capabilityAvailable("clinical_photo_analysis") ? photoReason : undefined} onClick={openGalleryUpload} className={`glass flex flex-col items-start gap-3 rounded-2xl p-5 text-left ${!capabilityAvailable("clinical_photo_analysis") ? "cursor-not-allowed opacity-55" : ""}`}>
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><ImageIcon className="h-5 w-5 text-zinc-200" /></span>
+                      <div>
+                        <div className="text-[0.92rem] font-semibold text-zinc-100">Pilih dari Galeri</div>
+                        <div className="mt-0.5 text-[0.76rem] text-zinc-400">{photoReason}</div>
+                      </div>
+                    </button>
+                    <button disabled={!capabilityAvailable("clinical_photo_analysis")} title={!capabilityAvailable("clinical_photo_analysis") ? photoReason : undefined} onClick={() => { if (capabilityAvailable("clinical_photo_analysis")) setCameraOpen(true); }} className={`glass flex flex-col items-start gap-3 rounded-2xl p-5 text-left ${!capabilityAvailable("clinical_photo_analysis") ? "cursor-not-allowed opacity-55" : ""}`}>
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><Camera className="h-5 w-5 text-zinc-200" /></span>
+                      <div>
+                        <div className="text-[0.92rem] font-semibold text-zinc-100">Buka Kamera</div>
+                        <div className="mt-0.5 text-[0.76rem] text-zinc-400">{photoReason}</div>
+                      </div>
+                    </button>
                   </div>
                 </div>
               ) : <Messages />)}
@@ -200,7 +218,7 @@ export function Dashboard() {
               {tab === "Pathway" && (empty ? (
                 <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-center px-6 py-10 text-center">
                   <h1 className="text-2xl font-semibold text-zinc-100 sm:text-3xl"><Typewriter text={`Halo, ${name}.`} /></h1>
-                  <p className="mt-2 text-[0.95rem] text-zinc-500">Jelaskan kasusnya, saya akan membuatkan clinical pathway (diagram alur) untuk Anda.</p>
+                  <p className="mt-2 text-[0.95rem] text-zinc-500">{capabilityAvailable("mermaid_pathway_rendering") ? "Jelaskan kasusnya, saya akan membuatkan clinical pathway (diagram alur) untuk Anda." : pathwayReason}</p>
                 </div>
               ) : <Messages />)}
 
@@ -208,9 +226,9 @@ export function Dashboard() {
                 <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-center px-6 py-10">
                   <div className="text-center">
                     <h1 className="font-serif text-2xl font-medium text-zinc-100 sm:text-3xl"><Typewriter text={`Halo, ${name}.`} /></h1>
-                    <p className="mt-2 text-[0.95rem] text-zinc-500">Ada yang bisa saya bantu dalam pencarian Evidence-Based Practice?</p>
+                    <p className="mt-2 text-[0.95rem] text-zinc-500">{capabilityAvailable("ebp_external_search") ? "Ada yang bisa saya bantu dalam pencarian Evidence-Based Practice?" : ebpReason}</p>
                   </div>
-                  <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                  {capabilityAvailable("ebp_external_search") && <div className="mt-8 grid gap-4 sm:grid-cols-2">
                     {[
                       { name: "PubMed", logo: "/pubmed.png", fallback: "/assets/pubmed.svg", desc: "Riset biomedis & life sciences — NLM.", href: "https://pubmed.ncbi.nlm.nih.gov" },
                       { name: "ScienceDirect", logo: "/sciencedirect.png", fallback: "/assets/sciencedirect.svg", desc: "Jurnal ilmiah peer-reviewed — Elsevier.", href: "https://www.sciencedirect.com" },
@@ -228,7 +246,7 @@ export function Dashboard() {
                         </div>
                       </a>
                     ))}
-                  </div>
+                  </div>}
                 </div>
               ) : <Messages />)}
             </motion.div>
@@ -242,9 +260,9 @@ export function Dashboard() {
       </main>
 
       {/* Beranda quick-actions: pemicu input file tersembunyi + modal kamera (getUserMedia) */}
-      <input ref={docInputRef} type="file" accept=".pdf,.doc,.docx,.txt,.md,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) send("", [f]); if (e.target) e.target.value = ""; }} />
-      <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) send("", [f]); if (e.target) e.target.value = ""; }} />
-      {cameraOpen && <CameraCapture onCapture={(f) => send("", [f])} onClose={() => setCameraOpen(false)} />}
+      <input ref={docInputRef} type="file" accept=".pdf,.doc,.docx,.txt,.md,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f && !analysisReason) send("", [f]); if (e.target) e.target.value = ""; }} />
+      <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f && capabilityAvailable("clinical_photo_analysis")) send("", [f]); if (e.target) e.target.value = ""; }} />
+      {cameraOpen && capabilityAvailable("clinical_photo_analysis") && <CameraCapture onCapture={(f) => send("", [f])} onClose={() => setCameraOpen(false)} />}
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="sm:max-w-md">

@@ -24,7 +24,7 @@ export function Welcome() {
       <HeroLanding
         title="CDSS AI Keperawatan"
         titleClassName="bg-gradient-to-b from-white via-white to-zinc-500 bg-clip-text text-transparent text-5xl font-bold tracking-tight sm:text-7xl"
-        description="Sistem Pendukung Keputusan Klinis Berbasis Standar 3S & 3N. Cepat, akurat, dan berbasis bukti klinis (EBP)."
+        description="Clinical sandbox untuk eksplorasi dokumentasi keperawatan. Saran AI wajib ditinjau perawat dan fitur yang belum terverifikasi dinonaktifkan."
         callToActions={[{ text: "Get Start", variant: "primary", onClick: () => setOpen(true), icon: <ArrowRight className="h-4 w-4" /> }]}
       />
 

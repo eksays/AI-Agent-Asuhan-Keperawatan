@@ -26,6 +26,7 @@ import re
 import json
 import time
 import pdfplumber
+from outbound_policy import DEFAULT_OUTBOUND_POLICY, wrap_llm
 
 # ============== KONFIGURASI (ISI BAGIAN INI) ==============
 PROVIDER = "claude"          # pilih: "gemini" | "openai" | "claude"
@@ -68,7 +69,7 @@ def panggil_llm(prompt):
         llm = ChatAnthropic(model="claude-haiku-4-5", temperature=0)
     else:
         raise ValueError("Provider tidak dikenal")
-    return llm.invoke(prompt).content
+    return wrap_llm(llm).invoke(prompt).content
 
 
 # ---------- Template prompt per tipe buku ----------
@@ -161,7 +162,8 @@ def ekstrak_buku(nama, file_pdf, tipe):
                 else:
                     print(f"  Hal {i+1}/{total}: -")
             except Exception as e:
-                print(f"  Hal {i+1}/{total}: ERROR {e}")
+                safe_error = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(str(e)).text
+                print(f"  Hal {i+1}/{total}: ERROR {safe_error}")
                 time.sleep(3)  # jeda kalau kena rate limit
             time.sleep(0.5)    # sopan ke API
 

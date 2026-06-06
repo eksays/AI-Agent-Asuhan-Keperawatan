@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
 import type { Credentials, Framework, ProviderId, Tab, Tier } from "@/lib/types";
 import { detectProvider } from "@/lib/types";
+import { FAIL_CLOSED_CAPABILITIES, capabilityReason as describeCapability, isCapabilityEnabled, type CapabilitiesResponse, type CapabilityKey } from "@/lib/capabilities";
 import * as api from "@/lib/api";
 
 export type Phase = "welcome" | "dashboard";
@@ -83,6 +84,9 @@ interface Ctx {
   framework: Framework; setFramework: (f: Framework) => void;
   tab: Tab; setTab: (t: Tab) => void;
   status: Record<string, string>;
+  capabilities: CapabilitiesResponse;
+  capabilityAvailable: (key: CapabilityKey) => boolean;
+  capabilityReason: (key: CapabilityKey) => string;
   sessions: Session[]; activeId: string | null; messages: Msg[]; sending: boolean;
   banner: BannerState; dismissBanner: () => void;
   sidebarOpen: boolean; setSidebarOpen: (b: boolean) => void;
@@ -113,6 +117,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [framework, setFramework] = useState<Framework>("3S");
   const [tab, setTab] = useState<Tab>("Analisis");
   const [status, setStatus] = useState<Record<string, string>>({});
+  const [capabilities, setCapabilities] = useState<CapabilitiesResponse>(FAIL_CLOSED_CAPABILITIES);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeByTab, setActiveByTab] = useState<Record<Tab, string | null>>(EMPTY_ACTIVE);
   const [sending, setSending] = useState(false);
@@ -125,7 +130,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const consentRef = useRef(false);
 
   // Kredensial HANYA di sessionStorage (per-tab, hilang saat tab ditutup) + bersihkan jejak lama di localStorage.
-  useEffect(() => { try { localStorage.removeItem(LS); const r = sessionStorage.getItem(LS); if (r) { const c = JSON.parse(r) as Credentials; if (c?.apiKey) { setCreds(c); setPhase("dashboard"); } } if (sessionStorage.getItem(CONSENT_KEY) === "1") { setConsentState(true); consentRef.current = true; } } catch {} }, []);
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      try {
+        localStorage.removeItem(LS);
+        const r = sessionStorage.getItem(LS);
+        if (r) {
+          const c = JSON.parse(r) as Credentials;
+          if (c?.apiKey) { setCreds(c); setPhase("dashboard"); }
+        }
+        if (sessionStorage.getItem(CONSENT_KEY) === "1") { setConsentState(true); consentRef.current = true; }
+      } catch {}
+    });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => { let active = true; api.getCapabilities().then((d) => { if (active) setCapabilities(d); }); return () => { active = false; }; }, []);
   useEffect(() => { if (phase === "dashboard" && creds?.apiKey) api.getStatus(creds.apiKey).then((d) => setStatus(d.detail || {})).catch(() => {}); }, [phase, creds]);
 
   const login = useCallback((name: string, key: string, remember: boolean, provider?: ProviderId) => {
@@ -157,12 +178,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [sessions]);
   const patch = useCallback((sid: string, mid: string, p: Partial<Msg>) => setSessions((prev) => prev.map((s) => s.id !== sid ? s : { ...s, messages: s.messages.map((m) => m.id === mid ? { ...m, ...p } : m) })), []);
   const revealMsg = useCallback((mid: string) => setSessions((prev) => prev.map((s) => s.messages.some((m) => m.id === mid && !m.revealed) ? { ...s, messages: s.messages.map((m) => m.id === mid ? { ...m, revealed: true } : m) } : s)), []);
+  const capabilityAvailable = useCallback((key: CapabilityKey) => isCapabilityEnabled(capabilities, key), [capabilities]);
+  const capabilityReason = useCallback((key: CapabilityKey) => describeCapability(capabilities, key), [capabilities]);
+  const blockCapability = useCallback((key: CapabilityKey) => {
+    setBanner({ show: true, title: "Capability disabled", description: capabilityReason(key) });
+  }, [capabilityReason]);
 
   const send = useCallback(async (text: string, files: File[], targetTab?: Tab, opts?: { suppressChip?: boolean }) => {
     if (!creds || (!text.trim() && files.length === 0)) return;
-    if (!consentRef.current) { setBanner({ show: true, title: "Persetujuan diperlukan", description: "Centang kotak persetujuan pemrosesan data terlebih dahulu sebelum mengirim." }); return; }
     const t = targetTab ?? tab;
     const agent = AGENT_OF[t];
+    const firstFile = files[0];
+    if (firstFile && (firstFile.type || "").startsWith("image/") && !capabilityAvailable("clinical_photo_analysis")) { blockCapability("clinical_photo_analysis"); return; }
+    if (agent === "pathway" && !capabilityAvailable("mermaid_pathway_rendering")) { blockCapability("mermaid_pathway_rendering"); return; }
+    if (agent === "referensi" && !capabilityAvailable("ebp_external_search")) { blockCapability("ebp_external_search"); return; }
+    if (!capabilityAvailable("external_llm")) { blockCapability("external_llm"); return; }
+    const frameworkCapability: CapabilityKey = framework === "3S" ? "sdki_authoritative_grounding" : "nanda";
+    if (!capabilityAvailable(frameworkCapability)) { blockCapability(frameworkCapability); return; }
+    if (!consentRef.current) { setBanner({ show: true, title: "Persetujuan diperlukan", description: "Centang kotak persetujuan pemrosesan data terlebih dahulu sebelum mengirim." }); return; }
     if (targetTab && targetTab !== tab) setTab(targetTab);   // jalankan & tampilkan di tab tujuan
     const sid = ensureSession(t);                            // session_id backend = id sesi tab ini
     // Balasan bebas (user mengetik) saat ada dokumen menunggu di sesi ini -> pakai dokumen itu (panel pemilih ikut tertutup karena pendingAction direset di bawah).
@@ -251,7 +284,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (/401|403|429|invalid|auth|exhaust|quota|habis/i.test(msg)) setBanner({ show: true, title: "Token API Habis", description: "Sistem tidak dapat memproses data" });
       patch(sid, botId, { content: "Maaf, sistem tidak dapat memproses permintaan saat ini. Pastikan backend berjalan dan kunci API valid.", status: undefined, done: true, revealed: true, kind: "umum" });
     } finally { setSending(false); }
-  }, [creds, tier, framework, tab, ensureSession, patch]);
+  }, [creds, tier, framework, tab, ensureSession, patch, capabilityAvailable, blockCapability]);
 
   // User memilih salah satu aksi pada PANEL PEMILIH (file-only) -> proses dokumen yang menunggu dengan instruksi terpilih.
   const chooseDocAction = useCallback((instruction: string) => {
@@ -277,5 +310,5 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const hardReset = useCallback(async () => { try { await Promise.all(Object.values(backendSidRef.current).map((b) => api.resetSesi(b))); } catch {} backendSidRef.current = {}; setSessions([]); setActiveByTab(EMPTY_ACTIVE); }, []);
   const deleteMyData = useCallback(async () => { try { await Promise.all(Object.values(backendSidRef.current).map((b) => api.deleteMyData(b))); } catch {} backendSidRef.current = {}; setSessions([]); setActiveByTab(EMPTY_ACTIVE); }, []);
 
-  return <C.Provider value={{ phase, creds, tier, setTier, framework, setFramework, tab, setTab, status, sessions, activeId, messages, sending, banner, dismissBanner: () => setBanner((b) => ({ ...b, show: false })), sidebarOpen, setSidebarOpen, settingsOpen, setSettingsOpen, login, changeName, logoutCreds, newChat, selectSession, send, pendingDocAction, chooseDocAction, dismissDocPicker, runOnTab, revealMsg, setFeedback, submitFeedback, hardReset, consent, setConsent, deleteMyData }}>{children}</C.Provider>;
+  return <C.Provider value={{ phase, creds, tier, setTier, framework, setFramework, tab, setTab, status, capabilities, capabilityAvailable, capabilityReason, sessions, activeId, messages, sending, banner, dismissBanner: () => setBanner((b) => ({ ...b, show: false })), sidebarOpen, setSidebarOpen, settingsOpen, setSettingsOpen, login, changeName, logoutCreds, newChat, selectSession, send, pendingDocAction, chooseDocAction, dismissDocPicker, runOnTab, revealMsg, setFeedback, submitFeedback, hardReset, consent, setConsent, deleteMyData }}>{children}</C.Provider>;
 }
