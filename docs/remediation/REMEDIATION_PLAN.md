@@ -4,7 +4,7 @@ Phase 0A preflight was performed on 2026-06-06 local time. No production logic w
 
 ## Current Verdict
 
-The repository is a clinical sandbox candidate only. Phase 0B fail-closed containment has been applied, but the system is not production-ready, not compliance-proven, and not safe for autonomous clinical decision-making.
+The repository is a clinical sandbox candidate only. Phase 0B fail-closed containment and Phase 1 outbound PHI containment have been applied for tested paths, but the system is not production-ready, not compliance-proven, and not safe for autonomous clinical decision-making.
 
 ## Proposed Phase Sequence
 
@@ -16,6 +16,7 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Add persistent UI sandbox notice.
 
 2. **Phase 1 - Outbound PHI Firewall and Safe Streaming**
+   - Status: applied on 2026-06-06 for tested outbound canary classes and active streaming path.
    - Centralize outbound data policy.
    - Route all model and EBP calls through one wrapper.
    - Sanitize before every external call, including review passes.
@@ -67,6 +68,8 @@ Changes made in Phase 0A are limited to `docs/remediation/*` evidence files. Pro
 
 Phase 0B changes are intentionally limited to truthful sandbox configuration, server-authoritative capability metadata, frontend fail-closed rendering, background harvester default-off configuration, and documentation corrections. Phase 0B does not implement the PHI firewall, typed clinical validation, registry quarantine, Mermaid hardening, isolated upload parsing, session hardening, MFA hardening, or production audit storage.
 
+Phase 1 changes are intentionally limited to outbound data policy, mocked-provider canary tests, EBP concept-query de-identification, safe LLM wrapping, safe output chunking for `/chat_stream`, and log/audit free-text sanitization. Phase 1 does not implement typed clinical schemas, registry quarantine, Mermaid hardening, isolated upload parsing, authentication hardening, MFA hardening, or production audit storage.
+
 ## Phase 0B Closure Notes
 
 Phase 0B closure verification confirmed fail-closed containment with default-disabled unsafe capabilities and network-deny tests for the relevant default route paths. This checkpoint remains rollback-friendly and does not stage ignored local registry data, runtime logs, generated caches, or local secrets.
@@ -77,3 +80,16 @@ Operational follow-ups:
 - Frontend lint remains at the Phase 0A baseline of 7 errors and 6 warnings; no unrelated lint cleanup is included in Phase 0B closure.
 - Node v24.0.2 is the current local runtime. Production/pilot runtime standardization should choose and document an approved Node LTS version.
 - Future `compileall` baseline commands should reliably exclude `backend/venv`, `__pycache__`, and generated artifacts. The requested closure command still traversed `backend/venv` despite the exclusion expression.
+
+## Phase 1 Closure Notes
+
+Phase 1 verification used mocks only. External capabilities remain disabled by default, and the unsafe local debug override remains a sandbox-only mechanism. The outbound policy detects the required canary categories and common Indonesian identifiers, but it is not complete PHI detection and must not be described as compliance-grade.
+
+Closure review expanded Phase 1 proof to include sanitized session-memory writes, follow-up history reuse, feedback/correction storage and recall, non-stream JSON routes, buffered streaming with split identifiers, clinical measurement preservation, adversarial synthetic identifiers, EBP query minimization, log/ledger/exception handling, utility-script error handling, and owned-backend bypass scanning.
+
+Operational follow-ups:
+
+- Add the Phase 1 canary suite to CI before any controlled pilot claim.
+- Keep external LLM and EBP disabled by default until later release gates also pass.
+- Proceed next to typed clinical schema validation and abstention; do not improve recall or completeness by forcing model output.
+- Maintain `docs/remediation/PHI_BOUNDARY_MAP.md` whenever outbound paths change.

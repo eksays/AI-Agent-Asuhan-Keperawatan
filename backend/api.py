@@ -32,6 +32,7 @@ from config import CONFIG, SAFETY_NOTICE, build_capabilities, capability_enabled
 import metrics
 import director
 import harvester
+from outbound_policy import DEFAULT_OUTBOUND_POLICY, OutboundPolicyError, wrap_llm
 from agents import bersihkan, bersihkan_stream, GUARDRAILS
 
 # ============================ KONFIGURASI ====================================
@@ -50,7 +51,8 @@ _last_hash = None
 def _log_err(e) -> None:
     """Catat detail teknis HANYA ke konsol server internal — jangan pernah dikirim ke user/LLM."""
     try:
-        print(f"[ERROR] {type(e).__name__}: {e}", file=sys.stderr)
+        safe = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(str(e)).text
+        print(f"[ERROR] {type(e).__name__}: {safe}", file=sys.stderr)
     except Exception:
         pass
 
@@ -92,8 +94,10 @@ def audit_log(session_id: str, action: str, status: str) -> None:
             prev = _ledger_last_hash()
             ts = datetime.datetime.utcnow().isoformat() + "Z"
             sid = _sid_tag(session_id)
-            cur = _entry_hash(prev, ts, sid, action, status)
-            rec = {"prev_hash": prev, "timestamp": ts, "sid": sid, "action": action, "status": status, "current_hash": cur}
+            safe_action = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(action).text
+            safe_status = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(status).text
+            cur = _entry_hash(prev, ts, sid, safe_action, safe_status)
+            rec = {"prev_hash": prev, "timestamp": ts, "sid": sid, "action": safe_action, "status": safe_status, "current_hash": cur}
             with open(_LEDGER, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             _last_hash = cur
@@ -380,7 +384,7 @@ SESI = SessionMemory()
 _LLM_SEED = 7   # benih tetap -> jawaban reproduktif antar-run (provider OpenAI-compatible). Claude/Gemini: temperature=0.
 
 
-def get_llm(provider: str, model: str, api_key: str, temperature: float = 0.0):
+def _create_raw_llm(provider: str, model: str, api_key: str, temperature: float = 0.0):
     provider = (provider or "").lower().strip()
     if provider == "claude":
         from langchain_anthropic import ChatAnthropic
@@ -395,6 +399,15 @@ def get_llm(provider: str, model: str, api_key: str, temperature: float = 0.0):
     if base:
         kw["base_url"] = base
     return ChatOpenAI(**kw)
+
+def get_llm(provider: str, model: str, api_key: str, temperature: float = 0.0):
+    return wrap_llm(_create_raw_llm(provider, model, api_key, temperature))
+
+def _external_safe_text(text: str) -> str:
+    return DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(text).text
+
+def _browser_safe_text(text: str) -> str:
+    return DEFAULT_OUTBOUND_POLICY.sanitize_for_browser(phi.sanitize_phi(text or "")).text
 
 
 def resolve_key(authorization: Optional[str], api_key_form: str) -> str:
@@ -412,6 +425,8 @@ def resolve_key(authorization: Optional[str], api_key_form: str) -> str:
 
 def err_status(e: Exception) -> Tuple[int, str]:
     _log_err(e)   # detail teknis -> konsol server saja; user hanya menerima pesan generik di bawah
+    if isinstance(e, OutboundPolicyError):
+        return 400, "Data mengandung identifier berisiko tinggi dan tidak dapat dikirim keluar aplikasi."
     s = str(e).lower()
     if any(x in s for x in ("401", "unauthorized", "invalid api key", "invalid_api_key",
                             "authentication", "permission", "api key", "no auth", "x-api-key")):
@@ -630,8 +645,9 @@ def _note_access_failure(path: str, status: int) -> None:
             _fail_times.popleft()
         count = len(_fail_times)
     if count > _INCIDENT_THRESHOLD:
+        safe_path = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(path).text
         print(f"[SECURITY-INCIDENT][ERROR] POTENSI INSIDEN KEAMANAN: {count} request gagal (401/403/409) dalam "
-              f"{_INCIDENT_WINDOW} detik terakhir (terakhir: {path} -> {status}). Segera periksa; UU PDP mewajibkan "
+              f"{_INCIDENT_WINDOW} detik terakhir (terakhir: {safe_path} -> {status}). Segera periksa; UU PDP mewajibkan "
               f"pelaporan 3x24 jam bila terbukti kebocoran.", file=sys.stderr)
 
 
@@ -639,7 +655,8 @@ def _note_access_failure(path: str, status: int) -> None:
 async def security_monitor(request, call_next):
     path = request.url.path
     if (".." in path) or ("%2e" in path.lower()) or ("%2f" in path.lower()):   # percobaan manipulasi path
-        print(f"[SECURITY-INCIDENT][ERROR] POTENSI INSIDEN KEAMANAN: percobaan manipulasi path terdeteksi: {path}", file=sys.stderr)
+        safe_path = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(path).text
+        print(f"[SECURITY-INCIDENT][ERROR] POTENSI INSIDEN KEAMANAN: percobaan manipulasi path terdeteksi: {safe_path}", file=sys.stderr)
     _t0 = time.time()
     response = await call_next(request)
     metrics.record_request(response.status_code, (time.time() - _t0) * 1000.0)   # telemetri agregat
@@ -659,7 +676,8 @@ _RASP_RE = re.compile(
 async def rasp_filter(request, call_next):
     target = (request.url.path or "") + "?" + (request.url.query or "")
     if _RASP_RE.search(target):
-        print(f"[SECURITY-INCIDENT][ERROR] RASP memblokir pola berbahaya pada URL: {request.url.path}", file=sys.stderr)
+        safe_path = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(request.url.path).text
+        print(f"[SECURITY-INCIDENT][ERROR] RASP memblokir pola berbahaya pada URL: {safe_path}", file=sys.stderr)
         return JSONResponse({"status": "error", "pesan": "Permintaan ditolak."}, status_code=403)
     return await call_next(request)
 
@@ -786,13 +804,14 @@ def chat(provider: str = Form(...), api_key: str = Form(""), model: str = Form(.
         return {"status": "sukses", "jawaban": REF_REFUSAL}
     try:
         llm = get_llm(provider, model, key)
-        extra = ebp.retrieve_context(llm, pertanyaan) if (agent or "").lower() == "referensi" else ""   # jurnal NYATA
+        safe_question = _external_safe_text(pertanyaan)
+        extra = ebp.retrieve_context(llm, safe_question) if (agent or "").lower() == "referensi" else ""   # jurnal NYATA
         msgs = build_messages(framework, session_id, pertanyaan, tier, agent, extra)
-        ans = agents.orchestrate_answer(llm, msgs, pertanyaan, tier)   # kedalaman sesuai tier (flash/medium/pro)
+        ans = agents.orchestrate_answer(llm, msgs, safe_question, tier)   # kedalaman sesuai tier (flash/medium/pro)
         if (agent or "analisis").lower() == "analisis":
             ans = maybe_degrade_note(framework, ans)
-        ans = phi.sanitize_phi(ans)   # redaksi PII pada OUTPUT (jaring pengaman akhir)
-        SESI.add(session_id, "user", pertanyaan)
+        ans = _browser_safe_text(ans)   # redaksi PII pada OUTPUT (jaring pengaman akhir)
+        SESI.add(session_id, "user", safe_question)
         SESI.add(session_id, "assistant", ans)
         metrics.record_job(agent, tier, True, (len(pertanyaan) + len(ans)) // 4)
         return {"status": "sukses", "jawaban": ans}
@@ -825,52 +844,24 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
     casual = is_casual(pertanyaan)                  # sapaan/obrolan singkat -> jalur stream cepat (1 panggilan), tanpa orkestrasi/EBP
     try:
         llm = get_llm(provider, model, key)
-        extra = ebp.retrieve_context(llm, pertanyaan) if ((agent or "").lower() == "referensi" and not casual) else ""   # jurnal NYATA
+        safe_question = _external_safe_text(pertanyaan)
+        extra = ebp.retrieve_context(llm, safe_question) if ((agent or "").lower() == "referensi" and not casual) else ""   # jurnal NYATA
         msgs = build_messages(framework, session_id, pertanyaan, tier, agent, extra)
-        if tier_l == "flash" or casual:             # FLASH atau sapaan: 1 panggilan, streaming token langsung (tercepat)
-            precomputed = None
-            it = llm.stream(msgs)
-            try:
-                first = next(it)
-            except StopIteration:
-                first = None
-        else:                                       # MEDIUM/PRO: orkestrasi (draft + audit/swarm) lalu dipancarkan
-            it = first = None
-            precomputed = agents.orchestrate_answer(llm, msgs, pertanyaan, tier_l)
+        effective_tier = "flash" if casual else tier_l
+        precomputed = agents.orchestrate_answer(llm, msgs, safe_question, effective_tier)
+        if (agent or "analisis").lower() == "analisis":
+            precomputed = maybe_degrade_note(framework, precomputed)
+        precomputed = _browser_safe_text(precomputed)
     except Exception as e:  # noqa
         code, pesan = err_status(e)
         return JSONResponse({"status": "error", "pesan": pesan}, status_code=code)
 
     def gen():
-        acc: list[str] = []
-        if tier_l == "flash" or casual:
-            def emit(chunk) -> str:
-                c = bersihkan_stream(getattr(chunk, "content", "") or "")   # JANGAN strip per-token
-                if c:
-                    acc.append(c)
-                return c
-            if first is not None:
-                c = emit(first)
-                if c:
-                    yield c
-            try:
-                for ch in it:
-                    c = emit(ch)
-                    if c:
-                        yield c
-            except Exception:  # noqa  (stream terputus di tengah)
-                pass
-        else:
-            text = precomputed or ""               # jawaban final hasil multi-agen -> dipancarkan bertahap
-            acc.append(text)
-            for i in range(0, len(text), 120):
-                yield text[i:i + 120]
-        full = "".join(acc)
-        if (agent or "analisis").lower() == "analisis" and (not askep_refs_available(framework)) and ("Informasi Sistem" not in full) and _ASKEP_RE.search(full):
-            yield DEGRADE_NOTE          # notifikasi degradasi di akhir
-            full += DEGRADE_NOTE
-        SESI.add(session_id, "user", pertanyaan)
-        SESI.add(session_id, "assistant", phi.sanitize_phi(bersihkan(full)))
+        full = precomputed or ""
+        for i in range(0, len(full), 120):
+            yield bersihkan_stream(full[i:i + 120])
+        SESI.add(session_id, "user", safe_question)
+        SESI.add(session_id, "assistant", _browser_safe_text(bersihkan(full)))
         metrics.record_job(agent, tier, True, (len(pertanyaan) + len(full)) // 4)
 
     # Header anti-buffering agar token mengalir real-time (tanpa ditahan proxy/uvicorn).
@@ -917,20 +908,21 @@ def analisis_multi(provider: str = Form(...), api_key: str = Form(""), model: st
         return {"status": "sukses", "hasil": REF_REFUSAL}
     # File diunggah TANPA teks -> interaktif: simpan dokumen ke memori lalu tanya (tidak auto-analisis).
     if not cmd:
-        SESI.add(session_id, "user", "[Dokumen rekam medis diunggah]" + doc_block)
+        SESI.add(session_id, "user", _external_safe_text("[Dokumen rekam medis diunggah]" + doc_block))
         SESI.add(session_id, "assistant", DOC_RECEIVED)
         audit_log(session_id, "Upload", "Success")
         return {"status": "sukses", "hasil": DOC_RECEIVED}
     try:
         llm = get_llm(provider, model, key)
-        extra = ebp.retrieve_context(llm, cmd + doc_block) if (agent or "").lower() == "referensi" else ""
+        safe_case = _external_safe_text(cmd + doc_block)
+        extra = ebp.retrieve_context(llm, safe_case) if (agent or "").lower() == "referensi" else ""
         # file + perintah spesifik; kedalaman multi-agen mengikuti tier (flash/medium/pro).
         msgs = build_messages(framework, session_id, cmd + doc_block, tier, agent, extra)
-        hasil = agents.orchestrate_answer(llm, msgs, cmd + doc_block, tier)
+        hasil = agents.orchestrate_answer(llm, msgs, safe_case, tier)
         if (agent or "analisis").lower() == "analisis":
             hasil = maybe_degrade_note(framework, hasil)
-        hasil = phi.sanitize_phi(hasil)   # redaksi PII pada OUTPUT
-        SESI.add(session_id, "user", cmd)
+        hasil = _browser_safe_text(hasil)   # redaksi PII pada OUTPUT
+        SESI.add(session_id, "user", _external_safe_text(cmd))
         SESI.add(session_id, "assistant", hasil)
         audit_log(session_id, "Analisis", "Success")
         metrics.record_job(agent, tier, True, (len(cmd) + len(hasil)) // 4, doc=True)
@@ -981,8 +973,8 @@ def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Fo
     koreksi = (memory.recall_block(framework, data, session_id) or "") + books_note(framework)   # isolasi per-sesi + degradasi anggun
     try:
         llm = get_llm(provider, model, key)
-        hasil = phi.sanitize_phi(maybe_degrade_note(framework, bersihkan(agents.single_askep(llm, framework, data, konteks, koreksi, iq_text(tier)))))
-        SESI.add(session_id, "user", gejala.strip() or "[analisis rekam medis terlampir]")
+        hasil = _browser_safe_text(maybe_degrade_note(framework, bersihkan(agents.single_askep(llm, framework, data, konteks, koreksi, iq_text(tier)))))
+        SESI.add(session_id, "user", _external_safe_text(gejala.strip()) if gejala.strip() else "[analisis rekam medis terlampir]")
         SESI.add(session_id, "assistant", hasil)
         audit_log(session_id, "Analisis", "Success")
         metrics.record_job("analisis", tier, True, (len(data) + len(hasil)) // 4, doc=True)
@@ -1016,7 +1008,7 @@ def pathway_ep(provider: str = Form(...), api_key: str = Form(""), model: str = 
         return {"status": "error", "pesan": "Tidak ada konteks untuk membuat pathway.", "mermaid": ""}
     try:
         llm = get_llm(provider, model, key)
-        code = extract_mermaid(agents.gen_pathway(llm, framework, konteks))
+        code = extract_mermaid(_browser_safe_text(agents.gen_pathway(llm, framework, konteks)))
         return {"status": "sukses", "mermaid": code}
     except Exception as e:  # noqa
         c, pesan = err_status(e)
@@ -1071,7 +1063,14 @@ def feedback(framework: str = Form("3S"), session_id: str = Form(""), pertanyaan
              jawaban: str = Form(""), rating: str = Form("up"), koreksi: str = Form("")):
     if not SESI.valid(session_id):
         return _session_invalid()
-    memory.store_feedback(framework, pertanyaan, jawaban, rating, koreksi, session_id)   # diikat ke sesi (anti poisoning lintas-user)
+    memory.store_feedback(
+        framework,
+        _external_safe_text(pertanyaan),
+        _browser_safe_text(jawaban),
+        rating,
+        _external_safe_text(koreksi),
+        session_id,
+    )   # diikat ke sesi (anti poisoning lintas-user)
     audit_log(session_id, "Feedback", "Success")
     return {"status": "ok", **memory.stats()}
 

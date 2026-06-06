@@ -37,6 +37,10 @@ Server capability metadata now marks SDKI authoritative grounding, SLKI, SIKI, N
 
 Raw clinical datasets, licensed reference extracts, OCR outputs, or LLM-populated registry files must not be committed casually. Future registry work must use the governed import, quarantine, clinical review, versioned release, and rollback process planned for Phase 3 and Phase 8.
 
+## Phase 1 Position
+
+Phase 1 adds outbound sanitization to the LLM-assisted registry extraction/population utilities, but this does not approve or validate any generated registry content. LLM-assisted reference data remains non-authoritative until schema validation, provenance, quarantine, clinical review, versioned release, and rollback controls exist.
+
 Required controls for future phases:
 
 - Data lifecycle states: `draft`, `ocr_extracted`, `llm_assisted`, `under_clinical_review`, `approved`, `deprecated`, `quarantined`.

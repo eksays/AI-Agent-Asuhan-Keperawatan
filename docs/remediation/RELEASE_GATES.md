@@ -12,18 +12,28 @@ Completed Phase 0B controls:
 - Background harvester is default-off.
 - Local audit wording is corrected to tamper-evident local ledger, not WORM.
 
+Completed Phase 1 controls:
+
+- Deterministic outbound PHI policy for tested canary identifiers.
+- Safe LLM wrapper for active API model calls.
+- De-identified concept-query path for EBP retrieval.
+- `/chat_stream` precomputes, sanitizes, then chunks output instead of streaming raw tokens.
+- Console/audit free-text fields are sanitized before logging.
+- Session memory, feedback memory, correction recall, non-stream JSON routes, and reviewed utility-script payload/error paths are covered by synthetic canary tests.
+- Owned backend source has a Phase 1 outbound bypass scanner with a narrow allowlist.
+
 Remaining missing or failing controls:
 
-- PHI firewall before every external call.
-- Safe streaming after full sanitization and validation.
+- PHI firewall completeness beyond tested canary classes and future integrations.
+- Safe streaming with typed clinical validation.
 - Basic typed clinical schema validation.
 - Registry quarantine.
 - Mermaid/SVG hardening.
 - Upload isolation with killable parser process.
 
-Gate A is still not passed until Phase 1, Phase 2, Phase 4, and Phase 5 controls are implemented and verified.
+Gate A is still not passed until Phase 2, Phase 4, and Phase 5 controls are implemented and verified, and Phase 1 controls are kept enforced in CI.
 
-Phase 0B closure verification confirms fail-closed default containment only. It does not satisfy Gate A requirements for PHI firewalling, safe streaming, deterministic clinical validation, registry quarantine, Mermaid/SVG hardening, or isolated upload parsing. Browser-rendered QA remains deferred, and frontend lint remains failing at the Phase 0A baseline.
+Phase 1 closure verification improves outbound PHI containment and streaming behavior for tested paths. It does not satisfy Gate A requirements for deterministic clinical validation, registry quarantine, Mermaid/SVG hardening, or isolated upload parsing. Browser-rendered QA remains deferred, and frontend lint remains failing at the Phase 0A baseline.
 
 ## Gate B - Controlled Pilot Candidate
 

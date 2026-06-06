@@ -114,3 +114,63 @@ Read-only inspection was performed for the requested repositories. No third-part
 |---|---:|---:|---:|
 | Errors | 7 | 7 | 0 by count; current errors are existing React `set-state-in-effect` / `refs` findings. |
 | Warnings | 6 | 6 | 0 by count; warnings include pre-existing unused imports/no-img/no-unused-expression findings. |
+
+## Phase 1 Verification - 2026-06-06
+
+All provider, EBP, and network checks used mocks. No real external LLM, EBP, PubMed, Europe PMC, Semantic Scholar, Unpaywall, or Anthropic endpoint was contacted for Phase 1 verification.
+
+| Command | Result | Notes |
+|---|---|---|
+| `git tag --list "phase-0b-*"` | PASS | Local rollback tag `phase-0b-sandbox-checkpoint` exists. |
+| `git show --no-patch --oneline phase-0b-sandbox-checkpoint` | PASS | Annotated tag points to `cef16b1 feat(safety): add fail-closed clinical sandbox mode`. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | PASS | 10 Phase 1 tests passed. Covers policy redaction, fail-closed detection, SafeLLM boundary, EBP de-identification, mocked Anthropic script payload sanitization, safe streaming chunks, no direct API `.stream(` path, audit-ledger canary sanitization, and console error-log canary sanitization. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | PASS | 27 tests passed: Phase 0B containment plus Phase 1 outbound policy tests. FastAPI TestClient emitted the existing Starlette/httpx deprecation warning. |
+| `backend\venv\Scripts\python.exe -m compileall backend -q` | PASS | Python sources compiled. Command still traverses ignored `backend/venv` unless excluded by a better future command. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | PASS | 4 frontend capability fallback tests passed. |
+| `npm --prefix frontend run build` | PASS | Exit code captured as 0 through `npm.cmd` wrapper after direct shell output was unreliable. |
+| `npm --prefix frontend run lint` | FAIL | 13 problems remain: 7 errors and 6 warnings, matching the Phase 0B baseline category/count. Not remediated in Phase 1. |
+| `npm --prefix frontend audit --audit-level=moderate` | PASS | `found 0 vulnerabilities`. |
+| `git diff --check` | PASS | No whitespace errors. Git reported CRLF normalization warnings for edited backend files. |
+| `git status --short` | PARTIAL | Expected Phase 1 edits plus pre-existing untracked `AUDIT.md`; no commit was created. |
+
+## Phase 1 Boundary Evidence
+
+| Boundary | Evidence | Residual Limit |
+|---|---|---|
+| External LLM calls | `api.get_llm()` now returns `SafeLLM`, and tests assert raw canaries never reach the mocked raw LLM. | This is a deterministic canary policy, not perfect PHI detection or compliance proof. |
+| Streaming | `/chat_stream` now precomputes the full response, sanitizes it, and then chunks sanitized text. Phase 1 test asserts mocked raw `.stream()` is not called and response chunks exclude canaries. | Typed clinical schema validation is still absent until Phase 2. |
+| EBP query path | `ebp.retrieve_context()` derives de-identified concept text before query-generation LLM and before mocked search retrieval. | External EBP remains disabled by default; literature quality and citation governance remain later-phase work. |
+| Audit/log fields | `_log_err()` and `audit_log()` sanitize free-text error/action/status fields. Test writes canary action/status to a temporary ledger and verifies raw canaries are absent. | The ledger remains a local tamper-evident hash chain only; no HMAC/external append-only storage yet. |
+| Utility scripts | `backend/ekstraksi.py` invokes LLM through `wrap_llm`; `backend/scripts/populate_sdki.py` sanitizes mocked Anthropic payload text before HTTP request body construction. | These utilities still require separate data governance and clinical review before any generated registry content is authoritative. |
+
+## Phase 1 Closure Review - 2026-06-06
+
+No real external LLM, EBP, PubMed, Europe PMC, Semantic Scholar, Unpaywall, Anthropic, or other network provider was contacted. All provider/network assertions used mocks.
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 1727 ms | 27 tests passed. Covers memory/history/feedback/corrections, JSON routes, buffered streaming split fragments, measurement preservation, adversarial identifiers, EBP minimization, logs/ledger/exceptions, and utility scripts. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_bypass_test -v` | 0 | 691 ms | 1 bypass allowlist test passed. PowerShell reported NativeCommandError formatting for stderr text, but process exit code was 0. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 2321 ms | 45 tests passed. Includes Phase 0B default preservation plus Phase 1 closure tests. |
+| `python -m compileall backend -q` | 0 | 6096 ms | Python sources compiled. Command still traverses ignored `backend/venv`; future baseline should use a source-only compile command. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 244 ms | 4 tests passed. |
+| `npm --prefix frontend run build` | 0 | 10828 ms | Build exit code captured via `npm.cmd`; progress output tail only showed TypeScript completion due terminal progress formatting. |
+| `npm --prefix frontend run lint` | 1 | 11962 ms | 13 existing frontend lint findings: 7 errors and 6 warnings, same Phase 0B baseline count. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 2161 ms | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | 145 ms | No whitespace errors. Git reported CRLF normalization warnings for edited files. |
+
+## Phase 1 Closure Evidence
+
+| Area | Result | Evidence |
+|---|---|---|
+| Session memory | PASS | Raw synthetic PHI is sanitized before `SESI.add` for `/chat`, `/chat_stream`, `/analisis`, and `/analisis_multi`; same-session follow-up test verifies history reuse does not reintroduce raw PHI. |
+| Feedback memory and corrections | PASS | `memory.store_feedback` sanitizes question/answer/correction before encrypted storage; `recall_block` sanitizes recalled correction text before prompt assembly. |
+| Non-stream JSON routes | PASS | Mocked `/chat`, `/analisis`, `/analisis_multi`, provider-error JSON, and explicitly enabled `/pathway` tests assert raw canaries are absent from responses and provider prompts. |
+| Buffered streaming | PASS | `/chat_stream` test uses provider output with split name, split NIK, parenthesized phone, and clinical measurements; raw fragments are absent after buffered sanitization. |
+| Clinical measurement preservation | PASS | Table-driven test preserves TD, RR, SpO2, temperature, pulse, GCS, Hb, glucose, Na, K, BB, TB, and registry terms/codes. |
+| Adversarial detection | PASS | Table-driven test covers labels, casing, whitespace, multiline, comma-separated identifiers, mid-sentence identifiers, history/provider/feedback/correction/upload echoes. |
+| EBP minimization | PASS | Case is locally reduced to safe concept text before query-generation LLM; mocked external search receives bounded de-identified query. |
+| Logs, ledger, exceptions, utilities | PASS | Tests cover console error log, incident print helper, audit action/status, provider exception JSON, EBP LLM error fallback, `ekstraksi.py` error print, and `populate_sdki.py` payload/error handling. |
+| Bypass detection | PASS | Owned backend source scanner excludes venv/cache/tests and requires an explicit allowlist for `.invoke`, streaming, `urllib`, provider constructors, and HTTP request primitives. |
+
+Known limitations remain documented in `docs/remediation/PHI_BOUNDARY_MAP.md`: this is regex/canary containment, not complete de-identification, compliance certification, clinical validation, or production readiness.

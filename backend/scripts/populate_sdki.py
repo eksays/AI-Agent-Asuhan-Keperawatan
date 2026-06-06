@@ -24,6 +24,9 @@ from pathlib import Path
 from typing import Any
 from urllib import error, request
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from outbound_policy import DEFAULT_OUTBOUND_POLICY  # noqa: E402
+
 
 API_URL = "https://api.anthropic.com/v1/messages"
 DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
@@ -172,12 +175,14 @@ def anthropic_messages(
     max_tokens: int,
     timeout: int,
 ) -> str:
+    safe_system = DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(system).text
+    safe_user = DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(user).text
     payload = {
         "model": model,
         "max_tokens": max_tokens,
         "temperature": 0,
-        "system": system,
-        "messages": [{"role": "user", "content": user}],
+        "system": safe_system,
+        "messages": [{"role": "user", "content": safe_user}],
     }
     body = json.dumps(payload).encode("utf-8")
     req = request.Request(
@@ -221,11 +226,12 @@ def call_with_retries(
             )
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            last_error = RuntimeError(f"HTTP {exc.code}: {detail}")
+            safe_detail = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(detail).text
+            last_error = RuntimeError(f"HTTP {exc.code}: {safe_detail}")
             if exc.code not in RETRY_STATUSES or attempt == attempts:
                 break
         except Exception as exc:  # network/parser errors are retryable for this one-shot job
-            last_error = exc
+            last_error = RuntimeError(DEFAULT_OUTBOUND_POLICY.sanitize_for_log(str(exc)).text)
             if attempt == attempts:
                 break
 
@@ -451,7 +457,7 @@ def main() -> int:
             report["batches"].append({"batch": batch_number, "codes": codes, "status": "filled"})
             write_report(report_path, report)
         except Exception as exc:
-            message = str(exc)
+            message = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(str(exc)).text
             print(f"[ERROR] Batch {batch_number} failed: {message}", file=sys.stderr)
             report["failed"].append({"batch": batch_number, "codes": codes, "error": message})
             report["batches"].append({"batch": batch_number, "codes": codes, "status": "failed"})

@@ -30,9 +30,9 @@ Tanggal lahir: 1 Januari 1990
 - The medium review pass reintroduced the raw synthetic canary through the `human` argument even after the first generated message was partially sanitized.
 - The deterministic sanitizer left several synthetic identifier categories unsanitized.
 
-## Phase 1 Expected Regression Tests
+## Phase 1 Closure Regression Status
 
-- No synthetic canary identifier reaches any mocked external provider.
-- No synthetic canary identifier appears in SSE chunks.
-- No synthetic canary identifier appears in logs or audit records.
-- Tests fail if future code bypasses the centralized outbound data policy.
+- `backend.tests.phase1_outbound_policy_test` verifies no synthetic canary identifier reaches mocked external providers, EBP retrieval, browser JSON responses, buffered stream chunks, session history, feedback/correction recall, console logs, audit records, utility-script request bodies, or utility-script error output.
+- `backend.tests.phase1_outbound_bypass_test` scans owned backend source and fails if new outbound execution primitives appear outside the reviewed allowlist.
+- The original Phase 0A leak paths are mitigated for tested synthetic cases by `OutboundDataPolicy`, `SafeLLM`, de-identified EBP concept queries, sanitized memory writes, and buffered streaming.
+- This does not prove perfect de-identification or compliance. Known limitations and untested paths are maintained in `docs/remediation/PHI_BOUNDARY_MAP.md`.

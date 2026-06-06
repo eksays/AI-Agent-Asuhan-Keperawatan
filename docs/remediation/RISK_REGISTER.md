@@ -42,3 +42,24 @@ Commit reference for Phase 0A documentation evidence: pending.
 | Lint baseline unresolved | Medium | Lint remains 7 errors and 6 warnings, same count as Phase 0A. | Address in quality/CI gate work without mixing into Phase 0B. |
 | Node runtime standardization | Medium | Local tests used Node v24.0.2, not an explicitly approved production/pilot runtime. | Select and document approved Node LTS runtime. |
 | Compileall exclusion reliability | Low | Requested compileall command exited 0 but still traversed `backend/venv`. | Use a verified exclusion command or explicit source list. |
+
+## Phase 1 Status Update
+
+| ID | Phase 1 Status | Evidence | Residual Risk |
+|---|---|---|---|
+| SEC-PHI-001 | Mitigated for tested outbound boundaries | `backend/outbound_policy.py` centralizes deterministic outbound sanitization; API LLM calls return `SafeLLM`; EBP receives de-identified concept text; extraction utilities sanitize outbound model payloads. Phase 1 tests assert canaries do not reach mocked LLM, EBP, or Anthropic HTTP bodies. | Detection is not complete and is not compliance proof. External capabilities remain disabled by default. Future outbound integrations must use the same policy and canary tests. |
+| SEC-PHI-002 | Mitigated for active `/chat_stream` path | Direct `llm.stream(...)` was removed from `backend/api.py`; `/chat_stream` precomputes output, sanitizes for browser, then emits chunks. Test asserts raw mocked stream is not called and response text excludes canaries. | Clinical schema validation is still absent, so safe streaming here means PHI containment, not clinical correctness. |
+| SEC-AUD-001 | Privacy aspect partially mitigated | `_log_err()` and `audit_log()` sanitize free-text values before console/ledger output; Phase 1 test writes canary action/status to a temporary ledger and checks raw canaries are absent. | Ledger design remains local tamper-evident only, without HMAC/signature, protected key, external append-only storage, or hardened verifier. |
+| CLI-RAG-001 | Privacy aspect partially mitigated for EBP | `retrieve_context()` converts case text to de-identified concept query before LLM query generation and search retrieval. | Retrieval remains lexical/basic and should not be treated as quality-improved or citation-governed. |
+| CLI-VAL-001 | Not remediated | Phase 1 does not add typed clinical output schemas or deterministic registry validation. | Phase 2 remains required before clinical output can be accepted as structured recommendations. |
+
+## Phase 1 Closure Residuals
+
+| Risk | Severity | Status | Next Action |
+|---|---|---|---|
+| Regex PHI detection is incomplete | High | Tested against required synthetic canaries and variants, but unlabeled names, uncommon addresses, OCR distortions, and non-Indonesian identifiers can still pass. | Keep external capabilities disabled by default; expand canary fixtures as new patterns are found. |
+| False positive redaction can remove useful clinical text | Medium | Long numeric strings and some label-adjacent tokens may be redacted conservatively. Clinical measurement preservation tests reduce but do not eliminate this risk. | Review false positives during Phase 2 schema work and clinician sandbox testing. |
+| Local session and feedback memory are sanitized but not full data governance | High | Raw canaries no longer persist in tested session/feedback paths; storage remains local/in-memory or encrypted local file. | Phase 6 session design and Phase 10 feedback governance remain required. |
+| Bypass scanner is allowlist-based | Medium | Scanner fails on new outbound primitives outside reviewed files, but allowlist line numbers must be maintained when files change. | Add scanner to CI and update allowlist only with security review. |
+| Utility scripts still generate non-authoritative clinical data | Critical | Utility outbound payloads/errors are sanitized, but generated registry content remains unapproved. | Phase 3/8 registry quarantine, provenance, clinical review, and release workflow. |
+| Gate A remains unmet | High | Phase 1 closure improves PHI containment and safe buffered streaming only. | Complete Phase 2, Phase 4, and Phase 5 controls before Gate A claims. |
