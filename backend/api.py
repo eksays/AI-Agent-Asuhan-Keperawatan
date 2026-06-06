@@ -28,6 +28,7 @@ import agents
 import ebp
 import phi
 import crypto_store
+from config import CONFIG, SAFETY_NOTICE, build_capabilities, capability_enabled, capability_reason
 import metrics
 import director
 import harvester
@@ -40,7 +41,7 @@ DATA_DIR = os.path.join(BASE, "data_terstruktur")
 # ----- Keamanan: batas upload, sandbox parsing, audit log, sanitasi error -----
 MAX_UPLOAD = 10 * 1024 * 1024     # 10 MB — divalidasi di BACKEND (jangan percaya frontend)
 _PARSE_TIMEOUT = 20               # detik — sandbox parsing PDF/DOCX agar file jebakan tak menggantung server
-_LEDGER = os.path.join(BASE, "audit_ledger.jsonl")   # WORM hash-chain audit ledger (tamper-evident)
+_LEDGER = os.path.join(BASE, "audit_ledger.jsonl")   # Tamper-evident local hash-chain audit ledger, not WORM.
 _ledger_lock = threading.Lock()
 _GENESIS = "0" * 64
 _last_hash = None
@@ -84,7 +85,7 @@ def _ledger_last_hash() -> str:
 
 
 def audit_log(session_id: str, action: str, status: str) -> None:
-    """Audit mediko-legal WORM (hash-chain, tamper-evident). Hanya metadata (tanpa PHI); session_id disamarkan jadi hash."""
+    """Tamper-evident local audit hash-chain. Hanya metadata (tanpa PHI); session_id disamarkan jadi hash."""
     try:
         with _ledger_lock:
             global _last_hash
@@ -101,7 +102,7 @@ def audit_log(session_id: str, action: str, status: str) -> None:
 
 
 def verify_audit_chain():
-    """Verifikasi integritas rantai audit (WORM). Return (ok, jumlah). Alarm bila ada entri yang diubah/dirusak."""
+    """Verifikasi integritas rantai audit lokal. Return (ok, jumlah). Alarm bila ada entri yang diubah/dirusak."""
     prev = _GENESIS
     n = 0
     try:
@@ -148,7 +149,7 @@ OPENAI_COMPATIBLE = {
     "mistral": "https://api.mistral.ai/v1",
     "together": "https://api.together.xyz/v1",
     "openrouter": "https://openrouter.ai/api/v1",
-    "shopee": os.environ.get("SHOPEE_BASE_URL", "https://openrouter.ai/api/v1"),
+    "shopee": CONFIG.shopee_base_url,
 }
 
 # Peta buku per kerangka + pesan penolakan bila referensi belum tersedia (anti-halusinasi).
@@ -609,8 +610,7 @@ def extract_text(up: Optional[UploadFile]) -> str:
 # ============================ APP ============================================
 app = FastAPI(title="CDSS AI Keperawatan", version="3.0")
 # CORS: HANYA origin frontend yang sah (bukan "*"). Override via env FRONTEND_ORIGINS (pisah koma) untuk produksi.
-FRONTEND_ORIGINS = [o.strip() for o in os.environ.get(
-    "FRONTEND_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if o.strip()]
+FRONTEND_ORIGINS = list(CONFIG.frontend_origins)
 app.add_middleware(CORSMiddleware, allow_origins=FRONTEND_ORIGINS, allow_credentials=False,
                    allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["Authorization", "Content-Type"])
 
@@ -666,18 +666,23 @@ async def rasp_filter(request, call_next):
 
 # Muat basis pengetahuan saat modul di-import (robust: tidak bergantung pada event startup).
 muat_data()
-_ledger_ok, _ledger_n = verify_audit_chain()   # verifikasi integritas WORM ledger saat start
+_ledger_ok, _ledger_n = verify_audit_chain()   # verifikasi integritas ledger lokal saat start
 print(f"[audit] ledger {'OK' if _ledger_ok else 'RUSAK/TAMPERED!'} ({_ledger_n} entri)")
 _dsec, _dnew = director.ensure_secret()
 if _dnew:   # cetak URI enrollment MFA HANYA sekali saat secret pertama dibuat (akses konsol server-only)
     print("[director] Enrollment MFA — pindai ke aplikasi authenticator:", director.otpauth_uri())
-if harvester.start(audit_log):
+if harvester.start(audit_log, interval=CONFIG.harvest_interval_sec, topics=CONFIG.harvest_topics):
     print("[harvester] Knowledge Harvester aktif (interval mingguan, menghangatkan cache jurnal RAG).")
 
 
 @app.get("/")
 def root():
     return {"app": "CDSS AI Keperawatan", "status": "aktif", "versi": "3.0"}
+
+
+@app.get("/capabilities")
+def capabilities():
+    return build_capabilities(CONFIG)
 
 
 @app.get("/status")
@@ -692,6 +697,33 @@ def status(authorization: Optional[str] = Header(None)):
 
 def _session_invalid():
     return JSONResponse({"status": "error", "pesan": "SESSION_INVALID"}, status_code=409)
+
+
+def _unavailable(capability: str, status_code: int = 503, extra: Optional[dict] = None):
+    reason = capability_reason(capability, CONFIG)
+    payload = {
+        "status": "error",
+        "capability": capability,
+        "enabled": False,
+        "app_mode": CONFIG.app_mode,
+        "safety_notice": SAFETY_NOTICE,
+        "reason": reason,
+        "pesan": f"Capability temporarily unavailable in secure sandbox mode: {reason}",
+    }
+    if extra:
+        payload.update(extra)
+    return JSONResponse(payload, status_code=status_code)
+
+
+def _blocked_llm_capability(agent: str) -> Optional[str]:
+    a = (agent or "analisis").lower()
+    if a == "referensi" and not capability_enabled("ebp_external_search", CONFIG):
+        return "ebp_external_search"
+    if a == "pathway" and not capability_enabled("mermaid_pathway_rendering", CONFIG):
+        return "mermaid_pathway_rendering"
+    if not capability_enabled("external_llm", CONFIG):
+        return "external_llm"
+    return None
 
 
 @app.post("/session")
@@ -718,7 +750,7 @@ def director_login(code: str = Form("")):
 @app.get("/director/enroll")
 def director_enroll(token: str = ""):
     """Ambil otpauth:// URI untuk enrollment MFA — HANYA bila env DIRECTOR_BOOTSTRAP cocok (akses server-only)."""
-    boot = os.environ.get("DIRECTOR_BOOTSTRAP", "")
+    boot = CONFIG.director_bootstrap
     if not boot or token != boot:
         return JSONResponse({"status": "error", "pesan": "Akses ditolak."}, status_code=403)
     return {"status": "sukses", "otpauth_uri": director.otpauth_uri()}
@@ -747,6 +779,9 @@ def chat(provider: str = Form(...), api_key: str = Form(""), model: str = Form(.
         return _session_invalid()
     if not (pertanyaan or "").strip():
         return JSONResponse({"status": "error", "pesan": "Pertanyaan kosong."}, status_code=400)
+    blocked = _blocked_llm_capability(agent)
+    if blocked:
+        return _unavailable(blocked)
     if not framework_available(framework):
         return {"status": "sukses", "jawaban": REF_REFUSAL}
     try:
@@ -779,6 +814,9 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
         return _session_invalid()
     if not (pertanyaan or "").strip():
         return JSONResponse({"status": "error", "pesan": "Pertanyaan kosong."}, status_code=400)
+    blocked = _blocked_llm_capability(agent)
+    if blocked:
+        return _unavailable(blocked)
     if not framework_available(framework):
         return StreamingResponse(iter([REF_REFUSAL]), media_type="text/plain; charset=utf-8")
 
@@ -861,12 +899,18 @@ def analisis_multi(provider: str = Form(...), api_key: str = Form(""), model: st
         return JSONResponse({"status": "error", "pesan": "Ukuran file melebihi batas 10MB."}, status_code=413)
     if (consent or "").strip().lower() in ("true", "1"):   # CONSENT LOGGING (UU PDP Pasal 20/22)
         audit_log(session_id, "Consent", "Granted")
+    if file_foto is not None and not capability_enabled("clinical_photo_analysis", CONFIG):
+        audit_log(session_id, "PhotoAnalysis", "Unavailable")
+        return _unavailable("clinical_photo_analysis")
+    blocked = _blocked_llm_capability(agent)
+    if blocked:
+        return _unavailable(blocked)
 
     cmd = (gejala or "").strip()
     doc = extract_text(file_dokumen)
     doc_block = ("\n\n<dokumen_pasien>\n" + doc + "\n</dokumen_pasien>") if doc else ""   # isolasi anti-injeksi (T4)
     if file_foto is not None:
-        doc_block += "\n[Catatan: foto rekam medis dilampirkan oleh perawat.]"
+        return _unavailable("clinical_photo_analysis")
     if not (cmd or doc_block.strip()):
         return JSONResponse({"status": "error", "pesan": "Tidak ada data untuk dianalisis."}, status_code=400)
     if not framework_available(framework):
@@ -916,6 +960,12 @@ def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Fo
         return JSONResponse({"status": "error", "pesan": "Ukuran file melebihi batas 10MB."}, status_code=413)
     if (consent or "").strip().lower() in ("true", "1"):   # CONSENT LOGGING (UU PDP Pasal 20/22)
         audit_log(session_id, "Consent", "Granted")
+    if file_foto is not None and not capability_enabled("clinical_photo_analysis", CONFIG):
+        audit_log(session_id, "PhotoAnalysis", "Unavailable")
+        return _unavailable("clinical_photo_analysis")
+    blocked = _blocked_llm_capability("analisis")
+    if blocked:
+        return _unavailable(blocked)
     if not framework_available(framework):
         return {"status": "sukses", "hasil": REF_REFUSAL}
     doc = extract_text(file_dokumen)
@@ -923,7 +973,7 @@ def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Fo
     if doc:
         data += ("\n\n<dokumen_pasien>\n" + doc + "\n</dokumen_pasien>")   # isolasi anti-injeksi (T4)
     if file_foto is not None:
-        data += "\n[Catatan: foto rekam medis dilampirkan.]"
+        return _unavailable("clinical_photo_analysis")
     data = data.strip()
     if not data:
         return JSONResponse({"status": "error", "pesan": "Tidak ada data untuk dianalisis."}, status_code=400)
@@ -953,6 +1003,10 @@ def pathway_ep(provider: str = Form(...), api_key: str = Form(""), model: str = 
         return JSONResponse({"status": "error", "pesan": "Token API Habis", "mermaid": ""}, status_code=401)
     if not SESI.valid(session_id):
         return _session_invalid()
+    if not capability_enabled("mermaid_pathway_rendering", CONFIG):
+        return _unavailable("mermaid_pathway_rendering", extra={"mermaid": ""})
+    if not capability_enabled("external_llm", CONFIG):
+        return _unavailable("external_llm", extra={"mermaid": ""})
     if not framework_available(framework):
         return {"status": "error", "pesan": REF_REFUSAL, "mermaid": ""}
     hist = SESI.history(session_id)

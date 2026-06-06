@@ -28,10 +28,19 @@ function DocActionPicker({ options }: { options: DocAction[] }) {
 }
 
 export function ChatboxMaster({ forTab }: { forTab?: Tab }) {
-  const { send, sending, tier, setTier, framework, setFramework, tab, consent, setConsent, pendingDocAction } = useApp();
+  const { send, sending, tier, setTier, framework, setFramework, tab, consent, setConsent, pendingDocAction, capabilityAvailable, capabilityReason } = useApp();
   const myTab = forTab ?? tab;
   const showPicker = (myTab === "Analisis" || myTab === "Referensi") && pendingDocAction;   // panel untuk tab Analisis/Referensi saat dokumen menunggu aksi
   const pickerOptions = myTab === "Referensi" ? REF_ACTIONS : DOC_ACTIONS;
+  const frameworkAvailability = {
+    "3S": { enabled: capabilityAvailable("sdki_authoritative_grounding"), reason: capabilityReason("sdki_authoritative_grounding") },
+    "3N": { enabled: capabilityAvailable("nanda"), reason: capabilityReason("nanda") },
+  };
+  const disabledReason = myTab === "Pathway" && !capabilityAvailable("mermaid_pathway_rendering") ? capabilityReason("mermaid_pathway_rendering")
+    : myTab === "Referensi" && !capabilityAvailable("ebp_external_search") ? capabilityReason("ebp_external_search")
+      : !capabilityAvailable("external_llm") ? capabilityReason("external_llm")
+        : myTab === "Analisis" && !frameworkAvailability[framework].enabled ? frameworkAvailability[framework].reason
+          : "";
   return (
     <div className="w-full">
       {/* Panel pemilih aksi MENGAMBANG di atas chatbox (tersinkron dengan unggahan dokumen user) */}
@@ -44,7 +53,12 @@ export function ChatboxMaster({ forTab }: { forTab?: Tab }) {
         </label>
       )}
       <AnimatedAIChat
-        disabled={sending || !consent}
+        disabled={sending || !consent || !!disabledReason}
+        disabledReason={disabledReason}
+        allowUpload={!disabledReason}
+        allowCamera={capabilityAvailable("clinical_photo_analysis")}
+        allowSearch={capabilityAvailable("ebp_external_search")}
+        frameworkAvailability={frameworkAvailability}
         defaultModel={tier}
         onModelChange={(id) => setTier(id as Tier)}
         framework={framework}

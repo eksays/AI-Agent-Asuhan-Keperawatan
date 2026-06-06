@@ -22,6 +22,7 @@ except Exception:   # fallback bila defusedxml belum terpasang (sumber XML sudah
 from concurrent.futures import ThreadPoolExecutor
 from langchain_core.messages import SystemMessage, HumanMessage
 import crypto_store
+from config import CONFIG
 
 _FILE = os.path.join(os.path.dirname(__file__), "ebp_memory.json")
 _LOCK = threading.Lock()
@@ -34,7 +35,7 @@ _NCBI = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 _EUPMC = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 _S2 = "https://api.semanticscholar.org/graph/v1/paper/search"
 _UNPAYWALL = "https://api.unpaywall.org/v2/"
-_UNPAYWALL_EMAIL = os.environ.get("UNPAYWALL_EMAIL", "cdss.keperawatan@example.com")
+_UNPAYWALL_EMAIL = CONFIG.unpaywall_email
 
 
 # ----------------------------- util ------------------------------------------

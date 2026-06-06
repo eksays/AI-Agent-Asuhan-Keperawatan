@@ -15,5 +15,5 @@ RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /
 USER appuser
 
 EXPOSE 8000
-# Server PRODUCTION-GRADE: Gunicorn + Uvicorn workers (BUKAN dev server / --reload).
+# Runtime server for container execution; production readiness is gated separately.
 CMD ["gunicorn", "api:app", "-k", "uvicorn.workers.UvicornWorker", "-w", "2", "-b", "0.0.0.0:8000", "--timeout", "120"]

@@ -10,6 +10,7 @@ export interface FileWithPreview { id: string; file: File; preview?: string; typ
 export interface PastedContent { id: string; content: string; wordCount: number }
 export interface ModelOption { id: string; name: string; description: string }
 export type Framework = "3S" | "3N";
+type Availability = { enabled: boolean; reason: string };
 
 interface ChatInputProps {
   onSendMessage?: (message: string, files: FileWithPreview[], pasted: PastedContent[]) => void;
@@ -22,6 +23,11 @@ interface ChatInputProps {
   onFrameworkChange?: (fw: Framework) => void;
   showFramework?: boolean;
   fileInputRef?: RefObject<HTMLInputElement | null>;
+  disabledReason?: string;
+  allowUpload?: boolean;
+  allowCamera?: boolean;
+  allowSearch?: boolean;
+  frameworkAvailability?: Record<Framework, Availability>;
 }
 
 const MAX_FILES = 8;
@@ -108,7 +114,18 @@ function ModelDropdown({ models, selected, onChange }: { models: ModelOption[]; 
 }
 
 /* Dropdown menu untuk tombol "+" (ala Claude): Unggah Dokumen / Kamera Klinis / Cari Jurnal. */
-function PlusMenu({ disabled, onUpload, onCamera, onSearch }: { disabled?: boolean; onUpload: () => void; onCamera: () => void; onSearch: () => void }) {
+function PlusMenu({ disabled, onUpload, onCamera, onSearch, allowUpload, allowCamera, allowSearch, uploadReason, cameraReason, searchReason }: {
+  disabled?: boolean;
+  onUpload: () => void;
+  onCamera: () => void;
+  onSearch: () => void;
+  allowUpload: boolean;
+  allowCamera: boolean;
+  allowSearch: boolean;
+  uploadReason: string;
+  cameraReason: string;
+  searchReason: string;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -116,9 +133,9 @@ function PlusMenu({ disabled, onUpload, onCamera, onSearch }: { disabled?: boole
     document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
   }, []);
   const items = [
-    { label: "Unggah Dokumen Medis", icon: FileText, onClick: onUpload },
-    { label: "Buka Kamera Klinis", icon: Camera, onClick: onCamera },
-    { label: "Cari Jurnal (Web Search)", icon: Globe, onClick: onSearch },
+    { label: "Unggah Dokumen Medis", icon: FileText, onClick: onUpload, enabled: allowUpload, reason: uploadReason },
+    { label: "Buka Kamera Klinis", icon: Camera, onClick: onCamera, enabled: allowCamera, reason: cameraReason },
+    { label: "Cari Jurnal (Web Search)", icon: Globe, onClick: onSearch, enabled: allowSearch, reason: searchReason },
   ];
   return (
     <div className="relative" ref={ref}>
@@ -127,10 +144,14 @@ function PlusMenu({ disabled, onUpload, onCamera, onSearch }: { disabled?: boole
       </button>
       {open && (
         <div className="absolute bottom-full left-0 z-[120] mb-2 w-60 rounded-xl border border-zinc-700/50 bg-[#2B2A27] p-1.5 shadow-2xl">
-          {items.map(({ label, icon: Icon, onClick }) => (
-            <button key={label} type="button" onClick={() => { onClick(); setOpen(false); }}
-              className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm text-zinc-200 transition-colors duration-200 hover:bg-white/10">
-              <Icon className="h-4 w-4 flex-shrink-0 text-zinc-400" /> {label}
+          {items.map(({ label, icon: Icon, onClick, enabled, reason }) => (
+            <button key={label} type="button" disabled={!enabled} title={enabled ? undefined : reason} onClick={() => { if (!enabled) return; onClick(); setOpen(false); }}
+              className={cn("flex w-full items-start gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-200", enabled ? "text-zinc-200 hover:bg-white/10" : "cursor-not-allowed text-zinc-500 opacity-70")}>
+              <Icon className="mt-0.5 h-4 w-4 flex-shrink-0 text-zinc-400" />
+              <span className="flex min-w-0 flex-col">
+                <span>{label}</span>
+                {!enabled && <span className="mt-0.5 text-[0.68rem] leading-snug text-zinc-500">{reason}</span>}
+              </span>
             </button>
           ))}
         </div>
@@ -142,6 +163,7 @@ function PlusMenu({ disabled, onUpload, onCamera, onSearch }: { disabled?: boole
 export const ClaudeChatInput: React.FC<ChatInputProps> = ({
   onSendMessage, disabled = false, placeholder = "Ada yang bisa saya bantu?",
   models = DEFAULT_MODELS, defaultModel, onModelChange, framework = "3S", onFrameworkChange, showFramework = true, fileInputRef: extRef,
+  disabledReason = "", allowUpload = true, allowCamera = true, allowSearch = true, frameworkAvailability,
 }) => {
   const [message, setMessage] = useState("");
   const [files, setFiles] = useState<FileWithPreview[]>([]);
@@ -156,11 +178,11 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
 
   const addFiles = useCallback((list: FileList | File[] | null) => {
     if (!list) return;
-    const arr = Array.from(list).slice(0, MAX_FILES - files.length).filter((f) => f.size <= MAX_FILE_SIZE);
+    const arr = Array.from(list).slice(0, MAX_FILES - files.length).filter((f) => f.size <= MAX_FILE_SIZE && (allowCamera || !f.type.startsWith("image/")));
     const mapped = arr.map((file) => ({ id: Math.random().toString(36).slice(2), file, preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined, type: file.type || "application/octet-stream" }));
     setFiles((p) => [...p, ...mapped]);
     mapped.forEach((m) => { if (isTextual(m.file)) readText(m.file).then((t) => setFiles((p) => p.map((f) => f.id === m.id ? { ...f, textContent: t } : f))).catch(() => {}); });
-  }, [files.length]);
+  }, [allowCamera, files.length]);
 
   const removeFile = useCallback((id: string) => setFiles((p) => { const r = p.find((f) => f.id === id); if (r?.preview) URL.revokeObjectURL(r.preview); return p.filter((f) => f.id !== id); }), []);
 
@@ -219,11 +241,17 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
             <PlusMenu disabled={disabled}
               onUpload={() => fileRef.current?.click()}
               onCamera={() => setCameraOpen(true)}
-              onSearch={() => { setMessage((m) => m || "Carikan jurnal ilmiah terkini mengenai "); taRef.current?.focus(); }} />
+              onSearch={() => { setMessage((m) => m || "Carikan jurnal ilmiah terkini mengenai "); taRef.current?.focus(); }}
+              allowUpload={allowUpload}
+              allowCamera={allowCamera}
+              allowSearch={allowSearch}
+              uploadReason={disabledReason || "External analysis is disabled."}
+              cameraReason="Validated OCR or vision analysis is not implemented."
+              searchReason="EBP external search is disabled until de-identification enforcement passes." />
             {showFramework && (
               <div className="flex items-center rounded-full bg-white/[0.04] p-0.5 text-xs">
                 {(["3S", "3N"] as Framework[]).map((fw) => (
-                  <button key={fw} type="button" onClick={() => onFrameworkChange?.(fw)} className={cn("rounded-full px-2.5 py-1 font-medium transition-colors", framework === fw ? "bg-white/10 text-zinc-200" : "text-zinc-500 hover:text-zinc-300")}>{fw}</button>
+                  <button key={fw} type="button" disabled={frameworkAvailability?.[fw]?.enabled === false} title={frameworkAvailability?.[fw]?.enabled === false ? frameworkAvailability[fw].reason : undefined} onClick={() => onFrameworkChange?.(fw)} className={cn("rounded-full px-2.5 py-1 font-medium transition-colors", frameworkAvailability?.[fw]?.enabled === false ? "cursor-not-allowed text-zinc-600" : framework === fw ? "bg-white/10 text-zinc-200" : "text-zinc-500 hover:text-zinc-300")}>{fw}</button>
                 ))}
               </div>
             )}
@@ -238,7 +266,8 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
           </div>
         </div>
       </div>
-      <input ref={fileRef} type="file" className="hidden" onChange={(e) => { addFiles(e.target.files); if (e.target) e.target.value = ""; }} />
+      {disabledReason && <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[0.74rem] leading-snug text-amber-100">{disabledReason}</p>}
+      <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt,.md,.csv" className="hidden" onChange={(e) => { addFiles(e.target.files); if (e.target) e.target.value = ""; }} />
     </div>
   );
 };

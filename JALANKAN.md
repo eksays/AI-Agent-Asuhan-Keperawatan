@@ -1,5 +1,9 @@
 # CDSS AI Keperawatan — Cara Menjalankan
 
+Status saat ini: **clinical sandbox**. Fitur yang belum terverifikasi dinonaktifkan secara default oleh backend. Saran AI wajib ditinjau perawat dan aplikasi ini tidak boleh dipakai untuk keputusan klinis mandiri.
+
+Secara default, analisis LLM eksternal, pencarian EBP eksternal, analisis foto klinis, dan rendering Mermaid pathway dinonaktifkan sampai kontrol keamanan terkait diverifikasi.
+
 Aplikasi terdiri dari dua bagian:
 
 - **backend/** — FastAPI (Python), port **8000**
