@@ -305,7 +305,12 @@ class Phase5ApiIntegrationTests(unittest.TestCase):
         cls.client = TestClient(api.app)
 
     def _session_id(self) -> str:
-        return self.client.post('/session').json()['session_id']
+        data = self.client.post('/session', headers=self._headers()).json()
+        self._session_headers = {'Authorization': 'Bearer test-key', 'X-Session-Token': data['session_token']}
+        return data['session_id']
+
+    def _headers(self) -> dict[str, str]:
+        return getattr(self, '_session_headers', {'Authorization': 'Bearer test-key'})
 
     def _common(self) -> dict[str, str]:
         return {
@@ -325,7 +330,7 @@ class Phase5ApiIntegrationTests(unittest.TestCase):
                     path,
                     data=self._common(),
                     files={'file_dokumen': ('fake.pdf', b'plain text', 'application/pdf')},
-                    headers={'Authorization': 'Bearer test-key'},
+                    headers=self._headers(),
                 )
             self.assertEqual(response.status_code, 400)
             body = response.json()
@@ -339,7 +344,7 @@ class Phase5ApiIntegrationTests(unittest.TestCase):
                 '/analisis_multi',
                 data=self._common(),
                 files={'file_dokumen': ('synthetic.txt', b'keluhan nyeri', 'application/pdf')},
-                headers={'Authorization': 'Bearer test-key'},
+                headers=self._headers(),
             )
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()['capability'], 'external_llm')
@@ -359,7 +364,7 @@ class Phase5ApiIntegrationTests(unittest.TestCase):
                             path,
                             data=self._common(),
                             files={'file_dokumen': upload},
-                            headers={'Authorization': 'Bearer test-key'},
+                            headers=self._headers(),
                         )
                 self.assertEqual(response.status_code, expected_code)
                 body = response.json()
@@ -374,7 +379,7 @@ class Phase5ApiIntegrationTests(unittest.TestCase):
                     path,
                     data=self._common(),
                     files={'file_dokumen': ('case.txt', b'synthetic patient canary', 'text/plain')},
-                    headers={'Authorization': 'Bearer test-key'},
+                    headers=self._headers(),
                 )
             self.assertEqual(response.status_code, 422)
             body = response.json()
@@ -388,7 +393,7 @@ class Phase5ApiIntegrationTests(unittest.TestCase):
                 '/analisis_multi',
                 data=self._common(),
                 files={'file_foto': ('synthetic.jpg', b'\xff\xd8\xff\xd9', 'image/jpeg')},
-                headers={'Authorization': 'Bearer test-key'},
+                headers=self._headers(),
             )
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()['capability'], 'clinical_photo_analysis')

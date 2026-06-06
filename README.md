@@ -2,7 +2,7 @@
 
 CDSS AI Keperawatan is a **clinical sandbox prototype** for exploring nursing documentation workflows. It is not approved for autonomous clinical decision-making, clinical deployment, or regulatory use. AI-generated suggestions require review by a qualified nurse or clinical reviewer.
 
-The current Phase 0B safety posture is intentionally fail-closed: unsupported or unverified features are disabled by default, and the backend is the source of truth for capability availability through `GET /capabilities`.
+The current safety posture is intentionally fail-closed: unsupported or unverified features are disabled by default, and the backend is the source of truth for capability availability through `GET /capabilities`. Phase 6 adds sandbox authentication/session/MFA/rate-limit controls, but these remain in-memory development controls, not production identity or distributed enforcement.
 
 ## Current Safety Position
 
@@ -12,8 +12,12 @@ The current Phase 0B safety posture is intentionally fail-closed: unsupported or
 - Clinical photo analysis is unavailable; validated OCR or vision processing is not implemented.
 - Mermaid pathway rendering is disabled by default until strict SVG sanitization and XSS regression tests pass.
 - Local registry files are not approved authoritative clinical references.
+- API keys are accepted only through Authorization: Bearer <key>; body, query-string, and cookie API-key transport is not supported.
+- Browser-carried shared API keys are visible to the browser client; this is a sandbox containment control, not confidential server-side authentication.
+- Server-issued `session_id` values must be paired with the per-session `X-Session-Token`; the server stores only a token digest.
+- Director MFA includes replay rejection and lockout, but replay and rate-limit state is in memory only.
 - The audit log is a development-only tamper-evident local log, not external append-only storage.
-- No legal, regulatory, privacy, clinical, or production-readiness claim is made by this repository.
+- No legal, regulatory, privacy, clinical, controlled-pilot, hospital, or production-readiness claim is made by this repository.
 
 ## Capability Matrix
 
@@ -38,7 +42,7 @@ controlled_pilot
 production
 ```
 
-`clinical_sandbox` is the default when `APP_MODE` is absent. `controlled_pilot` and `production` must be set explicitly. Production mode fails startup unless explicit safety prerequisite flags are present; those flags are placeholders for later verification gates and are not evidence of clinical or regulatory approval by themselves.
+`clinical_sandbox` is the default when `APP_MODE` is absent. `controlled_pilot` and `production` must be set explicitly. Controlled-pilot and production modes fail startup if API keys, the server secret, or director bootstrap values are missing, weak, or placeholder-like. Production mode also fails startup unless explicit safety prerequisite flags are present; those flags are placeholders for later verification gates and are not evidence of clinical or regulatory approval by themselves.
 
 ## Key Environment Flags
 
@@ -51,9 +55,12 @@ FEATURE_EBP_EXTERNAL_SEARCH=false
 FEATURE_CLINICAL_PHOTO_ANALYSIS=false
 FEATURE_MERMAID_PATHWAY_RENDERING=false
 ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=false
+CDSS_API_KEYS=test-key
+CDSS_SECRET_KEY=local-sandbox-secret-change-me
+DIRECTOR_ENROLLMENT_ENABLED=false
 ```
 
-`ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=true` is accepted only in `clinical_sandbox` mode. It must not be used with real patient data.
+`ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=true` is accepted only in `clinical_sandbox` mode. It must not be used with real patient data. `test-key` is a sandbox default only; controlled-pilot and production modes require explicit strong `CDSS_API_KEYS`, `CDSS_SECRET_KEY`, and `DIRECTOR_BOOTSTRAP` values.
 
 ## Repository Structure
 
@@ -64,7 +71,7 @@ docs/remediation/         Remediation evidence, risk register, release gates
 dokumen pendukung/        Local supporting assets/uploads
 ```
 
-Important local data and runtime files are intentionally ignored by git, including local secrets, audit logs, virtual environments, generated build artifacts, PDFs, and `backend/data_terstruktur/`. Clinical registry reproducibility, licensing, provenance, and approval are not solved yet.
+Important local data and runtime files are intentionally ignored by git, including local secrets, audit logs, virtual environments, generated build artifacts, PDFs, and `backend/data_terstruktur/`. Clinical registry reproducibility, licensing, provenance, and approval are not solved yet. Local session, MFA replay, and rate-limit state are in memory and are not durable across restarts or multiple instances.
 
 ## Running Locally
 
@@ -110,4 +117,7 @@ The current local registry data is sandbox-only. Missing or unapproved SDKI/SLKI
 
 See `docs/remediation/` for the remediation plan, verification log, risk register, data governance notes, and release gates.
 
-Gate A is not passed yet. Later phases still need verified PHI firewall controls, safe streaming, typed clinical validation, registry quarantine, Mermaid hardening, upload isolation, authentication/session improvements, and audit redesign.
+Gate A is not passed yet. Phase 0B through Phase 6 controls are sandbox checkpoints only. Later work still needs durable identity/session/rate-limit storage, formal registry and clinical review, browser-rendered QA disposition, hard parser resource controls, audit redesign, CI enforcement, and legal/regulatory review before any pilot or production claim.
+
+
+Director MFA enrollment is disabled by default. Local sandbox provisioning requires DIRECTOR_ENROLLMENT_ENABLED=true and X-Director-Bootstrap; controlled-pilot and production provisioning workflows are not implemented.

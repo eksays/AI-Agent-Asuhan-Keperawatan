@@ -2,7 +2,7 @@
 CDSS AI Keperawatan — backend FastAPI (Phase 3, re-engineered).
 
 Fitur:
-- Autentikasi via header `Authorization: Bearer <key>` (fallback form `api_key`) -> memperbaiki 401.
+- Autentikasi hanya via header `Authorization: Bearer <key>`; body/query/cookie key diabaikan aman.
 - Multi-provider get_llm (Gemini / OpenAI / Claude / Groq / xAI / DeepSeek / Mistral / Together / OpenRouter / ShopeeAI), temperature 0.
 - SessionMemory: AI membaca SELURUH riwayat percakapan per session_id.
 - StreamingResponse /chat_stream (efek typewriter).
@@ -17,7 +17,7 @@ import os, re, json, glob, threading, secrets, sys, time, hashlib, datetime
 from typing import Optional, List, Tuple
 from collections import deque
 
-from fastapi import FastAPI, Form, File, UploadFile, Header
+from fastapi import FastAPI, Form, File, UploadFile, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -31,6 +31,19 @@ from config import CONFIG, SAFETY_NOTICE, build_capabilities, capability_enabled
 import metrics
 import director
 import harvester
+from security_controls import (
+    AuthPrincipal,
+    BoundedRateLimiter,
+    authenticate_api_key,
+    client_ip_from_request,
+    issue_secret_token,
+    limit_key,
+    rate_subject,
+    safe_security_payload,
+    status_code_for,
+    token_digest,
+    constant_time_equal,
+)
 from clinical_registry import ClinicalRegistry
 from clinical_validator import STANDARD_MAP, safe_abstention, validate_clinical_output, render_clinical_response
 from outbound_policy import DEFAULT_OUTBOUND_POLICY, OutboundPolicyError, wrap_llm
@@ -342,47 +355,125 @@ def extract_mermaid(text: str) -> str:
 
 
 # ============================ SESSION MEMORY =================================
-class SessionMemory:
-    """Riwayat percakapan penuh per session_id, in-memory & thread-safe.
-    session_id WAJIB diterbitkan server (CSPRNG, 256-bit) — klien tidak boleh membuat sendiri."""
 
-    def __init__(self, cap: int = 40):
-        self._s: dict[str, list[Tuple[str, str]]] = {}
-        self._issued: set[str] = set()
+SECURITY_PEPPER = CONFIG.cdss_secret_key or 'clinical-sandbox-security-pepper'
+
+
+class SecureSessionMemory:
+    def __init__(self, cap: int = 40, ttl: int = 3600, idle: int = 900, max_active: int = 1000, pepper: str = '', now_func=time.monotonic):
+        self._records: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._cap = cap
+        self._ttl = max(60, int(ttl))
+        self._idle = max(30, int(idle))
+        self._max_active = max(1, int(max_active))
+        self._pepper = pepper or 'clinical-sandbox-security-pepper'
+        self._now = now_func
 
-    def issue(self) -> str:
-        sid = secrets.token_urlsafe(32)   # 256-bit, tak dapat ditebak (menutup kebocoran lintas-sesi K2)
-        with self._lock:
-            self._issued.add(sid)
-            self._s.setdefault(sid, [])
-        return sid
+    def _expired(self, rec: dict, now: float) -> bool:
+        return now >= rec.get('expires_at', 0) or now - rec.get('last_access', 0) > self._idle
 
-    def valid(self, sid: str) -> bool:
+    def cleanup(self) -> None:
+        now = self._now()
+        for sid, rec in list(self._records.items()):
+            if self._expired(rec, now):
+                self._records.pop(sid, None)
+        while len(self._records) > self._max_active:
+            oldest = min(self._records, key=lambda sid: self._records[sid].get('last_access', 0))
+            self._records.pop(oldest, None)
+
+    def issue(self, principal: AuthPrincipal):
+        sid = secrets.token_urlsafe(32)
+        token = issue_secret_token()
+        now = self._now()
         with self._lock:
-            return bool(sid) and sid in self._issued
+            self.cleanup()
+            self._records[sid] = {
+                'owner': principal.principal_id,
+                'token_digest': token_digest(token, self._pepper),
+                'created_at': now,
+                'last_access': now,
+                'expires_at': now + self._ttl,
+                'history': [],
+            }
+            self.cleanup()
+        return sid, token
+
+    def validate(self, sid: str, principal: AuthPrincipal, session_token: str, touch: bool = True) -> str:
+        now = self._now()
+        with self._lock:
+            self.cleanup()
+            rec = self._records.get(sid or '')
+            if not rec:
+                return 'session_not_found'
+            if self._expired(rec, now):
+                self._records.pop(sid, None)
+                return 'session_expired'
+            if rec.get('owner') != principal.principal_id:
+                return 'session_owner_mismatch'
+            if not session_token or not constant_time_equal(rec.get('token_digest', ''), token_digest(session_token, self._pepper)):
+                return 'session_token_invalid'
+            if touch:
+                rec['last_access'] = now
+            return 'ok'
 
     def history(self, sid: str) -> list[Tuple[str, str]]:
         with self._lock:
-            return list(self._s.get(sid, []))
+            rec = self._records.get(sid or '')
+            return list((rec or {}).get('history', []))
 
     def add(self, sid: str, role: str, content: str):
         if not content:
             return
         with self._lock:
-            buf = self._s.setdefault(sid, [])
+            rec = self._records.get(sid or '')
+            if not rec:
+                return
+            buf = rec.setdefault('history', [])
             buf.append((role, content))
             if len(buf) > self._cap:
                 del buf[: len(buf) - self._cap]
 
-    def reset(self, sid: str):
+    def reset(self, sid: str, principal: AuthPrincipal, session_token: str):
+        status = self.validate(sid, principal, session_token, touch=False)
+        if status != 'ok':
+            return status, ''
+        new_token = issue_secret_token()
         with self._lock:
-            self._s.pop(sid, None)
-            self._issued.discard(sid)
+            rec = self._records.get(sid or '')
+            if rec:
+                now = self._now()
+                rec['history'] = []
+                rec['token_digest'] = token_digest(new_token, self._pepper)
+                rec['last_access'] = now
+                rec['expires_at'] = now + self._ttl
+        return 'ok', new_token
+
+    def delete(self, sid: str, principal: AuthPrincipal, session_token: str) -> str:
+        status = self.validate(sid, principal, session_token, touch=False)
+        if status == 'ok':
+            with self._lock:
+                self._records.pop(sid, None)
+        return status
+
+    def valid(self, sid: str) -> bool:
+        with self._lock:
+            self.cleanup()
+            return bool(sid and sid in self._records)
+
+    def force_expire_for_tests(self, sid: str) -> None:
+        with self._lock:
+            if sid in self._records:
+                self._records[sid]['expires_at'] = self._now() - 1
 
 
-SESI = SessionMemory()
+SESI = SecureSessionMemory(
+    ttl=CONFIG.session_ttl_sec,
+    idle=CONFIG.session_idle_timeout_sec,
+    max_active=CONFIG.session_max_active,
+    pepper=SECURITY_PEPPER,
+)
+RATE_LIMITER = BoundedRateLimiter(CONFIG.rate_limit_max_keys)
 
 
 # ============================ LLM PROVIDER ===================================
@@ -524,17 +615,47 @@ def _requires_clinical_registry(agent: str, text: str = "") -> bool:
     return (agent or "analisis").lower() == "analisis" and not is_casual(text)
 
 
-def resolve_key(authorization: Optional[str], api_key_form: str) -> str:
-    """Header `Authorization: Bearer ...` diprioritaskan; jika kosong, pakai form."""
-    if authorization:
-        a = authorization.strip()
-        if a.lower().startswith("bearer "):
-            k = a[7:].strip()
-            if k:
-                return k
-        elif a:
-            return a
-    return (api_key_form or "").strip()
+RATE_LIMITS = {
+    'AUTH': (120, CONFIG.rate_limit_window_sec),
+    'MFA': (10, CONFIG.rate_limit_window_sec),
+    'SESSION_MUTATION': (60, CONFIG.rate_limit_window_sec),
+    'CHAT': (180, CONFIG.rate_limit_window_sec),
+    'UPLOAD': (90, CONFIG.rate_limit_window_sec),
+    'DIRECTOR_PRIVILEGED': (120, CONFIG.rate_limit_window_sec),
+}
+
+
+def _security_response(status: str, retry_after: int = 0):
+    headers = {'Retry-After': str(retry_after)} if retry_after else None
+    return JSONResponse(safe_security_payload(status), status_code=status_code_for(status), headers=headers)
+
+
+def _client_ip(request: Request) -> str:
+    return client_ip_from_request(request, CONFIG.trusted_proxy_hosts)
+
+
+def _apply_rate_limit(request: Request, route_class: str, principal: AuthPrincipal | None = None):
+    limit, window = RATE_LIMITS.get(route_class, (120, CONFIG.rate_limit_window_sec))
+    subject = rate_subject(principal, _client_ip(request), SECURITY_PEPPER)
+    decision = RATE_LIMITER.check(limit_key(route_class, subject, SECURITY_PEPPER), limit, window)
+    return None if decision.allowed else _security_response('rate_limited', decision.retry_after)
+
+
+def _auth_context(request: Request, authorization: Optional[str], route_class: str = 'AUTH'):
+    auth = authenticate_api_key(authorization, CONFIG.api_auth_keys, SECURITY_PEPPER)
+    if not auth.ok:
+        limited = _apply_rate_limit(request, 'AUTH')
+        return None, '', limited or _security_response(auth.status)
+    limited = _apply_rate_limit(request, route_class, auth.principal)
+    if limited:
+        return None, '', limited
+    return auth.principal, auth.raw_credential, None
+
+
+def _require_session(session_id: str, principal: AuthPrincipal, session_token: Optional[str], touch: bool = True):
+    status = SESI.validate(session_id, principal, session_token or '', touch=touch)
+    return None if status == 'ok' else _security_response(status)
+
 
 
 def err_status(e: Exception) -> Tuple[int, str]:
@@ -750,7 +871,7 @@ app = FastAPI(title="CDSS AI Keperawatan", version="3.0")
 # CORS: HANYA origin frontend yang sah (bukan "*"). Override via env FRONTEND_ORIGINS (pisah koma) untuk produksi.
 FRONTEND_ORIGINS = list(CONFIG.frontend_origins)
 app.add_middleware(CORSMiddleware, allow_origins=FRONTEND_ORIGINS, allow_credentials=False,
-                   allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["Authorization", "Content-Type"])
+                   allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Session-Token"])
 
 
 # ----- Peringatan dini insiden keamanan (UU PDP Pasal 46 — wajib lapor 3x24 jam) -----
@@ -809,9 +930,6 @@ async def rasp_filter(request, call_next):
 muat_data()
 _ledger_ok, _ledger_n = verify_audit_chain()   # verifikasi integritas ledger lokal saat start
 print(f"[audit] ledger {'OK' if _ledger_ok else 'RUSAK/TAMPERED!'} ({_ledger_n} entri)")
-_dsec, _dnew = director.ensure_secret()
-if _dnew:   # cetak URI enrollment MFA HANYA sekali saat secret pertama dibuat (akses konsol server-only)
-    print("[director] Enrollment MFA — pindai ke aplikasi authenticator:", director.otpauth_uri())
 if harvester.start(audit_log, interval=CONFIG.harvest_interval_sec, topics=CONFIG.harvest_topics):
     print("[harvester] Knowledge Harvester aktif (interval mingguan, menghangatkan cache jurnal RAG).")
 
@@ -827,9 +945,10 @@ def capabilities():
 
 
 @app.get("/status")
-def status(authorization: Optional[str] = Header(None)):
-    if not resolve_key(authorization, ""):   # lockdown: butuh kunci (anti-enumerasi anonim) — S7
-        return JSONResponse({"status": "error", "pesan": "Token API Habis"}, status_code=401)
+def status(request: Request, authorization: Optional[str] = Header(None)):
+    principal, key, error = _auth_context(request, authorization, 'AUTH')
+    if error:
+        return error
     detail = {k: f"{len(v)} entri" for k, v in DATA.items()}
     if not detail:
         detail = {"basis_pengetahuan": "kosong"}
@@ -868,10 +987,14 @@ def _blocked_llm_capability(agent: str) -> Optional[str]:
 
 
 @app.post("/session")
-def new_session():
+def new_session(request: Request, authorization: Optional[str] = Header(None)):
     """Terbitkan session_id kriptografis (CSPRNG, 256-bit). Frontend WAJIB memakai ID ini —
     klien DILARANG membuat session_id sendiri (menutup tebak-ID & kebocoran memori lintas pengguna)."""
-    return {"status": "sukses", "session_id": SESI.issue()}
+    principal, key, error = _auth_context(request, authorization, 'AUTH')
+    if error:
+        return error
+    session_id, session_token = SESI.issue(principal)
+    return {'status': 'sukses', 'session_id': session_id, 'session_token': session_token, 'session_ttl_sec': CONFIG.session_ttl_sec}
 
 
 # ----- Dasbor Eksekutif Direktur (rute SAH, dijaga MFA/TOTP — bukan backdoor) -----
@@ -881,24 +1004,45 @@ def _director_token(authorization: Optional[str]) -> str:
 
 
 @app.post("/director/login")
-def director_login(code: str = Form("")):
-    if not director.verify_totp(code):
-        return JSONResponse({"status": "error", "pesan": "Kode MFA tidak valid."}, status_code=401)
+def director_login(request: Request, code: str = Form("")):
+    limited = _apply_rate_limit(request, 'MFA')
+    if limited:
+        return limited
+    result = director.verify_totp_attempt(
+        code,
+        principal='director',
+        ip=_client_ip(request),
+        failure_limit=CONFIG.mfa_failure_limit,
+        failure_window=CONFIG.mfa_failure_window_sec,
+        lockout=CONFIG.mfa_lockout_sec,
+    )
+    if not result.ok:
+        return _security_response(result.status, result.retry_after)
     audit_log("director", "DirectorLogin", "Success")
-    return {"status": "sukses", "director_token": director.issue_token(), "ttl_s": director._TOKEN_TTL}
+    return {'status': 'sukses', 'director_token': result.token, 'ttl_s': director._TOKEN_TTL}
 
 
 @app.get("/director/enroll")
-def director_enroll(token: str = ""):
-    """Ambil otpauth:// URI untuk enrollment MFA — HANYA bila env DIRECTOR_BOOTSTRAP cocok (akses server-only)."""
+def director_enroll(request: Request, x_director_bootstrap: Optional[str] = Header(None, alias='X-Director-Bootstrap')):
+    """Local-sandbox-only MFA provisioning. Bootstrap is header-only and never accepted from URL/body/cookie."""
+    limited = _apply_rate_limit(request, 'DIRECTOR_PRIVILEGED')
+    if limited:
+        return limited
     boot = CONFIG.director_bootstrap
-    if not boot or token != boot:
-        return JSONResponse({"status": "error", "pesan": "Akses ditolak."}, status_code=403)
-    return {"status": "sukses", "otpauth_uri": director.otpauth_uri()}
-
+    if CONFIG.app_mode != 'clinical_sandbox' or not CONFIG.director_enrollment_enabled or not boot:
+        return _security_response('authorization_failed')
+    if not constant_time_equal(x_director_bootstrap or '', boot):
+        return _security_response('authorization_failed')
+    result = director.provision_otpauth_uri()
+    if not result.ok:
+        return _security_response('authorization_failed')
+    return {"status": "sukses", "otpauth_uri": result.otpauth_uri}
 
 @app.get("/director/metrics")
-def director_metrics(authorization: Optional[str] = Header(None)):
+def director_metrics(request: Request, authorization: Optional[str] = Header(None)):
+    limited = _apply_rate_limit(request, 'DIRECTOR_PRIVILEGED')
+    if limited:
+        return limited
     if not director.valid_token(_director_token(authorization)):
         return JSONResponse({"status": "error", "pesan": "Sesi direktur tidak valid."}, status_code=401)
     snap = metrics.snapshot()
@@ -909,11 +1053,17 @@ def director_metrics(authorization: Optional[str] = Header(None)):
 
 # ----- chat (non-stream) -----------------------------------------------------
 @app.post("/chat")
-def chat(provider: str = Form(...), api_key: str = Form(""), model: str = Form(...),
+def chat(request: Request, provider: str = Form(...), model: str = Form(...),
          framework: str = Form("3S"), session_id: str = Form("default"), tier: str = Form("medium"),
          agent: str = Form("analisis"),
-         pertanyaan: str = Form(...), authorization: Optional[str] = Header(None)):
-    key = resolve_key(authorization, api_key)
+         pertanyaan: str = Form(...), authorization: Optional[str] = Header(None),
+         session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'CHAT')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     if not key:
         return JSONResponse({"status": "error", "pesan": "Token API Habis"}, status_code=401)
     if not SESI.valid(session_id):
@@ -956,11 +1106,17 @@ def chat(provider: str = Form(...), api_key: str = Form(""), model: str = Form(.
 
 # ----- chat streaming (typewriter) ------------------------------------------
 @app.post("/chat_stream")
-def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str = Form(...),
+def chat_stream(request: Request, provider: str = Form(...), model: str = Form(...),
                 framework: str = Form("3S"), session_id: str = Form("default"), tier: str = Form("medium"),
                 agent: str = Form("analisis"),
-                pertanyaan: str = Form(...), authorization: Optional[str] = Header(None)):
-    key = resolve_key(authorization, api_key)
+                pertanyaan: str = Form(...), authorization: Optional[str] = Header(None),
+                session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'CHAT')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     if not key:
         return JSONResponse({"status": "error", "pesan": "Token API Habis"}, status_code=401)
     if not SESI.valid(session_id):
@@ -1017,14 +1173,20 @@ def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str =
 
 # ----- analisis multi-agen (swarm) ------------------------------------------
 @app.post("/analisis_multi")
-def analisis_multi(provider: str = Form(...), api_key: str = Form(""), model: str = Form(...),
+def analisis_multi(request: Request, provider: str = Form(...), model: str = Form(...),
                    framework: str = Form("3S"), session_id: str = Form("default"), tier: str = Form("medium"),
                    agent: str = Form("analisis"), consent: str = Form(""),
                    gejala: str = Form(""),
                    file_dokumen: Optional[UploadFile] = File(None),
                    file_foto: Optional[UploadFile] = File(None),
-                   authorization: Optional[str] = Header(None)):
-    key = resolve_key(authorization, api_key)
+                   authorization: Optional[str] = Header(None),
+                   session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'UPLOAD')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     if not key:
         return JSONResponse({"status": "error", "pesan": "Token API Habis"}, status_code=401)
     if not SESI.valid(session_id):
@@ -1093,14 +1255,20 @@ def analisis_multi(provider: str = Form(...), api_key: str = Form(""), model: st
 
 # ----- analisis single-agent (fallback) -------------------------------------
 @app.post("/analisis")
-def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Form(...),
+def analisis(request: Request, provider: str = Form(...), model: str = Form(...),
              framework: str = Form("3S"), session_id: str = Form("default"), tier: str = Form("medium"),
              consent: str = Form(""),
              gejala: str = Form(""),
              file_dokumen: Optional[UploadFile] = File(None),
              file_foto: Optional[UploadFile] = File(None),
-             authorization: Optional[str] = Header(None)):
-    key = resolve_key(authorization, api_key)
+             authorization: Optional[str] = Header(None),
+             session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'UPLOAD')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     if not key:
         return JSONResponse({"status": "error", "pesan": "Token API Habis"}, status_code=401)
     if not SESI.valid(session_id):
@@ -1159,10 +1327,16 @@ def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Fo
 
 # ----- clinical pathway (background / on-demand) ----------------------------
 @app.post("/pathway")
-def pathway_ep(provider: str = Form(...), api_key: str = Form(""), model: str = Form(...),
+def pathway_ep(request: Request, provider: str = Form(...), model: str = Form(...),
                framework: str = Form("3S"), session_id: str = Form("default"),
-               gejala: str = Form(""), authorization: Optional[str] = Header(None)):
-    key = resolve_key(authorization, api_key)
+               gejala: str = Form(""), authorization: Optional[str] = Header(None),
+               session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'CHAT')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     if not key:
         return JSONResponse({"status": "error", "pesan": "Token API Habis", "mermaid": ""}, status_code=401)
     if not SESI.valid(session_id):
@@ -1189,8 +1363,15 @@ def pathway_ep(provider: str = Form(...), api_key: str = Form(""), model: str = 
 
 # ----- referensi (Referensi tab) --------------------------------------------
 @app.get("/daftar/{buku}")
-def daftar(buku: str, session_id: str = "", authorization: Optional[str] = Header(None)):
-    if not resolve_key(authorization, "") or not SESI.valid(session_id):   # lockdown enumerasi (S7)
+def daftar(request: Request, buku: str, session_id: str = "", authorization: Optional[str] = Header(None),
+           session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'AUTH')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
+    if not SESI.valid(session_id):   # lockdown enumerasi (S7)
         return JSONResponse({"status": "error", "pesan": "Akses ditolak."}, status_code=401)
     data = DATA.get(buku.upper())
     if not data:
@@ -1201,8 +1382,15 @@ def daftar(buku: str, session_id: str = "", authorization: Optional[str] = Heade
 
 
 @app.get("/entri/{buku}/{kode}")
-def entri(buku: str, kode: str, session_id: str = "", authorization: Optional[str] = Header(None)):
-    if not resolve_key(authorization, "") or not SESI.valid(session_id):   # lockdown enumerasi (S7)
+def entri(request: Request, buku: str, kode: str, session_id: str = "", authorization: Optional[str] = Header(None),
+          session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'AUTH')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
+    if not SESI.valid(session_id):   # lockdown enumerasi (S7)
         return JSONResponse({"status": "error", "pesan": "Akses ditolak."}, status_code=401)
     for e in (DATA.get(buku.upper()) or []):
         if str(e.get("kode", "")).lower() == kode.lower():
@@ -1212,18 +1400,28 @@ def entri(buku: str, kode: str, session_id: str = "", authorization: Optional[st
 
 # ----- reset & feedback ------------------------------------------------------
 @app.post("/reset")
-def reset(session_id: str = Form("default")):
-    SESI.reset(session_id)
-    return {"status": "ok"}
+def reset(request: Request, session_id: str = Form("default"), authorization: Optional[str] = Header(None),
+          session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'SESSION_MUTATION')
+    if error:
+        return error
+    status, new_token = SESI.reset(session_id, principal, session_token or '')
+    if status != 'ok':
+        return _security_response(status)
+    return {'status': 'ok', 'session_token': new_token}
 
 
 @app.post("/delete_my_data")
-def delete_my_data(session_id: str = Form(""), authorization: Optional[str] = Header(None)):
+def delete_my_data(request: Request, session_id: str = Form(""), authorization: Optional[str] = Header(None),
+                   session_token: Optional[str] = Header(None, alias='X-Session-Token')):
     """Hak Hapus Data / Right to be Forgotten (UU PDP Pasal 8 & 43): musnahkan PERMANEN riwayat
     percakapan (PHI) + feedback milik session_id ini. session_id CSPRNG = bukti kepemilikan."""
-    if not SESI.valid(session_id):
-        return _session_invalid()
-    SESI.reset(session_id)                         # hapus riwayat percakapan + invalidasi sesi
+    principal, key, error = _auth_context(request, authorization, 'SESSION_MUTATION')
+    if error:
+        return error
+    status = SESI.delete(session_id, principal, session_token or '')
+    if status != 'ok':
+        return _security_response(status)
     removed = memory.purge_session(session_id)     # hapus seluruh feedback milik sesi ini
     crypto_store.dek_destroy(session_id)           # CRYPTO-SHRED: musnahkan DEK -> data sisa jadi sampah kriptografis
     audit_log(session_id, "DeleteMyData", "Success")
@@ -1231,10 +1429,16 @@ def delete_my_data(session_id: str = Form(""), authorization: Optional[str] = He
 
 
 @app.post("/feedback")
-def feedback(framework: str = Form("3S"), session_id: str = Form(""), pertanyaan: str = Form(""),
-             jawaban: str = Form(""), rating: str = Form("up"), koreksi: str = Form("")):
-    if not SESI.valid(session_id):
-        return _session_invalid()
+def feedback(request: Request, framework: str = Form("3S"), session_id: str = Form(""), pertanyaan: str = Form(""),
+             jawaban: str = Form(""), rating: str = Form("up"), koreksi: str = Form(""),
+             authorization: Optional[str] = Header(None),
+             session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'SESSION_MUTATION')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     memory.store_feedback(
         framework,
         _external_safe_text(pertanyaan),

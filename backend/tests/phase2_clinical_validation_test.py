@@ -468,7 +468,12 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
         cls.client = TestClient(api.app)
 
     def _session_id(self) -> str:
-        return self.client.post("/session").json()["session_id"]
+        data = self.client.post("/session", headers=self._headers()).json()
+        self._session_headers = {"Authorization": "Bearer test-key", "X-Session-Token": data["session_token"]}
+        return data["session_id"]
+
+    def _headers(self) -> dict[str, str]:
+        return getattr(self, "_session_headers", {"Authorization": "Bearer test-key"})
 
     def _chat_form(self, **overrides):
         data = {
@@ -530,7 +535,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
                     "provider": "openai", "model": "mock", "framework": "3S", "session_id": self._session_id(),
                     "tier": "flash", "agent": "analisis", "pertanyaan": PATIENT_CONTEXT,
                 },
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -549,7 +554,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
              mock.patch.object(api, "bangun_konteks", return_value=""), \
              mock.patch.object(api.memory, "recall_block", return_value=""), \
              mock.patch.object(api, "CLINICAL_REGISTRY", approved_registry_3s()):
-            response = self.client.post("/chat", data=self._chat_form(), headers={"Authorization": "Bearer test-key"})
+            response = self.client.post("/chat", data=self._chat_form(), headers=self._headers())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data["nurse_review_required"])
@@ -558,7 +563,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
     def test_chat_registry_unavailable_fails_fast_without_provider(self):
         provider_mock = mock.Mock(side_effect=AssertionError("provider must not be called"))
         with self._enabled_registry_unavailable_context(provider_mock):
-            response = self.client.post("/chat", data=self._chat_form(), headers={"Authorization": "Bearer test-key"})
+            response = self.client.post("/chat", data=self._chat_form(), headers=self._headers())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["clinical_status"], "registry_unavailable")
@@ -570,7 +575,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
     def test_chat_stream_registry_unavailable_fails_fast_without_provider(self):
         provider_mock = mock.Mock(side_effect=AssertionError("provider must not be called"))
         with self._enabled_registry_unavailable_context(provider_mock):
-            response = self.client.post("/chat_stream", data=self._chat_form(), headers={"Authorization": "Bearer test-key"})
+            response = self.client.post("/chat_stream", data=self._chat_form(), headers=self._headers())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers.get("X-Clinical-Status"), "registry_unavailable")
         self.assertEqual(response.headers.get("X-Accepted-Recommendations"), "false")
@@ -581,7 +586,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
     def test_analisis_registry_unavailable_fails_fast_without_provider(self):
         provider_mock = mock.Mock(side_effect=AssertionError("provider must not be called"))
         with self._enabled_registry_unavailable_context(provider_mock):
-            response = self.client.post("/analisis", data=self._analysis_form(), headers={"Authorization": "Bearer test-key"})
+            response = self.client.post("/analisis", data=self._analysis_form(), headers=self._headers())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["clinical_status"], "registry_unavailable")
@@ -591,7 +596,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
     def test_analisis_multi_registry_unavailable_fails_fast_without_provider(self):
         provider_mock = mock.Mock(side_effect=AssertionError("provider must not be called"))
         with self._enabled_registry_unavailable_context(provider_mock):
-            response = self.client.post("/analisis_multi", data={**self._analysis_form(), "agent": "analisis"}, headers={"Authorization": "Bearer test-key"})
+            response = self.client.post("/analisis_multi", data={**self._analysis_form(), "agent": "analisis"}, headers=self._headers())
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["clinical_status"], "registry_unavailable")
@@ -601,7 +606,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
     def test_chat_registry_incomplete_fails_fast_without_provider(self):
         provider_mock = mock.Mock(side_effect=AssertionError("provider must not be called"))
         with self._enabled_registry_incomplete_context(provider_mock):
-            response = self.client.post("/chat", data=self._chat_form(), headers={"Authorization": "Bearer test-key"})
+            response = self.client.post("/chat", data=self._chat_form(), headers=self._headers())
         data = response.json()
         self.assertEqual(data["clinical_status"], "registry_incomplete")
         self.assertFalse(data["accepted_recommendations"])
@@ -616,7 +621,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
     def test_chat_stream_registry_incomplete_fails_fast_without_provider(self):
         provider_mock = mock.Mock(side_effect=AssertionError("provider must not be called"))
         with self._enabled_registry_incomplete_context(provider_mock):
-            response = self.client.post("/chat_stream", data=self._chat_form(), headers={"Authorization": "Bearer test-key"})
+            response = self.client.post("/chat_stream", data=self._chat_form(), headers=self._headers())
         self.assertEqual(response.headers.get("X-Clinical-Status"), "registry_incomplete")
         self.assertEqual(response.headers.get("X-Accepted-Recommendations"), "false")
         self.assertEqual(response.headers.get("X-Missing-Registries"), "SLKI,SIKI")
@@ -627,7 +632,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
     def test_analisis_registry_incomplete_fails_fast_without_provider(self):
         provider_mock = mock.Mock(side_effect=AssertionError("provider must not be called"))
         with self._enabled_registry_incomplete_context(provider_mock):
-            response = self.client.post("/analisis", data=self._analysis_form(), headers={"Authorization": "Bearer test-key"})
+            response = self.client.post("/analisis", data=self._analysis_form(), headers=self._headers())
         data = response.json()
         self.assertEqual(data["clinical_status"], "registry_incomplete")
         self.assertFalse(data["accepted_recommendations"])
@@ -639,7 +644,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
     def test_analisis_multi_registry_incomplete_fails_fast_without_provider(self):
         provider_mock = mock.Mock(side_effect=AssertionError("provider must not be called"))
         with self._enabled_registry_incomplete_context(provider_mock):
-            response = self.client.post("/analisis_multi", data={**self._analysis_form(), "agent": "analisis"}, headers={"Authorization": "Bearer test-key"})
+            response = self.client.post("/analisis_multi", data={**self._analysis_form(), "agent": "analisis"}, headers=self._headers())
         data = response.json()
         self.assertEqual(data["clinical_status"], "registry_incomplete")
         self.assertFalse(data["accepted_recommendations"])
@@ -652,7 +657,7 @@ class Phase2ApiIntegrationTests(unittest.TestCase):
         provider_mock = mock.Mock(side_effect=AssertionError("provider must not be called"))
         form = self._chat_form(pertanyaan="Synthetic Patient Alpha alpha.patient@example.invalid mengeluh sesak.")
         with self._enabled_registry_unavailable_context(provider_mock):
-            response = self.client.post("/chat", data=form, headers={"Authorization": "Bearer test-key"})
+            response = self.client.post("/chat", data=form, headers=self._headers())
         body = response.text
         self.assertNotIn("Synthetic Patient Alpha", body)
         self.assertNotIn("alpha.patient@example.invalid", body)

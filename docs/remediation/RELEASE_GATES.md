@@ -117,3 +117,24 @@ Missing or failing controls:
 - Legal and regulatory review.
 
 No phase, command, or local build should be interpreted as Gate C approval.
+
+## Phase 6 Auth-Security Checkpoint
+
+Phase 6 local controls now available for sandbox verification:
+
+- API keys are accepted only through `Authorization: Bearer <key>`; form, JSON, query-string, and cookie key transport is rejected or ignored safely.
+- The backend derives a one-way application principal fingerprint rather than using the raw key as an owner identifier.
+- Protected session routes require authenticated application principal plus server-issued `X-Session-Token`; session token digests are stored server-side.
+- Sessions have absolute TTL, idle timeout, bounded max active count, cleanup, expiry rejection, delete invalidation, and reset token rotation.
+- Director TOTP verification rejects same-step replay, tracks per-principal/per-IP failures, applies lockout, and returns safe `Retry-After` responses.
+- Route-class rate limiting is bounded and in memory for AUTH, MFA, SESSION_MUTATION, CHAT, UPLOAD, and DIRECTOR_PRIVILEGED classes.
+- Forwarded client-IP headers are ignored unless trusted proxies are explicitly configured.
+- Wildcard CORS origins are rejected outside sandbox, credentials are disabled, and `X-Session-Token` is explicitly allowed.
+- Non-sandbox modes fail closed for missing, weak, or placeholder `CDSS_API_KEYS`, `CDSS_SECRET_KEY`, and `DIRECTOR_BOOTSTRAP`.
+- Frontend transport no longer appends `api_key` to FormData and does not use `localStorage` or `sessionStorage` for API credentials, session tokens, or director tokens.
+
+Gate A remains **Not met**. Phase 6 does not provide durable identity, RBAC, SSO/OAuth/OIDC, distributed sessions, distributed rate limits, formal secret management, hospital readiness, controlled-pilot readiness, compliance, or production readiness.
+
+Phase 6 closure UI smoke note: `http://localhost:3000` rendered normally in Incognito, while `http://172.16.0.2:3000` reproduced a blank page because Next.js development resources were blocked cross-origin by default. This is classified as a local development-origin configuration issue, not an application startup regression. It is not full browser-rendered QA and does not change Gate A status.
+
+Phase 6 director-enrollment supplement: `/director/enroll` is disabled by default and is local-sandbox provisioning only when explicitly enabled. Startup no longer emits an enrollment URI. Browser-carried shared API keys remain visible to the browser and are not hospital identity, RBAC, SSO, OAuth/OIDC, controlled-pilot readiness, or production authentication. Gate A remains unmet.

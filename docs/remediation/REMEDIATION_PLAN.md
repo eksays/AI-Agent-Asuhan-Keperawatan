@@ -198,3 +198,30 @@ Residuals:
 - Parser libraries still execute inside a child process and must remain covered by dependency review and crash tests.
 - Frontend accept hints are not authoritative and may be narrowed later, but server-side validation is the safety control.
 - Gate A remains unmet until Phase 5 closure review accepts the evidence, resource-control residuals are resolved or explicitly accepted for sandbox-only use, browser-rendered QA disposition is settled, and all Phase 1-5 controls remain enforced.
+
+## Phase 6 Implementation Notes
+
+Phase 6 is limited to authentication, session ownership, MFA replay resistance, bounded in-memory rate limiting, CORS-adjacent transport, frontend secret transport, and secret-loading fail-closed behavior. It does not add OAuth/OIDC/SSO, Redis, database migrations, cloud secret management, audit-ledger redesign, OCR, embeddings, retrieval, prompt tuning, or infrastructure deployment code.
+
+Implemented scope:
+
+- Added `backend/security_controls.py` with Bearer parsing, constant-time API-key comparison, keyed credential fingerprints, server-safe security statuses, session-token digest helpers, conservative client-IP handling, and bounded in-memory rate limiting.
+- Updated `backend/config.py` so `controlled_pilot` and `production` reject missing/weak/placeholder API keys, server secret, and director bootstrap values; wildcard CORS is rejected outside sandbox.
+- Replaced active session handling with `SecureSessionMemory`: server-issued `session_id`, per-session secret token, token digest storage, owner binding, TTL, idle timeout, max active session bound, cleanup, delete invalidation, and reset token rotation.
+- Updated protected API routes to require Authorization plus `X-Session-Token` where session reuse or mutation is involved; body/query/cookie API-key transport is rejected or ignored safely.
+- Hardened director MFA with accepted-step replay detection, per-principal/per-IP failure counters, lockout, and `Retry-After`; `/director/enroll` uses `X-Director-Bootstrap` rather than query secrets.
+- Removed frontend API-key FormData transport and browser storage persistence for API credentials, session tokens, and director tokens.
+- Added Phase 6 runtime and static scanner tests, including frontend transport tests.
+
+Residuals:
+
+- Session, MFA replay, director-token, and rate-limit state are in memory only and reset on process restart.
+- Shared API keys are application credentials, not hospital user identity or RBAC.
+- No cloud secret manager, OAuth/OIDC/SSO, Redis, durable session store, or distributed rate limiter exists in this phase.
+- Gate A remains unmet; no controlled-pilot, hospital, compliance, or production-readiness claim is made.
+
+## Phase 6 Director Enrollment Supplement
+
+The director enrollment boundary is explicitly local-sandbox-only. The API no longer prints an enrollment URI at startup. `/director/enroll` requires all of the following: `APP_MODE=clinical_sandbox`, `DIRECTOR_ENROLLMENT_ENABLED=true`, a configured `DIRECTOR_BOOTSTRAP`, a matching `X-Director-Bootstrap` header, and no existing director TOTP seed. Body, query-string, FormData, and cookie bootstrap fallbacks are rejected. Controlled-pilot and production provisioning workflows remain undefined and out of scope.
+
+Browser-carried shared API keys remain visible to the browser client. Header-only transport is a leak-reduction measure, not a confidential server-side credential model.

@@ -527,3 +527,113 @@ Closure regression commands:
 Residual limits: Phase 5 does not provide OS-level sandboxing, container isolation, hard CPU/RAM quotas, or portable process-tree containment. These remain required before pilot, hospital, compliance, or production claims. Gate A remains unmet.
 
 Gate A remains unmet pending Phase 5 closure acceptance, hard parser resource-control residuals, formal registry/clinical review requirements, browser-rendered QA disposition, and CI enforcement of the full safety suite.
+
+## Phase 6 Verification - 2026-06-06
+
+Phase 6 used local sandbox credentials and synthetic tests only. No real external LLM, EBP, Mermaid rendering, clinical photo analysis, registry activation, OCR, embeddings, Redis, database migration, OAuth/OIDC/SSO, cloud secret manager, or external provider contact was introduced or enabled.
+
+Implemented evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Header-only API key | PASS | `Authorization: Bearer` accepted; missing/wrong/form/JSON/query/cookie API-key transport rejected or ignored safely. Frontend no longer appends `api_key` to `FormData`. |
+| Principal abstraction | PASS | `AuthPrincipal` uses keyed credential fingerprint; raw API key is not the owner identifier. |
+| Session ownership | PASS | `SecureSessionMemory` requires owner principal plus `X-Session-Token`; server stores token digest only. Reset rotates token and delete invalidates session. |
+| Session lifecycle | PASS | TTL, idle timeout, last-access touch, max active session bound, cleanup, expiry rejection, and token rotation are covered by Phase 6 tests. |
+| MFA replay/lockout | PASS | Director TOTP verifies first use, rejects same-step replay, throttles invalid attempts, locks temporarily, and returns `Retry-After`. |
+| Rate limit | PASS | Bounded in-memory limiter covers per-principal/per-IP/route-class keys and safe `429` responses with no raw secrets in keys. |
+| Trusted proxy | PASS | `X-Forwarded-For` is ignored unless direct peer is explicitly trusted; malformed forwarded headers fail safe. |
+| CORS | PASS | Wildcard CORS is rejected outside sandbox; credentials are disabled; `X-Session-Token` is explicitly allowed. |
+| Secrets | PASS | `controlled_pilot` and `production` fail closed for weak/missing/placeholder API key, server secret, or director bootstrap values. Capability payload does not expose secrets. |
+| Frontend transport | PASS | API key and session/director tokens remain in memory; `localStorage` and `sessionStorage` secret writes are absent from checked sources. |
+| Bypass scanner | PASS | Phase 6 scanner flags body key fallback, legacy resolver, storage persistence, weak secret compare, noncrypto random, uuid1, and wildcard CORS patterns in production sources. |
+
+Regression commands:
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase6_auth_security_test -v` | 0 | 1116 ms | 12 Phase 6 auth/session/MFA/rate-limit/CORS/secret/frontend/scanner tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase5_upload_security_test -v` | 0 | 10636 ms | 22 Phase 5 upload-security tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.populate_sdki_url_policy_test -v` | 0 | 541 ms | 3 URL-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 977 ms | 56 Phase 3 governance tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase2_clinical_validation_test -v` | 0 | 1070 ms | 55 Phase 2 clinical-safety tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 1978 ms | 27 Phase 1 outbound-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_bypass_test -v` | 0 | 469 ms | 1 outbound bypass scanner test passed after reviewed line-number updates for API line drift. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 14152 ms | 193 backend tests passed. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | 1019 ms | Backend source compiled. |
+| `bandit -r backend -ll -x backend/env,backend/venv` | 0 | 1622 ms | No issues identified; Medium 0, High 0. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 155 ms | 4 capability fallback tests passed. |
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 1334 ms | 11 browser-security tests passed. |
+| `node --test frontend\tests\auth-transport.test.mjs` | 0 | 152 ms | 2 frontend auth-transport static tests passed. |
+| `npm --prefix frontend run lint` | 0 | 3721 ms | ESLint reported 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 0 | 11917 ms | Next.js build completed; static routes generated. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 1166 ms | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | 123 ms | No whitespace errors; Git emitted CRLF normalization warnings only. |
+
+Residual limits: shared API key authentication is not hospital user identity; session/MFA/rate-limit state is in-memory only; local secrets are not a managed secret system; trusted-proxy deployment must be explicitly configured; Gate A remains unmet.
+
+## Phase 6 Closure UI Smoke Evidence - 2026-06-06
+
+| Scenario | Expected | Actual | Result |
+|---|---|---|---|
+| `http://localhost:3000` in Incognito | Application shell renders | Application shell rendered normally; no blank page reproduced | PASS for localhost smoke |
+| `http://172.16.0.2:3000` development access | Cross-origin dev resources may be blocked unless explicitly configured | Next.js development resources were blocked cross-origin by default; blank page reproduced | Classified as local development-origin configuration issue |
+| Browser-extension hydration warning | Not present in clean profile | Warning absent in Incognito; prior warning associated with extension-injected body attributes | Classified as browser-extension artifact |
+
+Localhost is the supported default local-development origin. Network-host access requires an explicit development-only allowlist and was not added in Phase 6. Production CORS and CSP policies are unchanged. This smoke evidence is not full browser-rendered QA and must not be used as a release-gate claim.
+
+## Phase 6 Closure Regression - 2026-06-06
+
+Closure review added focused evidence for idle-session rejection, token-digest storage, all route-class rate limiting, TOTP old/future code rejection, failure-counter reset after success, accepted-step replay persistence after success, untrusted forwarded-header handling, and localhost development-origin classification.
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase6_auth_security_test -v` | 0 | 1102 ms | 15 Phase 6 tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase5_upload_security_test -v` | 0 | 11395 ms | 22 Phase 5 upload-security tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.populate_sdki_url_policy_test -v` | 0 | 569 ms | 3 URL-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 1005 ms | 56 Phase 3 governance tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase2_clinical_validation_test -v` | 0 | 1104 ms | 55 Phase 2 clinical-safety tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 1982 ms | 27 Phase 1 outbound-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_bypass_test -v` | 0 | 494 ms | 1 outbound bypass scanner test passed. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 14318 ms | 196 backend tests passed. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | 1243 ms | Backend source compiled. |
+| `bandit -r backend -ll -x backend/env,backend/venv` | 0 | 1843 ms | No issues identified; severity Medium 0, High 0. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 274 ms | 4 capability fallback tests passed. |
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 1723 ms | 11 browser-security tests passed. |
+| `node --test frontend\tests\auth-transport.test.mjs` | 0 | 155 ms | 2 auth transport tests passed. |
+| `npm --prefix frontend run lint` | 0 | 5010 ms | ESLint reported 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 0 | 10119 ms | Next.js build completed. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 1366 ms | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | 103 ms | No whitespace errors; CRLF warnings only. |
+| `git diff --cached --check` | 0 | 99 ms | No cached whitespace errors. |
+
+Phase 6 closure remains a sandbox security checkpoint only. Localhost smoke is not full browser-rendered QA, and Gate A remains unmet.
+
+## Phase 6 Director Bootstrap Closure Supplement - 2026-06-06
+
+| Check | Result | Evidence |
+|---|---|---|
+| `/director/enroll` transport | PASS | Bootstrap accepted only via `X-Director-Bootstrap`; query/body/form/cookie attempts rejected. |
+| Enrollment mode | PASS | Disabled by default; accepted only in `clinical_sandbox` with `DIRECTOR_ENROLLMENT_ENABLED=true` and valid bootstrap. Controlled-pilot and production route attempts reject. |
+| Enrollment lifecycle | PASS | First permitted provisioning returns `otpauth_uri`; repeat provisioning rejects unless a future explicit reset workflow is designed. No reset workflow is implemented in Phase 6. |
+| Startup exposure | PASS | API startup no longer creates or prints an enrollment URI. |
+| Rate limit | PASS | Repeated invalid bootstrap attempts return `429` with `Retry-After`. |
+| Metadata exposure | PASS | Capabilities and director metrics do not expose bootstrap, `otpauth://`, or TOTP seed data. |
+| Browser credential limitation | PASS | Shared API key remains browser-carried and is documented as a sandbox containment control, not server-confidential identity. |
+
+## Phase 6 Director Bootstrap Supplement Regression - 2026-06-06
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase6_auth_security_test -v` | 0 | 1252 ms | 18 Phase 6 tests passed, including director enrollment bootstrap boundary tests. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 14861 ms | 199 backend tests passed. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | 1286 ms | Backend source compiled. |
+| `bandit -r backend -ll -x backend/env,backend/venv` | 0 | 1829 ms | No issues identified; severity Medium 0, High 0. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 173 ms | 4 capability fallback tests passed. |
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 1805 ms | 11 browser-security tests passed. |
+| `node --test frontend\tests\auth-transport.test.mjs` | 0 | 161 ms | 2 auth transport tests passed. |
+| `npm --prefix frontend run lint` | 0 | 5172 ms | ESLint reported 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 0 | 10387 ms | Next.js build completed. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 1357 ms | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | 101 ms | No tracked whitespace errors; CRLF warnings only. |
+| `git diff --cached --check` | 0 | 97 ms | No cached whitespace errors. |
