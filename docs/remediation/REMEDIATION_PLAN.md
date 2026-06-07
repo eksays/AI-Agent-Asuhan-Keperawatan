@@ -42,18 +42,19 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Tighten markdown link protocols and CSP.
 
 6. **Phase 5 - Isolated Document Upload Parsing**
-   - Status: applied locally on 2026-06-06 for tested document-upload parser isolation and hostile-file rejection; closure review evidence has been prepared, but no checkpoint commit has been created yet.
+   - Status: applied on 2026-06-06 for tested document-upload parser isolation and hostile-file rejection; closure accepted, checkpoint committed, and merged into `dev`.
    - Use content sniffing and magic bytes.
    - Parse in a killable process with bounded parser limits; hard OS-level CPU/RAM caps remain residual work.
    - Disable unsupported clinical photo analysis.
 
 7. **Phase 6 - Authentication, Session Security, Secrets, MFA, and Rate Limits**
+   - Status: applied and checkpoint committed; merged into `dev` based on `git merge-base --is-ancestor 36efc613556c706fe89fe2af5f14abd05850c1f9 origin/dev` returning exit code 0.
    - Remove API keys from request bodies.
    - Authenticate and authorize session mutation endpoints.
    - Add TOTP replay prevention, lockout, and rate limits.
 
 8. **Phase 7 - Audit Ledger Redesign**
-   - Status: applied locally for HMAC-chained structured audit events, safe verification export, metadata minimization, and local segment rotation.
+   - Status: applied and checkpoint committed locally for HMAC-chained structured audit events, safe verification export, metadata minimization, and local segment rotation; awaiting merge into `dev`.
    - Rename local ledger honestly as tamper-evident only.
    - Add HMAC/signature and verifier tooling.
    - Separate local and production storage adapters.
@@ -198,7 +199,7 @@ Residuals:
 - Process-tree isolation is not claimed; stronger host/container controls remain required for portable descendant-process containment even though the tested child guard blocks subprocess creation.
 - Parser libraries still execute inside a child process and must remain covered by dependency review and crash tests.
 - Frontend accept hints are not authoritative and may be narrowed later, but server-side validation is the safety control.
-- Gate A remains unmet until Phase 5 closure review accepts the evidence, resource-control residuals are resolved or explicitly accepted for sandbox-only use, browser-rendered QA disposition is settled, and all Phase 1-5 controls remain enforced.
+- Gate A remains unmet after Phase 5 closure acceptance and checkpointing. Remaining blockers include resource-control residuals resolved or explicitly accepted for sandbox-only use, browser-rendered QA disposition settled, formal registry/clinical review, and all Phase 1-7 controls enforced in CI.
 
 ## Phase 6 Implementation Notes
 

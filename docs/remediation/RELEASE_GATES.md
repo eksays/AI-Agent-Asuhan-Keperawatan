@@ -54,7 +54,7 @@ Completed Phase 4 controls:
 - CSP removes production `unsafe-eval`, adds `frame-src 'none'`, preserves required browser hardening directives, and narrows `img-src`.
 - Frontend browser-security regression test and sink scanner are available locally.
 
-Phase 5 local controls with closure evidence prepared:
+Phase 5 controls checkpointed and merged into dev:
 
 - Document uploads for `/analisis` and `/analisis_multi` use bounded intake and deterministic content sniffing for PDF, DOCX, and clean UTF-8 text.
 - Filename extension and browser MIME type are treated as non-authoritative hints; mismatches fail closed.
@@ -64,18 +64,24 @@ Phase 5 local controls with closure evidence prepared:
 - Parser failures return structured `upload_status`, `accepted_upload=false`, and browser-safe messages.
 - Clinical photo analysis remains default-off and unsupported server-side.
 - Closure tests cover 20 sequential parser timeouts, queue close/join cleanup, parser crash containment, oversized parser result rejection, DOCX Unicode/duplicate/encrypted/member-size cases, explicit PDF active-content marker rejection, plain-text binary/encoding rejection, parent-controlled copied input, and network/process denial for socket, urllib, requests, httpx, subprocess, `os.system`, and `shell=True` attempts.
+
+Checkpoint reconciliation:
+
+- Phase 5 closure is accepted, checkpoint committed, and merged into `dev`.
+- Phase 6 auth-security checkpoint is implemented.
+- Phase 7 audit-ledger checkpoint is implemented locally on `audit/phase7-ledger-hardening` and awaiting merge into `dev`.
 Remaining missing or failing controls:
 
 - PHI firewall completeness beyond tested canary classes and future integrations.
 - Formal clinical review workflow for real/local datasets, including reviewer identity, approval records, license review, durable active release storage, and operational rollback evidence.
 - Extraction-quality debugging and review for real `extraction_unverified`, `ocr_extracted`, and `llm_assisted` registry content.
 - Browser-rendered QA for Mermaid/SVG hardening remains deferred unless a working Browser runtime completes visual verification.
-- Phase 5 closure review acceptance and checkpoint commit for upload isolation evidence.
 - Hard OS-level parser CPU and memory caps before pilot or production claims.
 - Portable process-tree isolation or equivalent host/container controls before stronger isolation claims.
+- Full CI enforcement of Phase 1/2/3/4/5/6/7 safety gates remains incomplete.
 - Dedicated validation-status UI and formal clinical/nursing validation of abstention wording.
 
-Gate A is still not passed until registry governance is connected to formally reviewed approved release artifacts, Phase 5 closure evidence is accepted, browser-rendered QA is completed or explicitly accepted as deferred for sandbox-only closure, hard parser resource-control residuals are resolved or explicitly accepted for the sandbox boundary, and Phase 1/2/3/4/5 controls are kept enforced in CI.
+Gate A is still not passed until registry governance is connected to formally reviewed approved release artifacts, formal clinical review workflow is completed, browser-rendered QA is completed or explicitly accepted as deferred for sandbox-only closure, hard parser resource-control and process-tree residuals are resolved or explicitly accepted for the sandbox boundary, validation-status UI and abstention wording receive formal review, and Phase 1/2/3/4/5/6/7 controls are kept enforced in CI.
 
 Phase 2 closure verification improves deterministic clinical validation, trusted evidence containment, machine-readable abstention status, and fail-fast registry-unavailable handling for tested paths. Informal nursing-perspective feedback received on 2026-06-06 says supporting 3S and 3N documents remain insufficiently concrete because extraction issues remain; this reinforces keeping extracted registries non-authoritative and fail-closed. It does not satisfy registry governance, Mermaid/SVG hardening, isolated upload parsing, formal clinical validation, compliance review, hospital readiness, or production readiness. Browser-rendered QA remains deferred.
 
@@ -88,15 +94,21 @@ Status: **Not met**
 Missing or failing controls:
 
 - All Gate A controls.
-- Clinical reviewer approval workflow.
-- Approved registry releases.
-- Session hardening and persistent sessions where required.
-- MFA replay protection and throttling.
-- Rate limiting.
-- Tamper-evident audit verifier with HMAC/signature.
-- Clinical regression suite.
-- CI enforcement of build, lint, test, and safety gates.
+- Real user identity and RBAC / SSO / OAuth-OIDC or approved equivalent.
+- Durable distributed session, MFA, token, and rate-limit state.
+- Managed secret custody and rotation workflow.
+- Formal clinical reviewer approval workflow.
+- Approved registry releases and durable release store.
 - Human confirmation workflow.
+- Expanded CI enforcement of build, lint, test, clinical, privacy, upload, browser, auth, audit, and safety gates.
+- External ledger anchors or approved audit-storage strategy where required.
+
+Implemented sandbox checkpoints with residuals:
+
+- Session ownership and TTL controls are implemented in Phase 6 as in-memory sandbox controls; they are not durable distributed identity/session infrastructure.
+- MFA replay protection and lockout are implemented in Phase 6 as in-memory sandbox controls; restart and distributed-state residuals remain.
+- Bounded rate limiting is implemented in Phase 6 as an in-memory sandbox control; distributed enforcement remains missing.
+- Local HMAC-chained tamper-evident verifier is implemented in Phase 7; it is not WORM storage, immutable storage, asymmetric non-repudiation, external anchoring, or compliance evidence.
 
 ## Gate C - Production Evaluation Candidate
 
@@ -105,13 +117,12 @@ Status: **Not met**
 Missing or failing controls:
 
 - All Gate B controls.
-- External append-only audit storage.
+- External immutable or WORM-capable audit storage.
 - Formal privacy review.
 - Formal security review.
 - Clinical validation study.
 - Incident response process.
-- Model rollback process.
-- Registry rollback process.
+- Model and registry rollback procedures.
 - Operational monitoring.
 - Documented responsibility model.
 - Legal and regulatory review.

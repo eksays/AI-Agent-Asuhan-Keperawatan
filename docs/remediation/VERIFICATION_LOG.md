@@ -691,3 +691,19 @@ Closure review added focused evidence for canonical field coverage, non-finite J
 | `git diff --cached --check` | 0 | 0.2 s | No cached whitespace errors. |
 
 Closure residuals: segment rotation is implemented, but key rotation is not implemented. Local HMAC chain detects mutation, reordering, middle deletion, duplicate insertion, wrong keys, malformed lines, and partial trailing records, but a valid-prefix tail truncation can still verify locally without an external checkpoint, signed footer, immutable archive, or attestation. The ledger remains local sandbox tamper evidence only, not WORM, not immutable, not non-repudiation, not compliance evidence, and not Gate A completion.
+
+## Phase 7 Pre-Merge Documentation Reconciliation
+
+| Item | Result |
+|---|---|
+| Technical checkpoint | `52eb16d` |
+| Documentation drift | Corrected stale Phase 5 checkpoint and release-gate wording. |
+| Code changes | None; documentation only. |
+| Test changes | None. |
+| Gate A | Not met. |
+| Gate B | Not met. |
+| Gate C | Not met. |
+| Phase 5 historical stale wording | Removed from current release-gate and remediation-plan status. |
+| Phase 6 status source | Derived from git ancestry, not assumption; `36efc613556c706fe89fe2af5f14abd05850c1f9` is an ancestor of `origin/dev`. |
+| Phase 7 merge state | Local checkpoint awaits merge into `dev`. |
+| Prohibited claims | WORM, immutable storage, non-repudiation, compliance, hospital readiness, controlled-pilot readiness, and production-readiness claims remain prohibited. |

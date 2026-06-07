@@ -1,6 +1,18 @@
 # Risk Register
 
-Checkpoint references: Phase 0B `cef16b14166ebc5ad19b67c1a607bbdd9054956a`; Phase 1 `1fd224367457e7db50e15d1cc87d76d599c4e2ff`; frontend lint-clean `a3f11dcd36c7c5c2b5d4504104514a6578fbe324`. Phase 0A documentation evidence has no separate checkpoint commit recorded here.
+Checkpoint references:
+
+- Phase 0B = `cef16b14166ebc5ad19b67c1a607bbdd9054956a`
+- Phase 1 = `1fd224367457e7db50e15d1cc87d76d599c4e2ff`
+- frontend lint-clean = `a3f11dcd36c7c5c2b5d4504104514a6578fbe324`
+- Phase 2 = `f08592ca493ff00f1693b63315e49b68d0c4c09c`
+- Phase 3 = `f9678a61ca44e55a4003e98039a1a185a314feab`
+- Phase 4 = `681175b485ef17a08c2b0b62fdb246b6b66f7f05`
+- Phase 5 = `cc42bec837d5e5458bf768fae6f2da26d1966d62`
+- Phase 6 = `36efc613556c706fe89fe2af5f14abd05850c1f9`
+- Phase 7 = `52eb16d1916bb6089a2e342e3da54f6efe9549d4`
+
+Phase 0A documentation evidence has no separate checkpoint commit recorded here.
 
 | ID | Domain | Severity | Evidence | Affected Files | Impact | Root Cause | Proposed Fix | Acceptance Test | Status | Residual Risk |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -136,7 +148,7 @@ Checkpoint references: Phase 0B `cef16b14166ebc5ad19b67c1a607bbdd9054956a`; Phas
 | Process isolation lacks hard CPU/RAM quotas | High | Parser process can be terminated on timeout, but portable memory and CPU caps are not implemented. | Add container, Linux cgroup, Windows job-object, or equivalent hard resource controls before pilot. |
 | Parser dependency risk remains | Medium | PDF and DOCX libraries run only in the child process, but dependency parser bugs can still crash the child. | Keep dependency scanning and parser crash tests in CI; consider hardened parser containers. |
 | Frontend accept hints are advisory | Low | Backend rejects unsupported or mismatched content regardless of browser metadata. | Optionally narrow frontend accept hints later without redesign, but do not rely on them. |
-| Gate A remains unmet after closure evidence | High | Phase 5 closure evidence is prepared locally, but Gate A still requires accepted closure, CI enforcement, hard parser resource-control resolution or explicit sandbox residual acceptance, registry/formal clinical review, and browser-rendered QA disposition. | Obtain Phase 5 closure acceptance, checkpoint the phase, and plan CI/resource-control follow-up before any gate claim. |
+| Gate A remains unmet after Phase 5 checkpoint | High | Phase 5 closure is accepted, checkpoint committed, and merged into `dev`, but Gate A still requires expanded CI enforcement, hard parser resource-control resolution or explicit sandbox residual acceptance, registry/formal clinical review, and browser-rendered QA disposition. | Plan CI/resource-control follow-up before any gate claim. |
 
 ## Phase 6 Status Update
 
