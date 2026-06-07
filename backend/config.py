@@ -29,6 +29,9 @@ class AppConfig:
     feature_clinical_photo_analysis: bool
     feature_mermaid_pathway_rendering: bool
     allow_unsafe_external_llm_for_local_debug: bool
+    local_synthetic_demo: bool
+    local_synthetic_mock_provider: bool
+    local_synthetic_external_provider_opt_in: bool
     frontend_origins: tuple[str, ...]
     shopee_base_url: str
     director_bootstrap: str
@@ -107,6 +110,16 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
     if allow_debug and app_mode != "clinical_sandbox":
         raise RuntimeError("ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG is only valid in clinical_sandbox mode.")
 
+    local_demo = _bool_env(source, "LOCAL_SYNTHETIC_DEMO")
+    local_mock = _bool_env(source, "LOCAL_SYNTHETIC_MOCK_PROVIDER")
+    local_external_opt_in = _bool_env(source, "LOCAL_SYNTHETIC_EXTERNAL_PROVIDER_OPT_IN")
+    if (local_demo or local_mock or local_external_opt_in) and app_mode != "clinical_sandbox":
+        raise RuntimeError("Local synthetic demo flags are valid only in clinical_sandbox mode.")
+    if local_external_opt_in and not local_demo:
+        raise RuntimeError("LOCAL_SYNTHETIC_EXTERNAL_PROVIDER_OPT_IN requires LOCAL_SYNTHETIC_DEMO=true.")
+    if local_external_opt_in and not _bool_env(source, "FEATURE_EXTERNAL_LLM"):
+        raise RuntimeError("LOCAL_SYNTHETIC_EXTERNAL_PROVIDER_OPT_IN requires FEATURE_EXTERNAL_LLM=true.")
+
     missing = tuple(name for name in PRODUCTION_PREREQUISITES if not _bool_env(source, name))
     if app_mode == "production" and missing:
         joined = ", ".join(missing)
@@ -134,6 +147,9 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         feature_clinical_photo_analysis=_bool_env(source, "FEATURE_CLINICAL_PHOTO_ANALYSIS"),
         feature_mermaid_pathway_rendering=_bool_env(source, "FEATURE_MERMAID_PATHWAY_RENDERING"),
         allow_unsafe_external_llm_for_local_debug=allow_debug,
+        local_synthetic_demo=local_demo,
+        local_synthetic_mock_provider=local_mock,
+        local_synthetic_external_provider_opt_in=local_external_opt_in,
         api_auth_keys=api_keys,
         session_ttl_sec=_int_env(source, 'SESSION_TTL_SEC', 3600),
         session_idle_timeout_sec=_int_env(source, 'SESSION_IDLE_TIMEOUT_SEC', 900),
@@ -169,6 +185,9 @@ CONFIG = load_config()
 
 
 def build_capabilities(cfg: AppConfig = CONFIG) -> dict:
+    synthetic_demo_enabled = bool(
+        cfg.app_mode == "clinical_sandbox" and cfg.local_synthetic_demo and cfg.local_synthetic_mock_provider
+    )
     debug_warning = " Unsafe local debug override is active; never use with real patient data."
     external_reason = (
         "Enabled only because unsafe local debug override is active." + debug_warning
@@ -188,6 +207,12 @@ def build_capabilities(cfg: AppConfig = CONFIG) -> dict:
         "unsupported_notice": UNSUPPORTED_NOTICE,
         "capabilities": {
             "external_llm": {"enabled": cfg.external_llm_enabled, "reason": external_reason},
+            "local_synthetic_demo": {
+                "enabled": synthetic_demo_enabled,
+                "reason": "LOCAL SYNTHETIC DEMO — DO NOT ENTER REAL PATIENT DATA. This mode is for UI and security-flow testing only. Clinical recommendations are not approved for patient care."
+                if synthetic_demo_enabled
+                else "Disabled by default; requires APP_MODE=clinical_sandbox, LOCAL_SYNTHETIC_DEMO=true, and LOCAL_SYNTHETIC_MOCK_PROVIDER=true.",
+            },
             "ebp_external_search": {"enabled": cfg.ebp_external_search_enabled, "reason": ebp_reason},
             "clinical_photo_analysis": {
                 "enabled": cfg.feature_clinical_photo_analysis,

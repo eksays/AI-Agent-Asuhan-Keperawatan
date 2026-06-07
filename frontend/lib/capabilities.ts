@@ -1,5 +1,6 @@
 export type CapabilityKey =
   | "external_llm"
+  | "local_synthetic_demo"
   | "ebp_external_search"
   | "clinical_photo_analysis"
   | "mermaid_pathway_rendering"
@@ -21,6 +22,7 @@ export interface CapabilitiesResponse {
 
 export const CAPABILITY_KEYS: CapabilityKey[] = [
   "external_llm",
+  "local_synthetic_demo",
   "ebp_external_search",
   "clinical_photo_analysis",
   "mermaid_pathway_rendering",
@@ -41,6 +43,7 @@ export const FAIL_CLOSED_CAPABILITIES: CapabilitiesResponse = {
   metadata_unavailable: true,
   capabilities: {
     external_llm: { enabled: false, reason: DEFAULT_REASON },
+    local_synthetic_demo: { enabled: false, reason: DEFAULT_REASON },
     ebp_external_search: { enabled: false, reason: DEFAULT_REASON },
     clinical_photo_analysis: { enabled: false, reason: DEFAULT_REASON },
     mermaid_pathway_rendering: { enabled: false, reason: DEFAULT_REASON },

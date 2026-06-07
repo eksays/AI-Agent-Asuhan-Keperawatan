@@ -24,6 +24,7 @@ The current safety posture is intentionally fail-closed: unsupported or unverifi
 | Capability | Status | Reason |
 |---|---|---|
 | External LLM analysis | Disabled by default | Awaiting verified outbound PHI firewall |
+| Local synthetic demo | Disabled by default | Optional clinical-sandbox-only mock UI flow; not clinical output |
 | EBP external search | Disabled by default | Awaiting de-identification enforcement |
 | Clinical photo analysis | Unavailable | Validated OCR or vision workflow not implemented |
 | Mermaid pathway rendering | Disabled by default | Awaiting SVG sanitization and XSS regression suite |
@@ -55,12 +56,17 @@ FEATURE_EBP_EXTERNAL_SEARCH=false
 FEATURE_CLINICAL_PHOTO_ANALYSIS=false
 FEATURE_MERMAID_PATHWAY_RENDERING=false
 ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=false
+LOCAL_SYNTHETIC_DEMO=false
+LOCAL_SYNTHETIC_MOCK_PROVIDER=false
+LOCAL_SYNTHETIC_EXTERNAL_PROVIDER_OPT_IN=false
 CDSS_API_KEYS=test-key
 CDSS_SECRET_KEY=local-sandbox-secret-change-me
 DIRECTOR_ENROLLMENT_ENABLED=false
 ```
 
 `ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=true` is accepted only in `clinical_sandbox` mode. It must not be used with real patient data. `test-key` is a sandbox default only; controlled-pilot and production modes require explicit strong `CDSS_API_KEYS`, `CDSS_SECRET_KEY`, and `DIRECTOR_BOOTSTRAP` values.
+
+`LOCAL_SYNTHETIC_DEMO=true` plus `LOCAL_SYNTHETIC_MOCK_PROVIDER=true` is accepted only in `clinical_sandbox` mode. It enables a clearly labeled mock response for local UI and security-flow testing without enabling real external LLM, EBP external search, clinical-photo analysis, Mermaid rendering, or authoritative registry grounding. Care-plan requests still abstain when approved registries are unavailable or incomplete. Do not enter real patient data.
 
 ## Repository Structure
 
@@ -91,6 +97,37 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+Local synthetic demo, placeholder-only PowerShell:
+
+```powershell
+$env:APP_MODE="clinical_sandbox"
+$env:LOCAL_SYNTHETIC_DEMO="true"
+$env:LOCAL_SYNTHETIC_MOCK_PROVIDER="true"
+
+$env:CDSS_API_KEY="<LOCAL_ONLY_RANDOM_API_KEY>"
+$env:CDSS_API_KEYS=$env:CDSS_API_KEY
+$env:CDSS_SECRET_KEY="<LOCAL_ONLY_RANDOM_SERVER_SECRET>"
+
+$env:FEATURE_EXTERNAL_LLM="false"
+$env:FEATURE_EBP_EXTERNAL_SEARCH="false"
+$env:FEATURE_CLINICAL_PHOTO_ANALYSIS="false"
+$env:FEATURE_MERMAID_PATHWAY_RENDERING="false"
+
+$env:HARVEST_INTERVAL_SEC="0"
+
+cd backend
+python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
+```
+
+In another PowerShell terminal:
+
+```powershell
+cd frontend
+npm run dev
+```
+
+Open `http://localhost:3000`. Do not use the synthetic demo with real patient data.
 
 ## Verification
 

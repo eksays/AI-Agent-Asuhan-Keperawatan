@@ -34,6 +34,41 @@ npm install
 npm run dev
 ```
 
+## Demo sintetis lokal (tanpa provider eksternal)
+
+Mode ini hanya untuk uji alur UI dan kontrol keamanan lokal. Jangan masukkan data pasien nyata.
+
+Terminal 1 - Backend:
+
+```powershell
+cd backend
+$env:APP_MODE="clinical_sandbox"
+$env:LOCAL_SYNTHETIC_DEMO="true"
+$env:LOCAL_SYNTHETIC_MOCK_PROVIDER="true"
+
+$env:CDSS_API_KEY="<LOCAL_ONLY_RANDOM_API_KEY>"
+$env:CDSS_API_KEYS=$env:CDSS_API_KEY
+$env:CDSS_SECRET_KEY="<LOCAL_ONLY_RANDOM_SERVER_SECRET>"
+
+$env:FEATURE_EXTERNAL_LLM="false"
+$env:FEATURE_EBP_EXTERNAL_SEARCH="false"
+$env:FEATURE_CLINICAL_PHOTO_ANALYSIS="false"
+$env:FEATURE_MERMAID_PATHWAY_RENDERING="false"
+
+$env:HARVEST_INTERVAL_SEC="0"
+
+python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Terminal 2 - Frontend:
+
+```powershell
+cd frontend
+npm run dev
+```
+
+Buka http://localhost:3000. Output mock diberi label `SYNTHETIC DEMO OUTPUT — NOT A CLINICAL RECOMMENDATION`. Permintaan care-plan tetap abstain bila registry approved belum tersedia atau belum lengkap.
+
 ## Instalasi dependency backend
 
 ```powershell
@@ -57,6 +92,7 @@ pip install -r requirements.txt
 - Rate limit berbasis memori cocok untuk sandbox lokal saja; kontrol pilot membutuhkan store bersama/durable.
 - Browser-carried shared API key tetap terlihat oleh browser client; header-only hanya mencegah kebocoran lewat body, URL, cookie, dan browser storage.
 - Shared API key bukan identitas user rumah sakit, bukan RBAC, bukan SSO/OAuth/OIDC.
+- Demo sintetis lokal default-off dan hanya boleh aktif di `clinical_sandbox`; mode ini tidak mengaktifkan provider eksternal, EBP, foto klinis, Mermaid, registry authoritative, atau background harvester.
 - Enrollment MFA direktur default-off; provisioning lokal sandbox membutuhkan `DIRECTOR_ENROLLMENT_ENABLED=true` dan header `X-Director-Bootstrap`.
 - `controlled_pilot` dan `production` menolak secret yang hilang, lemah, atau placeholder.
 

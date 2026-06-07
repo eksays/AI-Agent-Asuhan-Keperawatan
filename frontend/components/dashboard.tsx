@@ -107,7 +107,9 @@ export function Dashboard() {
   const name = creds?.name ?? "Perawat";
   const initials = name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   const empty = messages.length === 0;
-  const analysisReason = !capabilityAvailable("external_llm") ? capabilityReason("external_llm") : !capabilityAvailable("sdki_authoritative_grounding") ? capabilityReason("sdki_authoritative_grounding") : "";
+  const syntheticDemo = capabilityAvailable("local_synthetic_demo");
+  const syntheticDemoReason = capabilityReason("local_synthetic_demo");
+  const analysisReason = !syntheticDemo && !capabilityAvailable("external_llm") ? capabilityReason("external_llm") : !syntheticDemo && !capabilityAvailable("sdki_authoritative_grounding") ? capabilityReason("sdki_authoritative_grounding") : "";
   const photoReason = capabilityReason("clinical_photo_analysis");
   const pathwayReason = capabilityReason("mermaid_pathway_rendering");
   const ebpReason = capabilityReason("ebp_external_search");
@@ -178,6 +180,7 @@ export function Dashboard() {
           <button onClick={() => setSidebarOpen(true)} className="glass flex h-9 w-9 items-center justify-center rounded-full text-zinc-300 lg:hidden"><Menu className="h-5 w-5" /></button>
         </header>
 
+        {syntheticDemo && <div className="px-4 pb-2"><Banner show title="LOCAL SYNTHETIC DEMO — DO NOT ENTER REAL PATIENT DATA." description={syntheticDemoReason} icon={<AlertTriangle className="h-5 w-5" />} closable={false} className="border-amber-400/40 bg-amber-500/10 text-amber-100" /></div>}
         {banner.show && <div className="px-4 pb-2"><Banner show title={banner.title} description={banner.description} icon={<AlertTriangle className="h-5 w-5" />} onHide={dismissBanner} action={<button onClick={logoutCreds} className="rounded-md bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-500/30">Perbarui Kunci API</button>} /></div>}
 
         <div className="relative flex-1 overflow-y-auto">

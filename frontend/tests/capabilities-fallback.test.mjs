@@ -4,9 +4,11 @@ import test from "node:test";
 
 const source = readFileSync(new URL("../lib/capabilities.ts", import.meta.url), "utf8");
 const apiSource = readFileSync(new URL("../lib/api.ts", import.meta.url), "utf8");
+const dashboardSource = readFileSync(new URL("../components/dashboard.tsx", import.meta.url), "utf8");
 
 const requiredCapabilities = [
   "external_llm",
+  "local_synthetic_demo",
   "ebp_external_search",
   "clinical_photo_analysis",
   "mermaid_pathway_rendering",
@@ -39,4 +41,10 @@ test("capabilities fetch failure returns fail-closed metadata", () => {
 test("normalization rejects missing or partial capability payloads", () => {
   assert.match(source, /enabled: incoming\?\.enabled === true/);
   assert.match(source, /metadata_unavailable: raw\?\.metadata_unavailable === true \|\| !raw/);
+});
+
+test("local synthetic demo warning is persistent when enabled", () => {
+  assert.match(dashboardSource, /LOCAL SYNTHETIC DEMO/);
+  assert.match(dashboardSource, /DO NOT ENTER REAL PATIENT DATA/);
+  assert.match(dashboardSource, /closable=\{false\}/);
 });

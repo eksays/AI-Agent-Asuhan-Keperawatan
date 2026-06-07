@@ -174,9 +174,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (firstFile && (firstFile.type || "").startsWith("image/") && !capabilityAvailable("clinical_photo_analysis")) { blockCapability("clinical_photo_analysis"); return; }
     if (agent === "pathway" && !capabilityAvailable("mermaid_pathway_rendering")) { blockCapability("mermaid_pathway_rendering"); return; }
     if (agent === "referensi" && !capabilityAvailable("ebp_external_search")) { blockCapability("ebp_external_search"); return; }
-    if (!capabilityAvailable("external_llm")) { blockCapability("external_llm"); return; }
+    const syntheticDemo = capabilityAvailable("local_synthetic_demo");
+    if (!capabilityAvailable("external_llm") && !syntheticDemo) { blockCapability("external_llm"); return; }
     const frameworkCapability: CapabilityKey = framework === "3S" ? "sdki_authoritative_grounding" : "nanda";
-    if (!capabilityAvailable(frameworkCapability)) { blockCapability(frameworkCapability); return; }
+    if (!capabilityAvailable(frameworkCapability) && !syntheticDemo) { blockCapability(frameworkCapability); return; }
     if (!consentRef.current) { setBanner({ show: true, title: "Persetujuan diperlukan", description: "Centang kotak persetujuan pemrosesan data terlebih dahulu sebelum mengirim." }); return; }
     if (targetTab && targetTab !== tab) setTab(targetTab);   // jalankan & tampilkan di tab tujuan
     const sid = ensureSession(t);                            // session_id backend = id sesi tab ini

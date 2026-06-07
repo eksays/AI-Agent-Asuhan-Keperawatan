@@ -615,6 +615,31 @@ def _requires_clinical_registry(agent: str, text: str = "") -> bool:
     return (agent or "analisis").lower() == "analisis" and not is_casual(text)
 
 
+SYNTHETIC_DEMO_LABEL = "SYNTHETIC DEMO OUTPUT — NOT A CLINICAL RECOMMENDATION"
+
+
+def _local_synthetic_demo_active() -> bool:
+    return bool(
+        CONFIG.app_mode == "clinical_sandbox"
+        and CONFIG.local_synthetic_demo
+        and CONFIG.local_synthetic_mock_provider
+    )
+
+
+def _synthetic_mock_answer(prompt: str, agent: str = "analisis") -> str:
+    safe_prompt = _browser_safe_text((prompt or "").strip())
+    agent_name = (agent or "analisis").strip().lower()
+    preview = safe_prompt[:220] if safe_prompt else "synthetic UI flow"
+    return _browser_safe_text(
+        f"{SYNTHETIC_DEMO_LABEL}\n\n"
+        "Mode ini hanya memverifikasi alur UI, autentikasi header-only, token sesi, dan kontrol fail-closed. "
+        "Tidak ada provider eksternal, EBP eksternal, foto klinis, Mermaid, atau registry authoritative yang diaktifkan.\n\n"
+        f"Agen: {agent_name}\n"
+        f"Input sintetis: {preview}\n\n"
+        "Untuk permintaan care-plan klinis, sistem tetap harus abstain bila registry approved tidak tersedia."
+    )
+
+
 RATE_LIMITS = {
     'AUTH': (120, CONFIG.rate_limit_window_sec),
     'MFA': (10, CONFIG.rate_limit_window_sec),
@@ -981,6 +1006,8 @@ def _blocked_llm_capability(agent: str) -> Optional[str]:
         return "ebp_external_search"
     if a == "pathway" and not capability_enabled("mermaid_pathway_rendering", CONFIG):
         return "mermaid_pathway_rendering"
+    if a == "analisis" and _local_synthetic_demo_active():
+        return None
     if not capability_enabled("external_llm", CONFIG):
         return "external_llm"
     return None
@@ -1080,6 +1107,16 @@ def chat(request: Request, provider: str = Form(...), model: str = Form(...),
     if not framework_available(framework):
         ans, meta = _registry_unavailable_answer(framework)
         return _clinical_payload({"status": "sukses", "jawaban": ans}, meta)
+    if _local_synthetic_demo_active():
+        safe_question = _external_safe_text(pertanyaan)
+        ans = _synthetic_mock_answer(safe_question, agent)
+        clinical_meta = None
+        if (agent or "analisis").lower() == "analisis" and not is_casual(pertanyaan):
+            ans, clinical_meta = _validate_clinical_answer(ans, framework, safe_question)
+        SESI.add(session_id, "user", safe_question)
+        SESI.add(session_id, "assistant", ans)
+        metrics.record_job(agent, tier, True, (len(pertanyaan) + len(ans)) // 4)
+        return _clinical_payload({"status": "sukses", "jawaban": ans}, clinical_meta)
     try:
         llm = get_llm(provider, model, key)
         safe_question = _external_safe_text(pertanyaan)
@@ -1123,6 +1160,7 @@ def chat_stream(request: Request, provider: str = Form(...), model: str = Form(.
         return _session_invalid()
     if not (pertanyaan or "").strip():
         return JSONResponse({"status": "error", "pesan": "Pertanyaan kosong."}, status_code=400)
+    casual = is_casual(pertanyaan)                  # sapaan/obrolan singkat -> jalur stream cepat (1 panggilan), tanpa orkestrasi/EBP
     blocked = _blocked_llm_capability(agent)
     if blocked:
         return _unavailable(blocked)
@@ -1134,9 +1172,28 @@ def chat_stream(request: Request, provider: str = Form(...), model: str = Form(.
         ans, meta = _registry_unavailable_answer(framework)
         return StreamingResponse(iter([ans]), media_type="text/plain; charset=utf-8", headers=_stream_clinical_headers(meta))
 
+    if _local_synthetic_demo_active():
+        safe_question = _external_safe_text(pertanyaan)
+        precomputed = _synthetic_mock_answer(safe_question, agent)
+        clinical_meta = None
+        if (agent or "analisis").lower() == "analisis" and not casual:
+            precomputed, clinical_meta = _validate_clinical_answer(precomputed, framework, safe_question)
+
+        def synthetic_gen():
+            full = precomputed or ""
+            for i in range(0, len(full), 120):
+                yield full[i:i + 120]
+            SESI.add(session_id, "user", safe_question)
+            SESI.add(session_id, "assistant", _browser_safe_text(bersihkan(full)))
+            metrics.record_job(agent, tier, True, (len(pertanyaan) + len(full)) // 4)
+
+        return StreamingResponse(
+            synthetic_gen(), media_type="text/plain; charset=utf-8",
+            headers=_stream_clinical_headers(clinical_meta),
+        )
+
     # Mulai di sini agar error auth/kuota tertangkap SEBELUM body 200 terkirim.
     tier_l = (tier or "medium").lower()
-    casual = is_casual(pertanyaan)                  # sapaan/obrolan singkat -> jalur stream cepat (1 panggilan), tanpa orkestrasi/EBP
     try:
         clinical_meta = None
         llm = get_llm(provider, model, key)
@@ -1229,6 +1286,17 @@ def analisis_multi(request: Request, provider: str = Form(...), model: str = For
     if not framework_available(framework):
         hasil, meta = _registry_unavailable_answer(framework)
         return _clinical_payload({"status": "sukses", "hasil": hasil}, meta)
+    if _local_synthetic_demo_active():
+        safe_case = _external_safe_text(cmd + doc_block)
+        hasil = _synthetic_mock_answer(safe_case, agent)
+        clinical_meta = None
+        if (agent or "analisis").lower() == "analisis":
+            hasil, clinical_meta = _validate_clinical_answer(hasil, framework, safe_case)
+        SESI.add(session_id, "user", _external_safe_text(cmd or "[Dokumen sintetis diunggah]"))
+        SESI.add(session_id, "assistant", hasil)
+        audit_log(session_id, "Analisis", "Success(SyntheticDemo)")
+        metrics.record_job(agent, tier, True, (len(cmd) + len(hasil)) // 4, doc=True)
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, clinical_meta)
     try:
         llm = get_llm(provider, model, key)
         safe_case = _external_safe_text(cmd + doc_block)
@@ -1308,6 +1376,15 @@ def analisis(request: Request, provider: str = Form(...), model: str = Form(...)
     data = data.strip()
     if not data:
         return JSONResponse({"status": "error", "pesan": "Tidak ada data untuk dianalisis."}, status_code=400)
+    if _local_synthetic_demo_active():
+        safe_data = _external_safe_text(data)
+        raw_hasil = _synthetic_mock_answer(safe_data, "analisis")
+        hasil, clinical_meta = _validate_clinical_answer(raw_hasil, framework, safe_data)
+        SESI.add(session_id, "user", _external_safe_text(gejala.strip()) if gejala.strip() else "[analisis dokumen sintetis terlampir]")
+        SESI.add(session_id, "assistant", hasil)
+        audit_log(session_id, "Analisis", "Success(SyntheticDemo)")
+        metrics.record_job("analisis", tier, True, (len(data) + len(hasil)) // 4, doc=True)
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, clinical_meta)
     konteks = bangun_konteks(framework, data)
     koreksi = (memory.recall_block(framework, data, session_id) or "") + books_note(framework)   # isolasi per-sesi + degradasi anggun
     try:
