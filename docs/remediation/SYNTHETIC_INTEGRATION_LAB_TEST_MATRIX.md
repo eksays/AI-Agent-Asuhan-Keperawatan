@@ -2,6 +2,8 @@
 
 This matrix defines required synthetic-only coverage before the lab can be used
 as a feature-surface test harness. Lab 0A does not create fixtures or tests.
+Lab Sprint A adds foundation-only tests and one harmless generated fixture case;
+Sprint B and Sprint C scenarios remain pending until their controlled patches.
 
 ## Fixture Metadata Requirements
 
@@ -37,6 +39,17 @@ production-ready.
 | Lab Sprint A - Showcase Foundation | Default-false flags, sandbox-only mode, pilot/production rejection, central kill-switch, `/lab/*` namespace, strict fixture loader, trusted root containment, bounded safe trace store, banner contract, normal-route non-regression, offline network deny. | All flags false by default; kill-switch closes lab routes; loader cannot escape root; trace stores no PHI/secrets; no internet required. |
 | Lab Sprint B - Core Feature Activation | Real local auth/session/MFA/rate/audit/upload/validator/abstention/Mermaid paths; isolated feedback; deterministic orchestration mocks; synthetic lexical RAG; synthetic registry; offline EBP; OCR/photo mocks; safe trace panel. | Stage invocation, critic influence, retrieval ids/scores, synthetic registry only under `/lab/*`, `SYN-D-001` rejected on normal routes, malicious Mermaid inert, OCR/photo mock labels. |
 | Lab Sprint C - Pitch-Ready Closure | PHI canary red-team, hostile uploads, network deny, browser QA, secret scan, full regression, demo/kill-switch/audit-ledger rehearsals, runbook, feature matrix, limitations. | Full tests pass; Bandit Medium 0 High 0; lint/build/audit pass; canaries absent from outbound/trace/UI/logs/ledger; offline showcase works; normal routes fail-closed. |
+
+## Sprint A Implemented Test Coverage
+
+| Area | Implemented Evidence | Remaining Scope |
+| --- | --- | --- |
+| Mode gates | Flags default false; sandbox requires lab mode plus synthetic-data-only; pilot/production reject lab flags; offline lab profile rejects external LLM, EBP search, photo analysis, Mermaid rendering, and harvester activity. | Sprint B feature-specific flags remain unimplemented. |
+| Kill-switch | Disabled `/lab/status`, `/lab/session`, and `/lab/trace/*` return `synthetic_lab_disabled` before side effects. | Future lab routes must use the same guard. |
+| Fixtures | Manifest metadata, approved synthetic parent containment, traversal, absolute path, outside-manifest, missing file, forbidden `data_terstruktur`, upload/runtime/hospital/patient-record roots, invalid metadata, external absolute roots, and symlink escape where detectable are tested. | RAG, registry, EBP, upload, image, OCR/photo, Mermaid, and expected-output fixtures are not created. |
+| Trace | Opaque `run_id`, TTL, max active runs, stage/document bounds, metadata byte bound, unknown-field rejection, PHI canary rejection, and secret canary rejection are tested. | Sprint B trace panel and feature-stage trace emission are not implemented. |
+| Frontend banner | Source test verifies server-authoritative `synthetic_lab_enabled`, non-closable banner text, and no browser storage. | Browser-rendered QA remains a Sprint C closure item. |
+| Offline network deny | Sprint A test denies `socket.create_connection`, external `socket.connect`, `urllib.request.urlopen`, provider factory, and HTTP client transports while lab status/session, loader, and trace operations pass. | Future adapters must add their own network-deny assertions. |
 
 External-provider work remains separate: `review/synthetic-integration-lab` is
 offline synthetic showcase only, while `review/synthetic-external-provider` is

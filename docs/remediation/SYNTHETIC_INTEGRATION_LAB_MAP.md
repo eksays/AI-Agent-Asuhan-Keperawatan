@@ -5,6 +5,13 @@ routes, flags, fixtures, mock providers, adapters, dependencies, or frontend
 changes. The lab is synthetic-only and must not activate official registry
 grounding or patient-care behavior.
 
+Lab Sprint A implements the showcase foundation only: default-false lab flags,
+server-authoritative capability metadata, a guarded `/lab/*` namespace,
+strict generated-fixture loading, bounded in-memory trace metadata, and a
+persistent non-closable synthetic-lab banner. It does not activate multi-agent
+orchestration, RAG, registry grounding, Mermaid rendering, EBP retrieval, OCR,
+photo analysis, feedback memory, external providers, or patient-care behavior.
+
 Strict distinctions:
 
 - feature exists != feature is safe to activate
@@ -69,8 +76,8 @@ default, target state, recommended adapter, required tests, and limitations.
 | LAB-MEM-001 | Feedback memory | REAL_PATH_GATED | `memory.py`, `/feedback`, `/delete_my_data`, thumbs/correction UI. | Encrypted local `feedback_memory.json`, per-session recall; no network. | PHI retention and cross-session poisoning risk; per-session binding, DEK purge, sanitized writes; feedback audit. | Default available after auth/session; lab must use isolated synthetic namespace/store; test cross-session isolation and PHI canary absence; limitation: local JSON governance only. |
 | LAB-HRV-001 | Background harvester | REAL_PATH_GATED | `harvester.py`, startup hook. | `HARVEST_INTERVAL_SEC`, topics; EBP network if started. | Uncontrolled background network/cache writes; default interval 0 and audit callback. | Default off; lab policy disabled except inactive-state test; no adapter; test harvester activity attempt; limitation: no lab worker planned. |
 | LAB-EXT-001 | External model provider boundary | REAL_PATH_GATED | `api.py`, `outbound_policy.py`, provider selector, LLM routes. | Provider SDKs/base URLs; API key from header; network only when enabled. | PHI leakage/key exposure/provider retention; feature gate, outbound wrapper, browser sanitization. | Default `FEATURE_EXTERNAL_LLM=false`; lab mock provider first, optional real synthetic opt-in only in LAB-12; test no network without opt-in; limitation: no activation in Lab 0A. |
-| LAB-UI-001 | Visible lab banner and trace panel | MOCK_REQUIRED | Existing frontend app/components; no lab banner or trace panel. | Frontend only; fetches backend metadata. | Trace could leak prompts, outputs, PHI, secrets; current UI has sanitized Markdown/Mermaid and fail-closed capabilities. | Default absent; lab needs persistent non-closable banner and safe trace panel; test labels and forbidden-field absence; limitation: requires LAB-10. |
-| LAB-KILL-001 | Lab kill-switch | UNSUPPORTED | Future `config.py`, `api.py`, frontend capability metadata; no current route. | Future env flags; no data source. | Missing kill-switch could permit partial lab activation; must audit enable/deny. | Default absent and therefore closed; implement before lab routes; test flags absent, kill-switch off, pilot/production rejection; limitation: must precede all lab features. |
+| LAB-UI-001 | Visible lab banner and trace panel | PROTOTYPE_PATH | `frontend/lib/capabilities.ts`, `frontend/components/dashboard.tsx`; banner exists, trace panel not implemented. | Frontend only; fetches backend metadata; no browser env-variable enablement. | Trace could leak prompts, outputs, PHI, secrets; Sprint A adds banner only and no trace panel. | Banner is visible when `synthetic_lab_enabled=true` and non-closable; safe trace panel remains Sprint B; limitation: no browser-rendered QA claim. |
+| LAB-KILL-001 | Lab kill-switch | REAL_PATH_GATED | `backend/config.py`, `backend/lab_config.py`, `backend/lab_routes.py`, `backend/api.py`, frontend capability metadata. | `SYNTHETIC_LAB_MODE=false` and `SYNTHETIC_DATA_ONLY=false` by default; no data source; no network. | Partial lab activation risk is reduced by a central guard before lab sessions, traces, or fixture loading. | Flags absent close `/lab/*`; sandbox requires both lab and data-only flags; pilot/production reject lab flags; limitation: only Sprint A foundation routes exist. |
 
 ## Multi-Agent Reality Check
 
@@ -175,7 +182,7 @@ Target namespace:
 
 | Sprint | Scope | Exit Criteria |
 | --- | --- | --- |
-| Lab Sprint A - Showcase Foundation | Default-false lab flags, clinical_sandbox-only enforcement, controlled_pilot and production rejection, central kill-switch, `/lab/*` namespace, strict fixture loader, trusted fixture root, manifest allowlist, resolved-path containment, traversal/absolute/outside-manifest/symlink escape rejection where detectable, `backend/data_terstruktur/*` rejection, bounded in-memory trace store, opaque `run_id`, TTL, capacity limits, safe field allowlist, persistent non-closable banner, normal-route non-regression tests, offline network-deny tests. | All flags default false; kill-switch closes every `/lab/*` route; normal routes unchanged; fixture loader cannot escape trusted root; trace stores no PHI or secrets; foundation works without internet. |
+| Lab Sprint A - Showcase Foundation | Default-false lab flags, clinical_sandbox-only enforcement, controlled_pilot and production rejection, offline-profile rejection of external LLM/EBP/photo/Mermaid/harvester settings, central kill-switch, `/lab/*` namespace, strict fixture loader, approved synthetic fixture parent, manifest allowlist, resolved-path containment, traversal/absolute/outside-manifest/symlink escape rejection where detectable, `backend/data_terstruktur/*` plus upload/runtime/hospital/patient-record path rejection, bounded in-memory trace store, opaque `run_id`, TTL, capacity limits, safe field allowlist, persistent non-closable banner, normal-route non-regression tests, offline network-deny tests. | All flags default false; kill-switch closes every `/lab/*` route; normal routes unchanged; fixture loader cannot escape the approved synthetic fixture parent or trusted root; trace stores no PHI or secrets; foundation works without internet. |
 | Lab Sprint B - Core Feature Activation | Real local auth/session, MFA/rate limit, HMAC audit ledger, upload parser, typed validator, abstention, Mermaid sanitizer, isolated lab feedback memory, deterministic per-stage orchestration mocks, synthetic lexical RAG fixtures, lab-only synthetic registry adapter, offline EBP fixture adapter, OCR deterministic mock, photo deterministic mock, safe trace panel. | Each agent stage invoked; critic affects synthesis; retrieval document IDs and scores visible; synthetic registry works only under `/lab/*`; `SYN-D-001` rejected on normal routes; normal validator rules unchanged; malicious Mermaid inert; feedback memory isolated; OCR/photo explicitly mock. |
 | Lab Sprint C - Pitch-Ready Closure | PHI canary red-team, hostile PDF/DOCX tests, offline network-deny closure, browser QA, secret scan, full regression, demo rehearsal, kill-switch rehearsal, audit-ledger verification rehearsal, contributor runbook, feature matrix, known limitations. | Full tests pass; Bandit Medium 0 High 0; frontend lint clean; frontend build pass; npm audit 0 vulnerabilities; PHI canaries absent from outbound, trace, UI, logs, and ledger; offline showcase works; normal routes fail-closed; banner visible/non-closable; kill-switch closes all lab routes. |
 
@@ -218,6 +225,10 @@ backend/tests/fixtures/synthetic_lab/
   images/
   expected_outputs/
 ```
+
+Sprint A creates only `manifest.json` and `cases/foundation_case.json` as
+generated non-authoritative foundation fixtures. Registries, RAG, EBP, uploads,
+images, OCR/photo mocks, and expected-output fixture bodies remain uncreated.
 
 Every fixture must carry `fixture_id`, `fixture_version`,
 `synthetic_only=true`, `authoritative=false`, `clinical_use_allowed=false`,

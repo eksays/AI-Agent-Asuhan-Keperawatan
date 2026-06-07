@@ -707,3 +707,29 @@ Closure residuals: segment rotation is implemented, but key rotation is not impl
 | Phase 6 status source | Derived from git ancestry, not assumption; `36efc613556c706fe89fe2af5f14abd05850c1f9` is an ancestor of `origin/dev`. |
 | Phase 7 merge state | Local checkpoint awaits merge into `dev`. |
 | Prohibited claims | WORM, immutable storage, non-repudiation, compliance, hospital readiness, controlled-pilot readiness, and production-readiness claims remain prohibited. |
+
+## Synthetic Integration Lab Sprint A Foundation - 2026-06-07
+
+Sprint A implements foundation-only synthetic lab controls on
+`review/synthetic-integration-lab`. It adds default-false lab flags, guarded
+`/lab/*` foundation routes, strict generated-fixture loading, bounded safe trace
+metadata, and a server-authoritative non-closable frontend banner. It does not
+activate multi-agent orchestration, RAG, registry grounding, Mermaid rendering,
+EBP retrieval, OCR/photo analysis, feedback memory, external providers, or
+patient-care behavior.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Starting checkpoint | PASS | `df6d15aeb4991ac5842c696c3fab6ceca11c58f8` on `review/synthetic-integration-lab`; `origin/dev` ancestor; `review/synthetic-demo` commit not ancestor. |
+| Lab flags | PASS | `SYNTHETIC_LAB_MODE=false` and `SYNTHETIC_DATA_ONLY=false` by default; sandbox enablement requires both; controlled-pilot and production reject lab flags; the offline lab profile rejects external LLM, EBP search, photo analysis, Mermaid rendering, and harvester activity. |
+| Kill-switch | PASS | Disabled `/lab/status`, `/lab/session`, and `/lab/trace/*` return `synthetic_lab_disabled` before lab session, trace, fixture, provider, or network side effects. |
+| Lab routes | PASS | Sprint A creates only `GET /lab/status`, `POST /lab/session`, and `GET /lab/trace/{run_id}`. Lab session bindings are separate from normal sessions. |
+| Fixture loader | PASS | Loader requires generated non-authoritative manifest metadata, manifest allowlist, approved synthetic fixture parent containment, trusted-root containment, and rejects traversal, absolute paths, missing/non-manifest files, external absolute roots, `data_terstruktur`, upload/runtime/hospital/patient-record roots, and symlink escape where detectable. |
+| Trace store | PASS | In-memory only; opaque `run_id`; TTL/capacity/list/metadata bounds; safe field allowlist; rejects unknown fields, PHI canaries, secret canaries, raw prompts, raw outputs, chain-of-thought, paths, and stack traces. |
+| Frontend banner | PASS | Banner is driven by backend capability metadata, visible only when `synthetic_lab_enabled=true`, and non-closable. |
+| Offline-first | PASS | Sprint A tests deny network primitives and provider factory while lab status/session, fixture loader, and trace store still pass. |
+| Symlink escape test | DOCUMENTED SKIP | Windows symlink creation may require privileges; test skips only when symlink creation is unavailable. |
+
+Sprint A remains a synthetic sandbox foundation only. It is not patient-care
+software, not production-ready, not controlled-pilot-ready, and not a release
+gate claim.

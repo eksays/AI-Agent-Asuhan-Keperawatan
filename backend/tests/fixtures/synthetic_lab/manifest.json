@@ -1,0 +1,12 @@
+{
+  "fixture_set": "synthetic_lab_foundation",
+  "fixture_version": "2026-06-07.0",
+  "synthetic_only": true,
+  "authoritative": false,
+  "clinical_use_allowed": false,
+  "source_type": "generated_fixture",
+  "created_for": "security_ux_orchestration_testing",
+  "files": [
+    "cases/foundation_case.json"
+  ]
+}

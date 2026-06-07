@@ -21,6 +21,8 @@ cd backend
 $env:APP_MODE="clinical_sandbox"
 $env:CDSS_API_KEYS="test-key"
 $env:CDSS_SECRET_KEY="local-sandbox-secret-change-me"
+$env:SYNTHETIC_LAB_MODE="false"
+$env:SYNTHETIC_DATA_ONLY="false"
 # Opsional untuk audit ledger persisten lokal; jangan commit nilainya.
 # $env:AUDIT_LEDGER_HMAC_KEY="isi-dengan-secret-kuat-operator-lokal"
 # $env:AUDIT_LEDGER_KEY_ID="audit-ledger-local-v1"
@@ -63,6 +65,21 @@ pip install -r requirements.txt
 - Shared API key bukan identitas user rumah sakit, bukan RBAC, bukan SSO/OAuth/OIDC.
 - Enrollment MFA direktur default-off; provisioning lokal sandbox membutuhkan `DIRECTOR_ENROLLMENT_ENABLED=true` dan header `X-Director-Bootstrap`.
 - `controlled_pilot` dan `production` menolak secret yang hilang, lemah, atau placeholder.
+
+## Catatan Synthetic Integration Lab Sprint A
+
+- Lab Sprint A adalah fondasi showcase sintetis offline saja.
+- Semua flag lab default-off. Aktifkan hanya di `clinical_sandbox` dengan
+  `SYNTHETIC_LAB_MODE=true` dan `SYNTHETIC_DATA_ONLY=true`.
+- `controlled_pilot` dan `production` menolak flag lab.
+- Route lab Sprint A hanya `/lab/status`, `/lab/session`, dan
+  `/lab/trace/{run_id}`.
+- Jangan masukkan data pasien nyata. Fixture harus generated, synthetic-only,
+  non-authoritative, dan `clinical_use_allowed=false`.
+- Sprint A tidak mengaktifkan multi-agent, RAG, registry grounding, Mermaid,
+  EBP, OCR/foto, feedback memory, external provider, atau rekomendasi klinis.
+- Banner lab bukan boundary keamanan; boundary tetap server-side guard,
+  fixture loader, trace allowlist, dan kill-switch.
 
 ## Catatan keamanan Phase 7
 

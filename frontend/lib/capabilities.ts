@@ -15,6 +15,11 @@ export interface CapabilitiesResponse {
   app_mode: "clinical_sandbox" | "controlled_pilot" | "production";
   safety_notice: string;
   unsupported_notice: string;
+  synthetic_lab_enabled: boolean;
+  synthetic_data_only: boolean;
+  lab_namespace: "/lab";
+  lab_external_provider_enabled: boolean;
+  lab_feature_activation_status: "disabled" | "foundation_only";
   capabilities: Record<CapabilityKey, CapabilityState>;
   metadata_unavailable?: boolean;
 }
@@ -38,6 +43,11 @@ export const FAIL_CLOSED_CAPABILITIES: CapabilitiesResponse = {
   app_mode: "clinical_sandbox",
   safety_notice: "Clinical sandbox — AI-generated suggestions require nurse review.",
   unsupported_notice: "Unsupported or unverified features are disabled.",
+  synthetic_lab_enabled: false,
+  synthetic_data_only: false,
+  lab_namespace: "/lab",
+  lab_external_provider_enabled: false,
+  lab_feature_activation_status: "disabled",
   metadata_unavailable: true,
   capabilities: {
     external_llm: { enabled: false, reason: DEFAULT_REASON },
@@ -68,6 +78,11 @@ export function normalizeCapabilities(raw: Partial<CapabilitiesResponse> | null 
     app_mode: raw?.app_mode || base.app_mode,
     safety_notice: raw?.safety_notice || base.safety_notice,
     unsupported_notice: raw?.unsupported_notice || base.unsupported_notice,
+    synthetic_lab_enabled: raw?.synthetic_lab_enabled === true,
+    synthetic_data_only: raw?.synthetic_data_only === true,
+    lab_namespace: raw?.lab_namespace === "/lab" ? raw.lab_namespace : base.lab_namespace,
+    lab_external_provider_enabled: false,
+    lab_feature_activation_status: raw?.lab_feature_activation_status === "foundation_only" ? "foundation_only" : "disabled",
     metadata_unavailable: raw?.metadata_unavailable === true || !raw,
     capabilities,
   };

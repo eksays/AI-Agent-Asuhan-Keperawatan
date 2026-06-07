@@ -50,6 +50,7 @@ from outbound_policy import DEFAULT_OUTBOUND_POLICY, OutboundPolicyError, wrap_l
 from upload_security import UploadParseResult, config_from_app, parse_document_bytes, rejection
 from agents import bersihkan, bersihkan_stream, GUARDRAILS
 from audit_ledger import AuditEventInput, AuditLedgerError, LocalAppendOnlyLedgerBackend
+from lab_routes import LAB_SESSION_STORE, LAB_TRACE_STORE, create_lab_router
 
 # ============================ KONFIGURASI ====================================
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -681,6 +682,7 @@ def _requires_clinical_registry(agent: str, text: str = "") -> bool:
 
 RATE_LIMITS = {
     'AUTH': (120, CONFIG.rate_limit_window_sec),
+    'LAB': (120, CONFIG.rate_limit_window_sec),
     'MFA': (10, CONFIG.rate_limit_window_sec),
     'SESSION_MUTATION': (60, CONFIG.rate_limit_window_sec),
     'CHAT': (180, CONFIG.rate_limit_window_sec),
@@ -996,7 +998,9 @@ app = FastAPI(title="CDSS AI Keperawatan", version="3.0")
 # CORS: HANYA origin frontend yang sah (bukan "*"). Override via env FRONTEND_ORIGINS (pisah koma) untuk produksi.
 FRONTEND_ORIGINS = list(CONFIG.frontend_origins)
 app.add_middleware(CORSMiddleware, allow_origins=FRONTEND_ORIGINS, allow_credentials=False,
-                   allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Session-Token"])
+                   allow_methods=["GET", "POST", "OPTIONS"],
+                   allow_headers=["Authorization", "Content-Type", "X-Session-Token", "X-Lab-Session-Id", "X-Lab-Session-Token"])
+app.include_router(create_lab_router(lambda: CONFIG, _auth_context, _security_response, SECURITY_PEPPER))
 
 
 # ----- Peringatan dini insiden keamanan (UU PDP Pasal 46 — wajib lapor 3x24 jam) -----

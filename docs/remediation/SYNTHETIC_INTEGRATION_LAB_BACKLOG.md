@@ -1,9 +1,9 @@
 # Synthetic Integration Lab Backlog
 
 This backlog freezes the three-sprint implementation plan for the synthetic
-showcase. Lab 0A is documentation only. Sprint A, B, and C must be implemented
-later as controlled patches with focused tests, explicit staging allowlists, and
-rollback evidence.
+showcase. Lab 0A is documentation only. Sprint A is now the controlled
+foundation implementation patch; Sprint B and Sprint C remain future controlled
+patches with focused tests, explicit staging allowlists, and rollback evidence.
 
 Global constraints for every sprint:
 
@@ -40,6 +40,21 @@ Sprint A exit criteria:
 - fixture loader cannot escape trusted root
 - trace stores no PHI or secrets
 - foundation works without internet
+
+Sprint A implementation checkpoint:
+
+- Added default-false `SYNTHETIC_LAB_MODE` and `SYNTHETIC_DATA_ONLY`.
+- Added guarded Sprint-A-only routes: `GET /lab/status`, `POST /lab/session`,
+  and `GET /lab/trace/{run_id}`.
+- Added strict generated-fixture manifest loading with only a harmless
+  foundation fixture body.
+- Added bounded in-memory trace metadata with opaque `run_id` and safe field
+  allowlist.
+- Added server-authoritative capability metadata and a persistent non-closable
+  frontend banner.
+- Did not add mock providers, RAG, registry adapters, EBP fixtures, OCR/photo
+  mocks, Mermaid activation, feedback-memory behavior, or external-provider
+  adapters.
 
 ## Lab Sprint B - Core Feature Activation
 

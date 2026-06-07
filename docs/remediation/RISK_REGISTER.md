@@ -195,3 +195,23 @@ Phase 0A documentation evidence has no separate checkpoint commit recorded here.
 | Multi-process correctness is not proven | Medium | Phase 7 uses a process-local thread lock. | Use centralized durable ledger service or portable file-locking design before multi-worker deployment. |
 | Valid-prefix tail truncation is not fully detectable locally | Medium | Closure test shows removing only the final record leaves a locally valid prefix that verifies. | Add signed segment footers, externally persisted checkpoints, immutable archive, or external attestation before pilot/compliance claims. |
 | Key rotation is not implemented | Medium | Phase 7 stores a `key_id` identifier and tests wrong-key failure, but no key-rotation ceremony or dual-key verification workflow exists. | Define key rotation, retirement, and re-verification workflow with managed key custody. |
+
+## Synthetic Integration Lab Sprint A Status Update
+
+| ID | Status | Evidence | Residual Risk |
+|---|---|---|---|
+| LAB-ISO-001 | Partially mitigated for foundation namespace isolation | Sprint A adds default-false lab flags, clinical-sandbox-only enforcement, offline-profile rejection of external LLM/EBP/photo/Mermaid/harvester settings, `/lab/*` namespace guard, separate lab session bindings, and disabled-route side-effect tests. | Future Sprint B routes must use the same central guard; no lab feature activation is approved yet. |
+| LAB-FIX-001 | Partially mitigated for generated fixture containment | Sprint A strict fixture loader accepts only generated, synthetic-only, non-authoritative, clinical-use-forbidden manifest entries inside the approved synthetic fixture parent and trusted fixture root, and rejects traversal, absolute paths, external absolute roots, non-manifest files, missing files, `data_terstruktur`, upload/runtime/hospital/patient-record roots, and symlink escapes where detectable. | Only a harmless foundation fixture exists; RAG, registry, EBP, upload, image, OCR/photo, Mermaid, and expected-output fixtures remain uncreated. |
+| LAB-TRC-001 | Partially mitigated for safe trace metadata | Sprint A trace store is in-memory only, bounded by TTL/capacity/metadata size, uses opaque `run_id`, and rejects unknown fields, PHI canaries, secret canaries, raw prompts, raw outputs, chain-of-thought, paths, and stack traces. | Sprint B has not yet emitted feature-stage traces or built the trace panel; future adapters must keep raw execution content out. |
+| LAB-UI-001 | Partially mitigated for visible sandbox warning | Sprint A adds backend-driven capability metadata and a persistent non-closable banner when `synthetic_lab_enabled=true`. | Banner is not a security boundary; browser-rendered QA remains pending and no feature output panel exists yet. |
+| LAB-NET-001 | Partially mitigated for Sprint A offline-first behavior | Sprint A tests deny socket creation/connection to external hosts, URL openers, provider factory, and HTTP client transports while foundation routes, loader, and trace store pass. | Future Sprint B/C adapters need their own network-deny tests; external LLM and EBP internet endpoints remain disabled. |
+
+## Synthetic Integration Lab Sprint A Residuals
+
+| Risk | Severity | Status | Next Action |
+|---|---|---|---|
+| Lab foundation is not feature activation | High | Sprint A adds guardrails and metadata only; multi-agent, RAG, registry, EBP, Mermaid, OCR/photo, feedback memory, and external-provider paths are still inactive. | Implement Sprint B only after closure approval, with deterministic synthetic mocks and labels. |
+| Fixture root is not arbitrary filesystem access | High | Loader is manifest-bound and root-contained, but future fixtures can still introduce governance mistakes if not reviewed. | Keep generated-only metadata, manifest allowlist, and forbidden-path scanners in every fixture patch. |
+| Trace metadata can still become a privacy sink if expanded carelessly | High | Safe field allowlist exists; no raw content is stored in Sprint A. | Require canary tests for every new trace field and reject raw prompts/outputs/uploads/PHI/secrets. |
+| Banner can reduce confusion but cannot enforce safety | Medium | Banner is visible and non-closable when lab is enabled. | Preserve server-side gates, route isolation, and kill-switch tests; add browser QA in Sprint C. |
+| Windows symlink detection is platform-dependent in tests | Low | Symlink escape logic exists, but test skips when OS privileges prevent symlink creation. | Re-run symlink test on a platform or privilege profile that can create symlinks before stronger closure claims. |
