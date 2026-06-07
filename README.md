@@ -2,7 +2,7 @@
 
 CDSS AI Keperawatan is a **clinical sandbox prototype** for exploring nursing documentation workflows. It is not approved for autonomous clinical decision-making, clinical deployment, or regulatory use. AI-generated suggestions require review by a qualified nurse or clinical reviewer.
 
-The current safety posture is intentionally fail-closed: unsupported or unverified features are disabled by default, and the backend is the source of truth for capability availability through `GET /capabilities`. Phase 6 adds sandbox authentication/session/MFA/rate-limit controls, but these remain in-memory development controls, not production identity or distributed enforcement.
+The current safety posture is intentionally fail-closed: unsupported or unverified features are disabled by default, and the backend is the source of truth for capability availability through `GET /capabilities`. Phase 7 adds a local HMAC-chained audit ledger, but identity, rate limits, sessions, and audit storage remain sandbox controls rather than production distributed enforcement.
 
 ## Current Safety Position
 
@@ -16,7 +16,7 @@ The current safety posture is intentionally fail-closed: unsupported or unverifi
 - Browser-carried shared API keys are visible to the browser client; this is a sandbox containment control, not confidential server-side authentication.
 - Server-issued `session_id` values must be paired with the per-session `X-Session-Token`; the server stores only a token digest.
 - Director MFA includes replay rejection and lockout, but replay and rate-limit state is in memory only.
-- The audit log is a development-only tamper-evident local log, not external append-only storage.
+- The audit ledger is a development-only HMAC-chained local ledger. It is tamper-evident only while the key remains secret; it is not WORM, immutable storage, a digital signature, external append-only storage, or valid-prefix truncation proof without an external checkpoint/archive.
 - No legal, regulatory, privacy, clinical, controlled-pilot, hospital, or production-readiness claim is made by this repository.
 
 ## Capability Matrix
@@ -30,7 +30,7 @@ The current safety posture is intentionally fail-closed: unsupported or unverifi
 | SDKI authoritative grounding | Unavailable for production | Registry governance incomplete |
 | SLKI/SIKI | Unavailable | Approved registries unavailable |
 | NANDA/NOC/NIC | Unavailable | Approved registries unavailable |
-| Audit ledger | Development only | Local tamper-evident log, not WORM |
+| Audit ledger | Development only | Local HMAC tamper evidence; not WORM, immutable storage, non-repudiation, or complete truncation detection |
 
 ## Application Modes
 
@@ -58,9 +58,12 @@ ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=false
 CDSS_API_KEYS=test-key
 CDSS_SECRET_KEY=local-sandbox-secret-change-me
 DIRECTOR_ENROLLMENT_ENABLED=false
+AUDIT_LEDGER_HMAC_KEY=
+AUDIT_LEDGER_KEY_ID=audit-ledger-local-v1
+AUDIT_LEDGER_PATH=
 ```
 
-`ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=true` is accepted only in `clinical_sandbox` mode. It must not be used with real patient data. `test-key` is a sandbox default only; controlled-pilot and production modes require explicit strong `CDSS_API_KEYS`, `CDSS_SECRET_KEY`, and `DIRECTOR_BOOTSTRAP` values.
+`ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=true` is accepted only in `clinical_sandbox` mode. It must not be used with real patient data. `test-key` is a sandbox default only; controlled-pilot and production modes require explicit strong `CDSS_API_KEYS`, `CDSS_SECRET_KEY`, `DIRECTOR_BOOTSTRAP`, and `AUDIT_LEDGER_HMAC_KEY` values. In sandbox mode, persistent local audit ledger storage also requires an explicit strong `AUDIT_LEDGER_HMAC_KEY`; otherwise the backend uses an ephemeral in-process ledger for local development.
 
 ## Repository Structure
 
@@ -117,7 +120,7 @@ The current local registry data is sandbox-only. Missing or unapproved SDKI/SLKI
 
 See `docs/remediation/` for the remediation plan, verification log, risk register, data governance notes, and release gates.
 
-Gate A is not passed yet. Phase 0B through Phase 6 controls are sandbox checkpoints only. Later work still needs durable identity/session/rate-limit storage, formal registry and clinical review, browser-rendered QA disposition, hard parser resource controls, audit redesign, CI enforcement, and legal/regulatory review before any pilot or production claim.
+Gate A is not passed yet. Phase 0B through Phase 7 controls are sandbox checkpoints only. Later work still needs durable identity/session/rate-limit storage, formal registry and clinical review, browser-rendered QA disposition, hard parser resource controls, external immutable audit storage or equivalent audit service, CI enforcement, and legal/regulatory review before any pilot or production claim.
 
 
 Director MFA enrollment is disabled by default. Local sandbox provisioning requires DIRECTOR_ENROLLMENT_ENABLED=true and X-Director-Bootstrap; controlled-pilot and production provisioning workflows are not implemented.

@@ -2,7 +2,7 @@
 
 Status saat ini: clinical sandbox. Fitur yang belum terverifikasi dinonaktifkan secara default oleh backend. Saran AI wajib ditinjau perawat dan aplikasi ini tidak boleh dipakai untuk keputusan klinis mandiri.
 
-Secara default, analisis LLM eksternal, pencarian EBP eksternal, analisis foto klinis, dan rendering Mermaid pathway dinonaktifkan. Phase 6 menambahkan autentikasi header-only, token sesi, MFA direktur, dan rate limit sandbox. Kontrol tersebut masih in-memory dan bukan kontrol produksi terdistribusi.
+Secara default, analisis LLM eksternal, pencarian EBP eksternal, analisis foto klinis, dan rendering Mermaid pathway dinonaktifkan. Phase 7 menambahkan audit ledger lokal berbasis HMAC. Kontrol autentikasi, sesi, MFA, rate limit, dan audit tetap kontrol sandbox lokal, bukan kontrol produksi terdistribusi.
 
 Aplikasi terdiri dari dua bagian:
 
@@ -21,6 +21,10 @@ cd backend
 $env:APP_MODE="clinical_sandbox"
 $env:CDSS_API_KEYS="test-key"
 $env:CDSS_SECRET_KEY="local-sandbox-secret-change-me"
+# Opsional untuk audit ledger persisten lokal; jangan commit nilainya.
+# $env:AUDIT_LEDGER_HMAC_KEY="isi-dengan-secret-kuat-operator-lokal"
+# $env:AUDIT_LEDGER_KEY_ID="audit-ledger-local-v1"
+# $env:AUDIT_LEDGER_PATH="backend\audit_ledger.jsonl"
 python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -59,6 +63,14 @@ pip install -r requirements.txt
 - Shared API key bukan identitas user rumah sakit, bukan RBAC, bukan SSO/OAuth/OIDC.
 - Enrollment MFA direktur default-off; provisioning lokal sandbox membutuhkan `DIRECTOR_ENROLLMENT_ENABLED=true` dan header `X-Director-Bootstrap`.
 - `controlled_pilot` dan `production` menolak secret yang hilang, lemah, atau placeholder.
+
+## Catatan keamanan Phase 7
+
+- Audit ledger memakai event terstruktur, canonical JSON, dan HMAC-SHA256 chain.
+- Tanpa `AUDIT_LEDGER_HMAC_KEY`, sandbox lokal memakai ledger in-memory ephemeral dan tidak membuat klaim persistensi.
+- Jika `AUDIT_LEDGER_PATH` diaktifkan, gunakan `AUDIT_LEDGER_HMAC_KEY` kuat dan jangan commit ledger runtime.
+- Ledger lokal bukan WORM, bukan immutable storage, bukan tanda tangan digital, dan bukan bukti compliance.
+- Admin host yang memiliki file ledger dan key masih dapat menulis ulang histori; penghapusan record terakhir dapat menyisakan prefix yang tetap valid secara lokal tanpa checkpoint eksternal. Segment rotation tersedia, key rotation belum tersedia. Storage immutable eksternal tetap diperlukan sebelum klaim pilot/produksi.
 
 ## Perilaku agen
 

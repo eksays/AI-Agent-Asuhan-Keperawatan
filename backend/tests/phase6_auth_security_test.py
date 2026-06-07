@@ -239,6 +239,7 @@ class Phase6AuthSecurityTests(unittest.TestCase):
             'CDSS_API_KEYS': 'strong-api-key-value-12345',
             'CDSS_SECRET_KEY': 'strong-secret-key-value-123456789012345',
             'DIRECTOR_BOOTSTRAP': 'strong-bootstrap-value-12345',
+            'AUDIT_LEDGER_HMAC_KEY': 'phase6-audit-ledger-hmac-key-for-tests-0001',
             'DIRECTOR_ENROLLMENT_ENABLED': 'true' if enabled else 'false',
         })
 

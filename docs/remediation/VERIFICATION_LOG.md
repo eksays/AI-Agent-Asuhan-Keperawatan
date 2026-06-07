@@ -637,3 +637,73 @@ Phase 6 closure remains a sandbox security checkpoint only. Localhost smoke is n
 | `npm --prefix frontend audit --audit-level=moderate` | 0 | 1357 ms | `found 0 vulnerabilities`. |
 | `git diff --check` | 0 | 101 ms | No tracked whitespace errors; CRLF warnings only. |
 | `git diff --cached --check` | 0 | 97 ms | No cached whitespace errors. |
+## Phase 7 Regression - 2026-06-07
+
+Phase 7 adds a local HMAC-chained, structured, tamper-evident audit ledger. This is not WORM storage, not immutable filesystem storage, not a digital signature, not compliance evidence, and not pilot or production readiness. Runtime ledger files, exports, HMAC keys, sessions, MFA snapshots, uploads, patient records, and registry data remain excluded from staging.
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase7_audit_ledger_test -v` | 0 | 1.2 s | 12 Phase 7 tests passed, including HMAC verification, tamper detection, metadata minimization, CLI verification, rotation linkage, and bypass scanner coverage. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase6_auth_security_test -v` | 0 | 1.2 s | 18 Phase 6 auth/session/MFA/rate-limit tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase5_upload_security_test -v` | 0 | 11.7 s | 22 Phase 5 upload-isolation tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.populate_sdki_url_policy_test -v` | 0 | 0.6 s | 3 URL-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 1.0 s | 56 registry-governance tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase2_clinical_validation_test -v` | 0 | 1.1 s | 55 clinical validation and strict abstention tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 2.1 s | 27 outbound PHI firewall tests passed, including audit-log sanitization through the Phase 7 ledger. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_bypass_test -v` | 0 | 0.7 s | 1 outbound primitive scanner test passed after reviewed API line-number updates. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 18.4 s | 211 backend tests passed after removing the disabled plain-hash audit block. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | 1.5 s | Backend source compiled. |
+| `backend\venv\Scripts\bandit.exe -r backend -ll -x backend/env,backend/venv` | 0 | 4.2 s | No issues identified; Medium 0, High 0. `bandit` was executed from the venv because it is not on PATH in this shell. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 0.2 s | 4 capability fallback tests passed. |
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 2.0 s | 11 browser-security tests passed. |
+| `node --test frontend\tests\auth-transport.test.mjs` | 0 | 0.1 s | 2 auth transport tests passed. |
+| `npm --prefix frontend run lint` | 0 | 9.7 s | ESLint completed with 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 0 | 3.3 s | Next.js build completed. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 2.0 s | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | 0.1 s | No whitespace errors; CRLF normalization warnings only. |
+
+Residual limits: HMAC integrity depends on ledger-key secrecy; a host administrator with both file and key access can rewrite history; local append-only behavior is not filesystem immutability; cross-process correctness is not claimed; external immutable archive or WORM-capable storage remains required before pilot, compliance, or production claims; Gate A remains unmet.
+
+## Phase 7 Closure Verification - 2026-06-07
+
+Closure review added focused evidence for canonical field coverage, non-finite JSON rejection, sanitizer handling of bytes/custom objects/control characters/oversized metadata, persistent append fail-closed behavior, valid-prefix tail-truncation limitation, direct symlink or non-file path rejection where detectable, cross-segment linkage failure, key separation from capabilities/responses/ledger content, privileged audit failure semantics, ledger-verification recursion safety, and expanded bypass scanner coverage.
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase7_audit_ledger_test -v` | 0 | 4.5 s | 22 Phase 7 tests passed; 1 symlink test skipped where platform symlink creation was unavailable. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase6_auth_security_test -v` | 0 | 2.2 s | 18 Phase 6 tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase5_upload_security_test -v` | 0 | 19.5 s | 22 Phase 5 tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.populate_sdki_url_policy_test -v` | 0 | 1.2 s | 3 URL-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase3_registry_governance_test -v` | 0 | 2.3 s | 56 Phase 3 tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase2_clinical_validation_test -v` | 0 | 2.5 s | 55 Phase 2 tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_policy_test -v` | 0 | 4.3 s | 27 Phase 1 outbound-policy tests passed. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase1_outbound_bypass_test -v` | 0 | 1.1 s | 1 outbound primitive scanner test passed after reviewed API line-number updates. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 30.3 s | 221 backend tests passed; 1 symlink test skipped. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | 2.4 s | Backend source compiled. |
+| `backend\venv\Scripts\bandit.exe -r backend -ll -x backend/env,backend/venv` | 0 | 3.6 s | No issues identified; Medium 0, High 0. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 0.4 s | 4 frontend capability tests passed. |
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 3.9 s | 11 browser-security tests passed. |
+| `node --test frontend\tests\auth-transport.test.mjs` | 0 | 0.3 s | 2 auth-transport tests passed. |
+| `npm --prefix frontend run lint` | 0 | 11.0 s | ESLint completed with 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 0 | 19.2 s | Next.js build completed. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 2.3 s | `found 0 vulnerabilities`. |
+| `git diff --check` | 0 | 0.2 s | No tracked whitespace errors; CRLF warnings only. |
+| `git diff --cached --check` | 0 | 0.2 s | No cached whitespace errors. |
+
+Closure residuals: segment rotation is implemented, but key rotation is not implemented. Local HMAC chain detects mutation, reordering, middle deletion, duplicate insertion, wrong keys, malformed lines, and partial trailing records, but a valid-prefix tail truncation can still verify locally without an external checkpoint, signed footer, immutable archive, or attestation. The ledger remains local sandbox tamper evidence only, not WORM, not immutable, not non-repudiation, not compliance evidence, and not Gate A completion.
+
+## Phase 7 Pre-Merge Documentation Reconciliation
+
+| Item | Result |
+|---|---|
+| Technical checkpoint | `52eb16d` |
+| Documentation drift | Corrected stale Phase 5 checkpoint and release-gate wording. |
+| Code changes | None; documentation only. |
+| Test changes | None. |
+| Gate A | Not met. |
+| Gate B | Not met. |
+| Gate C | Not met. |
+| Phase 5 historical stale wording | Removed from current release-gate and remediation-plan status. |
+| Phase 6 status source | Derived from git ancestry, not assumption; `36efc613556c706fe89fe2af5f14abd05850c1f9` is an ancestor of `origin/dev`. |
+| Phase 7 merge state | Local checkpoint awaits merge into `dev`. |
+| Prohibited claims | WORM, immutable storage, non-repudiation, compliance, hospital readiness, controlled-pilot readiness, and production-readiness claims remain prohibited. |

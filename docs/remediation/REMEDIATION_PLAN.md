@@ -42,17 +42,19 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Tighten markdown link protocols and CSP.
 
 6. **Phase 5 - Isolated Document Upload Parsing**
-   - Status: applied locally on 2026-06-06 for tested document-upload parser isolation and hostile-file rejection; closure review evidence has been prepared, but no checkpoint commit has been created yet.
+   - Status: applied on 2026-06-06 for tested document-upload parser isolation and hostile-file rejection; closure accepted, checkpoint committed, and merged into `dev`.
    - Use content sniffing and magic bytes.
    - Parse in a killable process with bounded parser limits; hard OS-level CPU/RAM caps remain residual work.
    - Disable unsupported clinical photo analysis.
 
 7. **Phase 6 - Authentication, Session Security, Secrets, MFA, and Rate Limits**
+   - Status: applied and checkpoint committed; merged into `dev` based on `git merge-base --is-ancestor 36efc613556c706fe89fe2af5f14abd05850c1f9 origin/dev` returning exit code 0.
    - Remove API keys from request bodies.
    - Authenticate and authorize session mutation endpoints.
    - Add TOTP replay prevention, lockout, and rate limits.
 
 8. **Phase 7 - Audit Ledger Redesign**
+   - Status: applied and checkpoint committed locally for HMAC-chained structured audit events, safe verification export, metadata minimization, and local segment rotation; awaiting merge into `dev`.
    - Rename local ledger honestly as tamper-evident only.
    - Add HMAC/signature and verifier tooling.
    - Separate local and production storage adapters.
@@ -197,7 +199,7 @@ Residuals:
 - Process-tree isolation is not claimed; stronger host/container controls remain required for portable descendant-process containment even though the tested child guard blocks subprocess creation.
 - Parser libraries still execute inside a child process and must remain covered by dependency review and crash tests.
 - Frontend accept hints are not authoritative and may be narrowed later, but server-side validation is the safety control.
-- Gate A remains unmet until Phase 5 closure review accepts the evidence, resource-control residuals are resolved or explicitly accepted for sandbox-only use, browser-rendered QA disposition is settled, and all Phase 1-5 controls remain enforced.
+- Gate A remains unmet after Phase 5 closure acceptance and checkpointing. Remaining blockers include resource-control residuals resolved or explicitly accepted for sandbox-only use, browser-rendered QA disposition settled, formal registry/clinical review, and all Phase 1-7 controls enforced in CI.
 
 ## Phase 6 Implementation Notes
 
@@ -225,3 +227,11 @@ Residuals:
 The director enrollment boundary is explicitly local-sandbox-only. The API no longer prints an enrollment URI at startup. `/director/enroll` requires all of the following: `APP_MODE=clinical_sandbox`, `DIRECTOR_ENROLLMENT_ENABLED=true`, a configured `DIRECTOR_BOOTSTRAP`, a matching `X-Director-Bootstrap` header, and no existing director TOTP seed. Body, query-string, FormData, and cookie bootstrap fallbacks are rejected. Controlled-pilot and production provisioning workflows remain undefined and out of scope.
 
 Browser-carried shared API keys remain visible to the browser client. Header-only transport is a leak-reduction measure, not a confidential server-side credential model.
+
+## Phase 7 Implementation Notes
+
+Phase 7 is limited to tamper-evident audit ledger hardening. It adds a structured event schema, canonical JSON serialization, HMAC-SHA256 record chaining, safe actor fingerprinting, bounded allowlisted metadata, local append-only writes with flush/fsync, a verification CLI, and local segment rotation linkage.
+
+Closure hardening adds direct tests for canonical field coverage, non-finite JSON rejection, append fail-closed behavior on mutated/reordered/malformed/wrong-key ledgers, valid-prefix tail-truncation limitations, path normalization and unsafe file-type rejection, privileged audit failure semantics, recursion safety, and expanded PHI/secret canaries.
+
+The ledger remains a local sandbox evidence control only. It is not WORM storage, not immutable filesystem storage, not a digital signature, and not asymmetric non-repudiation. A host administrator with both ledger and key access can still rewrite history. A valid-prefix tail truncation may still verify locally without an external checkpoint/footer/archive. Segment rotation is implemented; key rotation is not implemented. Multi-process correctness is not claimed; a durable centralized ledger service or external immutable archive remains required before controlled-pilot, compliance, hospital, or production claims.

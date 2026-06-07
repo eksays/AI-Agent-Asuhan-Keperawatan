@@ -129,3 +129,13 @@ Still required after Phase 3:
 - Approved release artifacts for each registry family before authoritative grounding.
 - Operational storage for active release pointers; Phase 3 uses testable in-memory abstractions only.
 - Durable governed release storage remains required before controlled pilot evaluation; the Phase 3 active-release store is an in-memory test abstraction only.
+
+## Phase 7 Audit Metadata Governance
+
+Phase 7 audit records are governed as security metadata, not clinical narrative storage and not application logs. The ledger schema stores event category, actor fingerprint, route class, outcome, status code, security tags, and bounded allowlisted metadata only.
+
+Audit records must not contain raw patient narrative, uploaded document text, prompts, model output, correction text, API keys, session tokens, OTP codes, TOTP seeds, director bootstrap secrets, provider keys, filesystem paths, or stack traces. Synthetic canary tests cover these categories.
+
+The local ledger path and any rotated segment or export are runtime evidence artifacts and must remain untracked. `.gitignore` excludes `backend/audit_ledger*.jsonl` and `backend/audit_exports/`. Local ledger content is not a registry artifact, not formal clinical evidence, not a compliance record, and not production audit storage.
+
+HMAC verification depends on secret key control. If the host and key are compromised, audit history can be rewritten. A valid-prefix tail truncation may still verify locally unless an external checkpoint, signed footer, immutable archive, or attestation exists. Segment rotation is local-linkage only; key rotation is not implemented. External immutable archive storage and managed key custody remain required before controlled-pilot, hospital, compliance, or production claims.
