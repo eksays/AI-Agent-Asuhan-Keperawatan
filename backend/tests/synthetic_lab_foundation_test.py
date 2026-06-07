@@ -218,7 +218,20 @@ class SyntheticLabFoundationTests(unittest.TestCase):
 
     def test_lab_route_registration_is_guarded_router_only(self):
         lab_routes = {getattr(route, 'path', ''): route for route in api.app.routes if getattr(route, 'path', '').startswith('/lab/')}
-        self.assertEqual({'/lab/status', '/lab/session', '/lab/trace/{run_id}'}, set(lab_routes))
+        self.assertEqual({
+            '/lab/status',
+            '/lab/session',
+            '/lab/trace/{run_id}',
+            '/lab/run',
+            '/lab/rag',
+            '/lab/registry',
+            '/lab/ebp',
+            '/lab/upload',
+            '/lab/pathway',
+            '/lab/ocr',
+            '/lab/photo',
+            '/lab/feedback',
+        }, set(lab_routes))
         for route in lab_routes.values():
             self.assertEqual('lab_routes', route.endpoint.__module__)
 
@@ -235,11 +248,21 @@ class SyntheticLabFoundationTests(unittest.TestCase):
                 'external_provider_enabled',
                 'authoritative_registry_enabled',
                 'clinical_use_allowed',
+                'synthetic_multi_agent_enabled',
+                'synthetic_rag_enabled',
+                'synthetic_registry_enabled',
+                'synthetic_ebp_enabled',
+                'synthetic_mermaid_enabled',
+                'synthetic_uploads_enabled',
+                'synthetic_ocr_mock_enabled',
+                'synthetic_photo_mock_enabled',
+                'synthetic_feedback_memory_enabled',
             }, set(status.json()))
             self.assertEqual('foundation_only', status.json()['feature_activation_status'])
             self.assertFalse(status.json()['external_provider_enabled'])
             self.assertFalse(status.json()['authoritative_registry_enabled'])
             self.assertFalse(status.json()['clinical_use_allowed'])
+            self.assertFalse(status.json()['synthetic_multi_agent_enabled'])
 
             self.assertEqual(401, self.client.post('/lab/session').status_code)
             self.assertEqual(401, self.client.post('/lab/session', headers={'Authorization': 'Bearer wrong-key'}).status_code)
@@ -292,7 +315,8 @@ class SyntheticLabFoundationTests(unittest.TestCase):
             )
             self.assertNotEqual(200, lab_unlock_normal.status_code)
 
-            created = api.LAB_TRACE_STORE.create(self.trace_payload())
+            owner_id = str(api.LAB_SESSION_STORE._records[lab_payload['lab_session_id']]['owner'])
+            created = api.LAB_TRACE_STORE.create(self.trace_payload(), owner_id=owner_id, lab_session_id=lab_payload['lab_session_id'])
             trace = self.client.get(
                 f"/lab/trace/{created['run_id']}",
                 headers={
@@ -329,11 +353,30 @@ class SyntheticLabFoundationTests(unittest.TestCase):
     def test_fixture_loader_accepts_only_manifest_allowlisted_synthetic_files(self):
         loader = SyntheticFixtureLoader(self.fixture_root)
         manifest = loader.load_manifest()
-        self.assertEqual(('cases/foundation_case.json',), manifest.files)
-        case = loader.load_fixture('cases/foundation_case.json')
-        self.assertTrue(case['synthetic_only'])
-        self.assertFalse(case['authoritative'])
-        self.assertFalse(case['clinical_use_allowed'])
+        all_fixture_files = {
+            path.relative_to(self.fixture_root).as_posix()
+            for path in self.fixture_root.rglob('*.json')
+            if path.name != 'manifest.json'
+        }
+        self.assertEqual(all_fixture_files, set(manifest.files))
+        self.assertIn('cases/foundation_case.json', manifest.files)
+        self.assertIn('rag/respiratory_corpus.json', manifest.files)
+        self.assertIn('registries/synthetic_registry.json', manifest.files)
+        seen_fixture_ids = set()
+        joined_bodies = []
+        for entry in manifest.files:
+            case = loader.load_fixture(entry)
+            self.assertTrue(case['synthetic_only'])
+            self.assertFalse(case['authoritative'])
+            self.assertFalse(case['clinical_use_allowed'])
+            self.assertEqual('generated_fixture', case['source_type'])
+            self.assertEqual('security_ux_orchestration_testing', case['created_for'])
+            self.assertNotIn(case['fixture_id'], seen_fixture_ids)
+            seen_fixture_ids.add(case['fixture_id'])
+            joined_bodies.append(json.dumps(case, ensure_ascii=True))
+        joined = '\n'.join(joined_bodies)
+        for forbidden in ('SDKI', 'SLKI', 'SIKI', 'NANDA', 'NOC', 'NIC', 'api_key', 'provider_key', 'otp seed'):
+            self.assertNotIn(forbidden, joined)
         with self.assertRaises(LabFixtureError):
             loader.load_fixture('cases/not-in-manifest.json')
 
@@ -369,6 +412,35 @@ class SyntheticLabFoundationTests(unittest.TestCase):
                 write_manifest(bad_files)
                 with self.assertRaises(LabFixtureError):
                     SyntheticFixtureLoader(root).load_manifest()
+
+            for category_path in ('unknown/ok.json', 'cases/ok.txt'):
+                write_manifest([category_path])
+                with self.assertRaises(LabFixtureError):
+                    SyntheticFixtureLoader(root).load_manifest()
+
+            write_manifest(['cases/ok.json', 'cases/ok.json'])
+            with self.assertRaises(LabFixtureError):
+                SyntheticFixtureLoader(root).load_manifest()
+
+            (root / 'cases' / 'dup.json').write_text(__import__('json').dumps({**valid_body, 'fixture_id': 'SYN-TEST-001'}), encoding='utf-8')
+            write_manifest(['cases/ok.json', 'cases/dup.json'])
+            with self.assertRaises(LabFixtureError):
+                SyntheticFixtureLoader(root).load_manifest()
+
+            (root / 'cases' / 'oversized.json').write_text(__import__('json').dumps({**valid_body, 'fixture_id': 'SYN-TEST-OVERSIZED', 'body': 'x' * 70000}), encoding='utf-8')
+            write_manifest(['cases/oversized.json'])
+            with self.assertRaises(LabFixtureError):
+                SyntheticFixtureLoader(root).load_manifest()
+
+            deeply_nested = valid_body | {'fixture_id': 'SYN-TEST-DEEP'}
+            cursor = deeply_nested
+            for idx in range(20):
+                cursor['nested'] = {'level': idx}
+                cursor = cursor['nested']
+            (root / 'cases' / 'deep.json').write_text(__import__('json').dumps(deeply_nested), encoding='utf-8')
+            write_manifest(['cases/deep.json'])
+            with self.assertRaises(LabFixtureError):
+                SyntheticFixtureLoader(root).load_manifest()
 
             write_manifest(['cases/ok.json'], synthetic_only=False)
             with self.assertRaises(LabFixtureError):
@@ -483,10 +555,11 @@ class SyntheticLabFoundationTests(unittest.TestCase):
             self.assertEqual(200, self.client.get('/lab/status').status_code)
             lab_session = self.client.post('/lab/session', headers={'Authorization': 'Bearer test-key'})
             self.assertEqual(200, lab_session.status_code)
-            self.assertEqual('synthetic_lab_foundation', SyntheticFixtureLoader(self.fixture_root).load_manifest().fixture_set)
-            trace = api.LAB_TRACE_STORE.create(self.trace_payload())
-            self.assertIn('run_id', trace)
+            self.assertEqual('synthetic_lab_core_showcase', SyntheticFixtureLoader(self.fixture_root).load_manifest().fixture_set)
             lab_payload = lab_session.json()
+            owner_id = str(api.LAB_SESSION_STORE._records[lab_payload['lab_session_id']]['owner'])
+            trace = api.LAB_TRACE_STORE.create(self.trace_payload(), owner_id=owner_id, lab_session_id=lab_payload['lab_session_id'])
+            self.assertIn('run_id', trace)
             trace_response = self.client.get(
                 f"/lab/trace/{trace['run_id']}",
                 headers={
@@ -524,7 +597,7 @@ class SyntheticLabFoundationTests(unittest.TestCase):
         allowed = {
             'SYNTHETIC_LAB_MODE': {'backend/config.py'},
             'backend/data_terstruktur': set(),
-            '/lab/': set(),
+            '/lab/': {'backend/lab_routes.py'},
             'raw prompt': {'backend/lab_trace_store.py'},
             'raw output': {'backend/lab_trace_store.py'},
             'chain-of-thought': {'backend/lab_trace_store.py'},

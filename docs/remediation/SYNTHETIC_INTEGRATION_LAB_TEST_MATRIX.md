@@ -3,7 +3,8 @@
 This matrix defines required synthetic-only coverage before the lab can be used
 as a feature-surface test harness. Lab 0A does not create fixtures or tests.
 Lab Sprint A adds foundation-only tests and one harmless generated fixture case;
-Sprint B and Sprint C scenarios remain pending until their controlled patches.
+Lab Sprint B adds offline synthetic core feature tests and generated fixtures;
+Sprint C scenarios remain pending until the pitch-ready closure patch.
 
 ## Fixture Metadata Requirements
 
@@ -25,8 +26,8 @@ Sprint B and Sprint C scenarios remain pending until their controlled patches.
 | Swarm coordination | NOT SUPPORTED |
 | RAG behavior | synthetic lexical RAG prototype |
 | Hybrid / embedding / reranking | NOT SUPPORTED |
-| OCR | DETERMINISTIC MOCK REQUIRED |
-| Photo workflow | DETERMINISTIC MOCK REQUIRED |
+| OCR | DETERMINISTIC MOCK ONLY UNDER `/lab/ocr` |
+| Photo workflow | DETERMINISTIC MOCK ONLY UNDER `/lab/photo` |
 
 Forbidden wording in test fixtures, UI labels, and docs: validated swarm,
 clinical swarm intelligence, hybrid clinical RAG, validated clinical RAG, and
@@ -44,12 +45,30 @@ production-ready.
 
 | Area | Implemented Evidence | Remaining Scope |
 | --- | --- | --- |
-| Mode gates | Flags default false; sandbox requires lab mode plus synthetic-data-only; pilot/production reject lab flags; offline lab profile rejects external LLM, EBP search, photo analysis, Mermaid rendering, and harvester activity. | Sprint B feature-specific flags remain unimplemented. |
+| Mode gates | Flags default false; sandbox requires lab mode plus synthetic-data-only; pilot/production reject lab flags; offline lab profile rejects external LLM, EBP search, photo analysis, Mermaid rendering, and harvester activity. | Sprint B feature-specific flags now add per-route fail-closed checks. |
 | Kill-switch | Disabled `/lab/status`, `/lab/session`, and `/lab/trace/*` return `synthetic_lab_disabled` before side effects. | Future lab routes must use the same guard. |
-| Fixtures | Manifest metadata, approved synthetic parent containment, traversal, absolute path, outside-manifest, missing file, forbidden `data_terstruktur`, upload/runtime/hospital/patient-record roots, invalid metadata, external absolute roots, and symlink escape where detectable are tested. | RAG, registry, EBP, upload, image, OCR/photo, Mermaid, and expected-output fixtures are not created. |
-| Trace | Opaque `run_id`, TTL, max active runs, stage/document bounds, metadata byte bound, unknown-field rejection, PHI canary rejection, and secret canary rejection are tested. | Sprint B trace panel and feature-stage trace emission are not implemented. |
+| Fixtures | Manifest metadata, approved synthetic parent containment, traversal, absolute path, outside-manifest, missing file, forbidden `data_terstruktur`, upload/runtime/hospital/patient-record roots, invalid metadata, external absolute roots, and symlink escape where detectable are tested. | Sprint B adds generated cases, RAG, registry, EBP, upload, rendering, image/mock, and expected-output fixtures. |
+| Trace | Opaque `run_id`, TTL, max active runs, stage/document bounds, metadata byte bound, unknown-field rejection, PHI canary rejection, and secret canary rejection are tested. | Sprint B adds feature-stage trace emission, safe audit metadata, and source-tested trace-panel labels. |
 | Frontend banner | Source test verifies server-authoritative `synthetic_lab_enabled`, non-closable banner text, and no browser storage. | Browser-rendered QA remains a Sprint C closure item. |
 | Offline network deny | Sprint A test denies `socket.create_connection`, external `socket.connect`, `urllib.request.urlopen`, provider factory, and HTTP client transports while lab status/session, loader, and trace operations pass. | Future adapters must add their own network-deny assertions. |
+
+## Sprint B Implemented Test Coverage
+
+| Area | Implemented Evidence | Remaining Scope |
+| --- | --- | --- |
+| Sprint B flags | Default false; require `APP_MODE=clinical_sandbox`, `SYNTHETIC_LAB_MODE=true`, and `SYNTHETIC_DATA_ONLY=true`; controlled-pilot and production reject Sprint B flags. | None for offline core flags; external-provider opt-in remains separate. |
+| Guarded lab routes | `/lab/run`, `/lab/rag`, `/lab/registry`, `/lab/ebp`, `/lab/upload`, `/lab/pathway`, `/lab/ocr`, `/lab/photo`, and `/lab/feedback` require auth, lab session headers, route-class rate limit, and feature-specific flags. | Browser interaction QA remains Sprint C. |
+| Trace ownership | Trace reads require the creating bearer principal, matching lab session id, and matching lab session token; random ids, expired traces, cross-session reads, cross-principal reads, missing token, wrong token, and `run_id` alone are denied safely. | Browser-rendered trace retrieval remains Sprint C. |
+| Fixture containment | Manifest coverage, duplicate paths, duplicate fixture ids, unknown categories, non-JSON entries, oversized fixtures, deeply nested fixtures, forbidden roots, traversal, absolute paths, and symlink escapes where detectable are rejected. | Windows symlink creation may still skip where OS privilege is unavailable. |
+| Multi-stage prototype | Stage order, critic influence, stage failure, timeout abstention, and unknown stage rejection are tested. | No swarm coordination or real provider orchestration is claimed. |
+| Synthetic lexical RAG | Stable document ids/scores, top-k bounding, empty-query weak context, unknown corpus rejection, and no raw corpus body in trace are tested. | No embedding, hybrid retrieval, reranking, or evidence-quality claim. |
+| Synthetic registry | `SYN-D-001` is lab-only, authoritative false, clinical-use false, and rejected by normal code-format policy. | No official registry activation. |
+| Offline EBP | Fixture-only adapter works while EBP internet connector is patched to fail. | Fixture is not current medical evidence. |
+| Uploads and Mermaid | Safe TXT, hostile PDF, hostile DOCX, safe Mermaid, and malicious Mermaid tests pass through lab-only boundaries. | Full rendered Mermaid browser QA remains Sprint C. |
+| OCR/photo mocks | Mock labels are explicit and always return `clinical_use_allowed=false`. | No OCR SDK, image model, or clinical interpretation. |
+| Feedback memory | Cross-session and normal/lab namespace isolation are tested with PHI/secret canary rejection. | No authoritative learning or durable memory. |
+| Audit/trace/UI | Safe audit metadata, safe trace allowlist, PHI/secret absence, and trace-panel labels are tested. | PHI canary red-team across UI/logs/ledger remains Sprint C closure. |
+| Normal-route non-regression | Normal chat, stream, analysis, pathway, feedback, registry, EBP, photo, Mermaid, and harvester gates remain unchanged even when all lab flags are true. | Full regression and browser QA remain Sprint C. |
 
 External-provider work remains separate: `review/synthetic-integration-lab` is
 offline synthetic showcase only, while `review/synthetic-external-provider` is

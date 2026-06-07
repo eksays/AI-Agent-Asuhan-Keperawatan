@@ -733,3 +733,73 @@ patient-care behavior.
 Sprint A remains a synthetic sandbox foundation only. It is not patient-care
 software, not production-ready, not controlled-pilot-ready, and not a release
 gate claim.
+
+## Synthetic Integration Lab Sprint B Offline Core Activation - 2026-06-07
+
+Sprint B activates offline synthetic core showcase features under `/lab/*` only
+on `review/synthetic-integration-lab`. It adds default-false Sprint B flags,
+feature-specific guarded lab routes, generated manifest-backed fixtures,
+deterministic multi-stage orchestration, synthetic lexical RAG, lab-only
+synthetic registry fixtures, offline EBP fixtures, synthetic upload fixture
+execution, Mermaid fixture routing, deterministic OCR/photo mocks, isolated
+synthetic feedback memory, safe audit metadata, and a frontend safe trace panel.
+Normal routes remain unchanged. External providers, EBP internet endpoints, the
+harvester, real registry grounding, real OCR, real photo analysis, real patient
+data, patient-care behavior, controlled-pilot readiness, and production
+readiness remain disabled or unsupported.
+
+Truthful labels: multi-stage agent orchestration prototype; swarm coordination
+not supported; synthetic lexical RAG prototype; hybrid retrieval, embedding
+retrieval, and reranking not implemented; OCR deterministic mock only; photo
+workflow deterministic mock only.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Starting checkpoint | PASS | `8c3a752562e46d388d9f096d4a0d25e74a91088b` on `review/synthetic-integration-lab`; `review/synthetic-demo` commit is not an ancestor. |
+| Sprint B flags | PASS | `SYNTHETIC_MULTI_AGENT`, `SYNTHETIC_RAG`, `SYNTHETIC_REGISTRY`, `SYNTHETIC_EBP`, `SYNTHETIC_MERMAID`, `SYNTHETIC_UPLOADS`, `SYNTHETIC_OCR_MOCK`, `SYNTHETIC_PHOTO_MOCK`, and `SYNTHETIC_FEEDBACK_MEMORY` default false and require `clinical_sandbox` plus `SYNTHETIC_LAB_MODE=true` and `SYNTHETIC_DATA_ONLY=true`. |
+| Guarded routes | PASS | `/lab/run`, `/lab/rag`, `/lab/registry`, `/lab/ebp`, `/lab/upload`, `/lab/pathway`, `/lab/ocr`, `/lab/photo`, `/lab/feedback`, and `/lab/trace/{run_id}` require auth, lab session binding, rate limit, and feature-specific flags where applicable. |
+| Fixture pack | PASS | Generated fixture manifest includes synthetic cases, RAG corpus, non-authoritative fake-code registry, offline EBP, uploads, rendering fixtures, OCR/photo mock metadata, and expected outputs. |
+| Safety outputs | PASS | Lab responses and traces keep `registry_authoritative=false`, `clinical_use_allowed=false`, `accepted_recommendations=false`, and `nurse_review_required=true`. |
+| Network isolation | PASS | Sprint B tests deny socket, URL opener, provider factory, EBP connector, and harvester paths while all `/lab/*` core routes pass offline. |
+| Normal routes | PASS | Tests keep normal `/chat`, `/chat_stream`, `/analisis`, `/analisis_multi`, `/pathway`, `/feedback`, registry grounding, EBP, photo, Mermaid, and harvester behavior unchanged even when all lab flags are true. |
+| Frontend trace panel | PASS | Source tests verify safe labels, server-authoritative capability gating, lab session trace headers, no browser persistence, and no raw trace fields. |
+
+Regression commands:
+
+| Command | Exit Code | Duration | Summary |
+|---|---:|---:|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.synthetic_lab_foundation_test -v` | 0 | 0.4 s | 15 Sprint A foundation tests passed; 2 Windows symlink tests skipped where symlink privilege was unavailable. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.synthetic_lab_core_features_test -v` | 0 | 4.4 s | 13 Sprint B core feature tests passed after closure trace/fixture hardening. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | 0 | 23.2 s | 249 backend tests passed; 3 documented symlink skips. |
+| `python -m compileall backend -q -x ".*(venv|__pycache__).*"` | 0 | 1.6 s | Backend sources compiled with the established corrected pycache exclusion. |
+| `backend\venv\Scripts\bandit.exe -r backend -ll -x backend/env,backend/venv` | 0 | 2.8 s | No issues identified; Medium 0, High 0. `bandit` was not on shell PATH, so venv executable was used. |
+| `node --test frontend\tests\capabilities-fallback.test.mjs` | 0 | 0.1 s | 4 capability fallback tests passed. |
+| `node --test frontend\tests\browser-security.test.mjs` | 0 | 2.2 s | 11 browser-security tests passed. |
+| `node --test frontend\tests\auth-transport.test.mjs` | 0 | 0.1 s | 2 auth-transport tests passed. |
+| `node --test frontend\tests\synthetic-lab-banner.test.mjs` | 0 | 0.1 s | 2 synthetic lab banner tests passed. |
+| `node --test frontend\tests\synthetic-lab-trace-panel.test.mjs` | 0 | 0.1 s | 4 synthetic lab trace-panel tests passed. |
+| `npm --prefix frontend run lint` | 0 | 6.5 s | ESLint completed with 0 errors and 0 warnings. |
+| `npm --prefix frontend run build` | 0 | 9.6 s | Build exit code captured as 0 via `cmd` redirect; stderr empty; `.next/BUILD_ID` regenerated and remains ignored. |
+| `npm --prefix frontend audit --audit-level=moderate` | 0 | 2.6 s | `found 0 vulnerabilities`. |
+
+Sprint B closure residuals: this is an offline synthetic showcase only; no
+external provider is enabled; no current medical EBP retrieval is implemented;
+synthetic registry fixtures are not authoritative; OCR/photo are deterministic
+mocks only; frontend trace-panel verification is source-level and full
+browser-rendered QA remains Sprint C; Windows symlink coverage must be rerun on a
+platform or privilege profile that supports symlink creation before stronger
+fixture escape claims.
+
+## Synthetic Integration Lab Sprint B Closure Review - 2026-06-07
+
+Closure review applied narrow hardening only. It did not commit, push, merge,
+enable external providers, call EBP internet endpoints, start the harvester,
+load `backend/data_terstruktur/*`, or alter normal-route behavior.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Feature-flag ordering | PASS | Feature-specific disabled checks run before auth/session side effects on protected Sprint B routes; tests patch fixture loading, trace creation, upload parser, provider factory, and socket creation to fail if reached. |
+| Trace ownership | PASS | Trace store records owner/session binding outside the safe payload; route reads require matching bearer principal, `X-Lab-Session-Id`, and `X-Lab-Session-Token`; tests deny cross-session, cross-principal, wrong token, missing token, expired trace, random id, and `run_id`-alone access. |
+| Fixture containment | PASS | Loader rejects duplicate manifest paths, duplicate fixture ids, unknown categories, non-JSON entries, oversized fixtures, deeply nested fixtures, forbidden roots, traversal, absolute paths, and symlink escape where detectable. |
+| Audit events | PASS | Lab registry and EBP routes use dedicated allowlisted event types: `lab_registry_fixture_run` and `lab_ebp_fixture_run`; all lab event types are emitted in safe-metadata tests. |
+| Bypass scan | PASS | Matches are reviewed config gates, tests, docs, legacy gated provider factories, network-deny helpers, or documented sanitizer/export boundaries; no external-provider activation, direct ignored-registry loading, raw trace content, or unreviewed browser sink was found. |

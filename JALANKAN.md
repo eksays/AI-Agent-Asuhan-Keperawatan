@@ -66,20 +66,34 @@ pip install -r requirements.txt
 - Enrollment MFA direktur default-off; provisioning lokal sandbox membutuhkan `DIRECTOR_ENROLLMENT_ENABLED=true` dan header `X-Director-Bootstrap`.
 - `controlled_pilot` dan `production` menolak secret yang hilang, lemah, atau placeholder.
 
-## Catatan Synthetic Integration Lab Sprint A
+## Catatan Synthetic Integration Lab Sprint A-B
 
 - Lab Sprint A adalah fondasi showcase sintetis offline saja.
+- Lab Sprint B mengaktifkan feature surface sintetis offline di route `/lab/*`
+  saja: `/lab/run`, `/lab/rag`, `/lab/registry`, `/lab/ebp`, `/lab/upload`,
+  `/lab/pathway`, `/lab/ocr`, `/lab/photo`, `/lab/feedback`, dan
+  `/lab/trace/{run_id}`.
 - Semua flag lab default-off. Aktifkan hanya di `clinical_sandbox` dengan
   `SYNTHETIC_LAB_MODE=true` dan `SYNTHETIC_DATA_ONLY=true`.
 - `controlled_pilot` dan `production` menolak flag lab.
-- Route lab Sprint A hanya `/lab/status`, `/lab/session`, dan
-  `/lab/trace/{run_id}`.
 - Jangan masukkan data pasien nyata. Fixture harus generated, synthetic-only,
   non-authoritative, dan `clinical_use_allowed=false`.
-- Sprint A tidak mengaktifkan multi-agent, RAG, registry grounding, Mermaid,
-  EBP, OCR/foto, feedback memory, external provider, atau rekomendasi klinis.
+- Label Sprint B tetap konservatif: multi-stage agent orchestration prototype,
+  synthetic lexical RAG prototype, registry sintetis non-authoritative,
+  offline synthetic EBP fixture, OCR deterministic mock saja, dan photo
+  deterministic mock saja.
+- Output lab tetap `clinical_use_allowed=false`, `accepted_recommendations=false`,
+  dan `nurse_review_required=true`.
+- Route normal tidak berubah. External provider, EBP internet endpoint,
+  harvester, real registry grounding, real OCR, real photo analysis, dan perilaku
+  patient-care tetap disabled atau unsupported.
 - Banner lab bukan boundary keamanan; boundary tetap server-side guard,
   fixture loader, trace allowlist, dan kill-switch.
+- Closure Sprint B mengikat trace ke principal dan lab session pembuatnya;
+  `run_id` saja tidak cukup untuk membaca trace. Fixture loader tetap
+  manifest-backed dan menolak duplikat, kategori/ekstensi tak dikenal,
+  ukuran/kedalaman berlebih, traversal, dan root terlarang.
+- Trace panel baru source-tested; browser-rendered QA tetap pekerjaan Sprint C.
 
 ## Catatan keamanan Phase 7
 

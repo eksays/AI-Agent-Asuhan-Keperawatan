@@ -1,0 +1,14 @@
+{
+  "fixture_id": "SYN-REG-001",
+  "fixture_version": "2026-06-07.1",
+  "synthetic_only": true,
+  "authoritative": false,
+  "clinical_use_allowed": false,
+  "source_type": "generated_fixture",
+  "created_for": "security_ux_orchestration_testing",
+  "entries": [
+    { "code": "SYN-D-001", "label": "Generated synthetic diagnosis placeholder", "framework": "SYN" },
+    { "code": "SYN-O-001", "label": "Generated synthetic outcome placeholder", "framework": "SYN" },
+    { "code": "SYN-I-001", "label": "Generated synthetic intervention placeholder", "framework": "SYN" }
+  ]
+}

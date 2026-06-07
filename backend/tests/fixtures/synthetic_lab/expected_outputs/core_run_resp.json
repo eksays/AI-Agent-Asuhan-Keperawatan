@@ -1,0 +1,11 @@
+{
+  "fixture_id": "SYN-EXPECTED-RUN-001",
+  "fixture_version": "2026-06-07.1",
+  "synthetic_only": true,
+  "authoritative": false,
+  "clinical_use_allowed": false,
+  "source_type": "generated_fixture",
+  "created_for": "security_ux_orchestration_testing",
+  "expected_stage_order": ["retrieval", "assessment", "reviewer", "critic", "synthesis", "validator_boundary"],
+  "expected_status": "synthetic_prototype_abstention"
+}

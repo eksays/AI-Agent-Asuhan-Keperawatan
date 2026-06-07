@@ -1,12 +1,26 @@
 {
-  "fixture_set": "synthetic_lab_foundation",
-  "fixture_version": "2026-06-07.0",
+  "fixture_set": "synthetic_lab_core_showcase",
+  "fixture_version": "2026-06-07.1",
   "synthetic_only": true,
   "authoritative": false,
   "clinical_use_allowed": false,
   "source_type": "generated_fixture",
   "created_for": "security_ux_orchestration_testing",
   "files": [
-    "cases/foundation_case.json"
+    "cases/foundation_case.json",
+    "cases/respiratory_monitoring.json",
+    "cases/pain_observation.json",
+    "cases/fall_risk_observation.json",
+    "rag/respiratory_corpus.json",
+    "registries/synthetic_registry.json",
+    "ebp/offline_respiratory_fixture.json",
+    "uploads/safe_text_upload.json",
+    "uploads/hostile_pdf_upload.json",
+    "uploads/hostile_docx_upload.json",
+    "rendering/safe_pathway.json",
+    "rendering/malicious_pathway.json",
+    "images/ocr_mock.json",
+    "images/photo_mock.json",
+    "expected_outputs/core_run_resp.json"
   ]
 }

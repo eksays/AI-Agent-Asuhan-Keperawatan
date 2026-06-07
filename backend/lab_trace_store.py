@@ -15,19 +15,27 @@ SAFE_TRACE_FIELDS = {
     "mode",
     "fixture_case_id",
     "route",
+    "feature_label",
     "agent_stages",
     "stage_status",
+    "stage_latency_ms",
+    "stage_reason_codes",
     "latency_ms",
     "provider_type",
     "retrieved_document_ids",
     "retrieval_scores",
     "retrieval_source",
+    "corpus_version",
+    "weak_context",
     "registry_source",
     "registry_authoritative",
     "clinical_use_allowed",
     "clinical_status",
     "accepted_recommendations",
     "nurse_review_required",
+    "prototype_candidate_ids",
+    "missing_data",
+    "validation_issue_codes",
     "audit_event_ids",
     "sanitization_status",
 }
@@ -106,7 +114,7 @@ class LabTraceStore:
             self._cleanup_locked()
             return len(self._records)
 
-    def create(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def create(self, payload: dict[str, Any], *, owner_id: str = "", lab_session_id: str = "") -> dict[str, Any]:
         record = self._validate(payload)
         record["run_id"] = secrets.token_urlsafe(24)
         expires_at = self._now() + self.ttl_sec
@@ -114,14 +122,21 @@ class LabTraceStore:
             self._cleanup_locked()
             while len(self._records) >= self.max_runs:
                 self._records.popitem(last=False)
-            self._records[record["run_id"]] = {"expires_at": expires_at, "payload": deepcopy(record)}
+            self._records[record["run_id"]] = {
+                "expires_at": expires_at,
+                "owner_id": owner_id or "",
+                "lab_session_id": lab_session_id or "",
+                "payload": deepcopy(record),
+            }
         return deepcopy(record)
 
-    def get(self, run_id: str) -> dict[str, Any] | None:
+    def get(self, run_id: str, *, owner_id: str = "", lab_session_id: str = "") -> dict[str, Any] | None:
         with self._lock:
             self._cleanup_locked()
             rec = self._records.get(run_id or "")
             if not rec:
+                return None
+            if rec.get("owner_id", "") != (owner_id or "") or rec.get("lab_session_id", "") != (lab_session_id or ""):
                 return None
             return deepcopy(rec["payload"])
 
@@ -151,9 +166,21 @@ class LabTraceStore:
         stages = record.get("agent_stages", [])
         if stages is not None and (not isinstance(stages, list) or len(stages) > self.max_stages):
             raise LabTraceValidationError("Trace stage list exceeds bounds.")
+        stage_status = record.get("stage_status", [])
+        if stage_status is not None and not isinstance(stage_status, str) and (not isinstance(stage_status, list) or len(stage_status) > self.max_stages):
+            raise LabTraceValidationError("Trace stage status list exceeds bounds.")
+        stage_latency = record.get("stage_latency_ms", [])
+        if stage_latency is not None and (not isinstance(stage_latency, list) or len(stage_latency) > self.max_stages):
+            raise LabTraceValidationError("Trace stage latency list exceeds bounds.")
+        stage_reason_codes = record.get("stage_reason_codes", [])
+        if stage_reason_codes is not None and (not isinstance(stage_reason_codes, list) or len(stage_reason_codes) > self.max_stages):
+            raise LabTraceValidationError("Trace stage reason list exceeds bounds.")
         doc_ids = record.get("retrieved_document_ids", [])
         if doc_ids is not None and (not isinstance(doc_ids, list) or len(doc_ids) > self.max_document_ids):
             raise LabTraceValidationError("Trace document list exceeds bounds.")
+        candidate_ids = record.get("prototype_candidate_ids", [])
+        if candidate_ids is not None and (not isinstance(candidate_ids, list) or len(candidate_ids) > self.max_document_ids):
+            raise LabTraceValidationError("Trace candidate list exceeds bounds.")
 
     def _validate_values(self, value: Any) -> None:
         if isinstance(value, dict):

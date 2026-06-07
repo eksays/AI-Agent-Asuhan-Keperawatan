@@ -1,0 +1,12 @@
+{
+  "fixture_id": "SYN-CASE-PAIN-001",
+  "fixture_version": "2026-06-07.1",
+  "synthetic_only": true,
+  "authoritative": false,
+  "clinical_use_allowed": false,
+  "source_type": "generated_fixture",
+  "created_for": "security_ux_orchestration_testing",
+  "case_family": "pain observation",
+  "query": "synthetic pain observation comfort monitoring",
+  "expected_fake_codes": ["SYN-D-001"]
+}

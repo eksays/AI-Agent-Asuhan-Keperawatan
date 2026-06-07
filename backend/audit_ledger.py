@@ -36,6 +36,10 @@ ALLOWED_EVENT_TYPES = frozenset({
     'clinical_abstention', 'registry_unavailable', 'registry_incomplete',
     'capability_denied', 'ledger_verification_failed', 'consent_recorded',
     'analysis_succeeded', 'analysis_failed', 'feedback_recorded', 'legacy_event',
+    'lab_feature_run', 'lab_rag_retrieval', 'lab_registry_fixture_run',
+    'lab_ebp_fixture_run', 'lab_upload_fixture_run', 'lab_mermaid_fixture_run',
+    'lab_mock_ocr_run', 'lab_mock_photo_run',
+    'lab_feedback_recorded',
 })
 
 ALLOWED_METADATA_KEYS = frozenset({
@@ -43,12 +47,13 @@ ALLOWED_METADATA_KEYS = frozenset({
     'route_class', 'retry_after_bucket', 'missing_registries', 'framework',
     'legacy_action', 'legacy_status', 'upload_status', 'status_code', 'segment_id',
     'verified_count', 'error_code', 'agent', 'accepted_recommendations',
-    'nurse_review_required',
+    'nurse_review_required', 'run_id', 'fixture_id', 'feature_label', 'route',
 })
 
 SAFE_SECURITY_TAGS = frozenset({
     'auth', 'session', 'rate_limit', 'mfa', 'director', 'upload', 'clinical',
     'registry', 'capability', 'ledger', 'privacy',
+    'lab',
 })
 
 SENSITIVE_WORDS = (

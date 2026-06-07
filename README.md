@@ -67,21 +67,34 @@ SYNTHETIC_DATA_ONLY=false
 
 `ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=true` is accepted only in `clinical_sandbox` mode. It must not be used with real patient data. `test-key` is a sandbox default only; controlled-pilot and production modes require explicit strong `CDSS_API_KEYS`, `CDSS_SECRET_KEY`, `DIRECTOR_BOOTSTRAP`, and `AUDIT_LEDGER_HMAC_KEY` values. In sandbox mode, persistent local audit ledger storage also requires an explicit strong `AUDIT_LEDGER_HMAC_KEY`; otherwise the backend uses an ephemeral in-process ledger for local development.
 
-## Synthetic Integration Lab Sprint A
+## Synthetic Integration Lab Sprint A-B
 
-Sprint A is an offline synthetic showcase foundation only. It adds guarded
-`/lab/status`, `/lab/session`, and `/lab/trace/{run_id}` routes, a strict
-generated-fixture loader, bounded in-memory trace metadata, server capability
-metadata, and a persistent non-closable lab banner. All lab flags default to
-`false`; enabling the lab is accepted only in `clinical_sandbox` and requires
-both `SYNTHETIC_LAB_MODE=true` and `SYNTHETIC_DATA_ONLY=true`. Controlled-pilot
-and production modes reject lab flags.
+Sprint A is an offline synthetic showcase foundation only. Sprint B activates
+offline synthetic core showcase routes under `/lab/*` only: `/lab/run`,
+`/lab/rag`, `/lab/registry`, `/lab/ebp`, `/lab/upload`, `/lab/pathway`,
+`/lab/ocr`, `/lab/photo`, `/lab/feedback`, and `/lab/trace/{run_id}`. All lab
+flags default to `false`; enabling the lab is accepted only in
+`clinical_sandbox` and requires both `SYNTHETIC_LAB_MODE=true` and
+`SYNTHETIC_DATA_ONLY=true`. Controlled-pilot and production modes reject lab
+flags.
 
-Do not enter real patient data into the lab. Sprint A does not activate
-multi-agent orchestration, RAG, registry grounding, Mermaid rendering, EBP
-retrieval, OCR/photo analysis, feedback memory, external providers, or clinical
-recommendations. The lab is not patient-care software and is not production or
-controlled-pilot readiness.
+Sprint B labels remain conservative: multi-stage agent orchestration prototype,
+synthetic lexical RAG prototype, lab-only synthetic registry with
+`registry_authoritative=false`, offline synthetic EBP fixture, deterministic OCR
+mock only, and deterministic photo mock only. Outputs always keep
+`clinical_use_allowed=false`, `accepted_recommendations=false`, and
+`nurse_review_required=true`.
+
+Do not enter real patient data into the lab. Normal routes remain unchanged;
+external providers, EBP internet endpoints, the harvester, real registry
+grounding, real OCR, real photo analysis, and patient-care behavior remain
+disabled or unsupported. The lab is not patient-care software and is not
+production or controlled-pilot readiness.
+
+Sprint B closure review keeps the trace panel source-tested only; full
+browser-rendered QA remains Sprint C. Trace reads are bound to the creating
+principal and lab session, and fixture loading remains manifest-backed with
+duplicate, category, size/depth, traversal, and forbidden-root rejection.
 
 ## Repository Structure
 

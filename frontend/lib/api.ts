@@ -9,6 +9,8 @@ export interface ChatResponse { status: "sukses" | "error"; jawaban?: string; pe
 export interface AnalisisResponse { status: "sukses" | "error"; hasil?: string; pesan?: string }
 export interface ChatCtx { provider: ProviderId; apiKey: string; tier: Tier; framework: Framework }
 export interface SessionBinding { sessionId: string; sessionToken: string }
+export interface LabSessionBinding { labSessionId: string; labSessionToken: string }
+export interface LabTraceResponse { status: string; trace?: Record<string, unknown>; error_code?: string; message?: string }
 
 async function postForm<T>(path: string, apiKey: string, fields: Record<string, string | Blob | undefined>, session?: SessionBinding): Promise<T> {
   const fd = new FormData();
@@ -41,6 +43,17 @@ export async function createSession(apiKey: string): Promise<SessionBinding> {
   const d = (await r.json()) as { session_id?: string; session_token?: string };
   if (!d.session_id || !d.session_token) throw new Error("Gagal membuat sesi.");
   return { sessionId: d.session_id, sessionToken: d.session_token };
+}
+
+export async function getLabTrace(apiKey: string, labSession: LabSessionBinding, runId: string): Promise<LabTraceResponse> {
+  const r = await fetch(`${API_BASE}/lab/trace/${encodeURIComponent(runId)}`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "X-Lab-Session-Id": labSession.labSessionId,
+      "X-Lab-Session-Token": labSession.labSessionToken,
+    },
+  });
+  return (await r.json()) as LabTraceResponse;
 }
 
 export function chat(ctx: ChatCtx, session: SessionBinding, pertanyaan: string, agent: string = "analisis") {

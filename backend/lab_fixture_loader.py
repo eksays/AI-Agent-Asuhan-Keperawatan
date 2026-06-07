@@ -14,8 +14,6 @@ class LabFixtureError(ValueError):
 
 FORBIDDEN_PATH_PARTS = {
     "data_terstruktur",
-    "uploads",
-    "upload",
     "patient_records",
     "patient-records",
     "hospital_documents",
@@ -23,6 +21,18 @@ FORBIDDEN_PATH_PARTS = {
     ".next",
     "node_modules",
 }
+ALLOWED_TOP_LEVEL_DIRS = {
+    "cases",
+    "rag",
+    "registries",
+    "ebp",
+    "uploads",
+    "rendering",
+    "images",
+    "expected_outputs",
+}
+MAX_FIXTURE_BYTES = 64 * 1024
+MAX_JSON_DEPTH = 12
 
 
 @dataclass(frozen=True)
@@ -53,8 +63,20 @@ class SyntheticFixtureLoader:
         if not isinstance(files, list) or not files:
             raise LabFixtureError("Synthetic fixture manifest requires an allowlist.")
         allowed = []
+        seen_paths: set[str] = set()
         for entry in files:
-            allowed.append(self._validate_relative_entry(entry, root))
+            normalized = self._validate_relative_entry(entry, root)
+            if normalized in seen_paths:
+                raise LabFixtureError("Synthetic fixture manifest contains duplicate paths.")
+            seen_paths.add(normalized)
+            allowed.append(normalized)
+        seen_fixture_ids: set[str] = set()
+        for entry in allowed:
+            payload = self._read_fixture_payload(entry, root)
+            fixture_id = str(payload.get("fixture_id") or "")
+            if fixture_id in seen_fixture_ids:
+                raise LabFixtureError("Synthetic fixture manifest contains duplicate fixture ids.")
+            seen_fixture_ids.add(fixture_id)
         loaded = LabFixtureManifest(
             fixture_set=str(manifest.get("fixture_set") or ""),
             fixture_version=str(manifest.get("fixture_version") or ""),
@@ -69,14 +91,37 @@ class SyntheticFixtureLoader:
         if normalized not in set(manifest.files):
             raise LabFixtureError("Synthetic fixture is not listed in the manifest allowlist.")
         path = self._resolve_allowed_path(normalized, self._trusted_root())
+        payload = self._read_fixture_payload(normalized, self._trusted_root())
+        return payload
+
+    def _read_fixture_payload(self, normalized: str, root: Path) -> dict[str, Any]:
+        path = self._resolve_allowed_path(normalized, root)
         try:
+            if path.stat().st_size > MAX_FIXTURE_BYTES:
+                raise LabFixtureError("Synthetic fixture body exceeds size limit.")
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise LabFixtureError("Synthetic fixture body is invalid.") from exc
         if not isinstance(payload, dict):
             raise LabFixtureError("Synthetic fixture body must be an object.")
+        if _json_depth(payload) > MAX_JSON_DEPTH:
+            raise LabFixtureError("Synthetic fixture body exceeds nesting limit.")
         self._validate_fixture_metadata(payload)
         return payload
+
+    def load_fixture_by_id(self, fixture_id: str, *, prefix: str | None = None) -> dict[str, Any]:
+        wanted = (fixture_id or "").strip()
+        if not wanted:
+            raise LabFixtureError("Synthetic fixture id is required.")
+        manifest = self._manifest or self.load_manifest()
+        normalized_prefix = (prefix or "").strip().replace("\\", "/")
+        for entry in manifest.files:
+            if normalized_prefix and not entry.startswith(normalized_prefix):
+                continue
+            payload = self.load_fixture(entry)
+            if payload.get("fixture_id") == wanted:
+                return payload
+        raise LabFixtureError("Synthetic fixture id is not listed in the manifest allowlist.")
 
     def _trusted_root(self) -> Path:
         try:
@@ -124,6 +169,10 @@ class SyntheticFixtureLoader:
     def _resolve_allowed_path(self, normalized: str, root: Path) -> Path:
         parts = Path(normalized).parts
         lowered = {part.lower() for part in parts}
+        if not parts or parts[0].lower() not in ALLOWED_TOP_LEVEL_DIRS:
+            raise LabFixtureError("Synthetic fixture path uses an unknown category.")
+        if Path(normalized).suffix.lower() != ".json":
+            raise LabFixtureError("Synthetic fixture path must use a JSON extension.")
         if lowered & FORBIDDEN_PATH_PARTS:
             raise LabFixtureError("Synthetic fixture path uses a forbidden location.")
         if any("patient" in part.lower() or "hospital" in part.lower() for part in parts):
@@ -154,3 +203,14 @@ def _normalize_entry(entry: Any) -> str:
     if any(part in {"..", ""} for part in parts):
         raise LabFixtureError("Synthetic fixture path traversal is forbidden.")
     return "/".join(parts)
+
+def _json_depth(value: Any) -> int:
+    if isinstance(value, dict):
+        if not value:
+            return 1
+        return 1 + max(_json_depth(item) for item in value.values())
+    if isinstance(value, list):
+        if not value:
+            return 1
+        return 1 + max(_json_depth(item) for item in value)
+    return 1

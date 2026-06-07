@@ -5,7 +5,14 @@ from typing import Mapping
 
 import os
 
-from lab_config import LAB_FEATURE_ACTIVATION_STATUS, LAB_NAMESPACE, ensure_approved_fixture_root, synthetic_lab_enabled
+from lab_config import (
+    LAB_NAMESPACE,
+    SPRINT_B_FLAG_FIELDS,
+    ensure_approved_fixture_root,
+    lab_feature_activation_status,
+    lab_feature_capabilities,
+    synthetic_lab_enabled,
+)
 from security_controls import SANDBOX_DEFAULT_API_KEYS, is_placeholder_secret, is_weak_secret
 
 
@@ -63,6 +70,15 @@ class AppConfig:
     audit_ledger_path: str
     synthetic_lab_mode: bool
     synthetic_data_only: bool
+    synthetic_multi_agent: bool
+    synthetic_rag: bool
+    synthetic_registry: bool
+    synthetic_ebp: bool
+    synthetic_mermaid: bool
+    synthetic_uploads: bool
+    synthetic_ocr_mock: bool
+    synthetic_photo_mock: bool
+    synthetic_feedback_memory: bool
     synthetic_lab_fixture_root: str
     synthetic_lab_trace_ttl_sec: int
     synthetic_lab_trace_max_runs: int
@@ -140,10 +156,24 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
     trusted_proxies = _csv(source.get('TRUSTED_PROXY_HOSTS', ''))
     synthetic_lab_mode = _bool_env(source, 'SYNTHETIC_LAB_MODE')
     synthetic_data_only = _bool_env(source, 'SYNTHETIC_DATA_ONLY')
+    sprint_b_flags = {
+        'synthetic_multi_agent': _bool_env(source, 'SYNTHETIC_MULTI_AGENT'),
+        'synthetic_rag': _bool_env(source, 'SYNTHETIC_RAG'),
+        'synthetic_registry': _bool_env(source, 'SYNTHETIC_REGISTRY'),
+        'synthetic_ebp': _bool_env(source, 'SYNTHETIC_EBP'),
+        'synthetic_mermaid': _bool_env(source, 'SYNTHETIC_MERMAID'),
+        'synthetic_uploads': _bool_env(source, 'SYNTHETIC_UPLOADS'),
+        'synthetic_ocr_mock': _bool_env(source, 'SYNTHETIC_OCR_MOCK'),
+        'synthetic_photo_mock': _bool_env(source, 'SYNTHETIC_PHOTO_MOCK'),
+        'synthetic_feedback_memory': _bool_env(source, 'SYNTHETIC_FEEDBACK_MEMORY'),
+    }
+    enabled_sprint_b_flags = tuple(name for name in SPRINT_B_FLAG_FIELDS if sprint_b_flags.get(name))
     if (synthetic_lab_mode or synthetic_data_only) and app_mode != 'clinical_sandbox':
         raise RuntimeError('Synthetic integration lab flags are only valid in clinical_sandbox mode.')
     if synthetic_lab_mode and not synthetic_data_only:
         raise RuntimeError('SYNTHETIC_LAB_MODE requires SYNTHETIC_DATA_ONLY=true.')
+    if enabled_sprint_b_flags and not (app_mode == 'clinical_sandbox' and synthetic_lab_mode and synthetic_data_only):
+        raise RuntimeError('Sprint B synthetic lab feature flags require APP_MODE=clinical_sandbox, SYNTHETIC_LAB_MODE=true, and SYNTHETIC_DATA_ONLY=true.')
     feature_external_llm = _bool_env(source, "FEATURE_EXTERNAL_LLM")
     feature_ebp_external_search = _bool_env(source, "FEATURE_EBP_EXTERNAL_SEARCH")
     feature_clinical_photo_analysis = _bool_env(source, "FEATURE_CLINICAL_PHOTO_ANALYSIS")
@@ -222,6 +252,15 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         audit_ledger_path=audit_ledger_path,
         synthetic_lab_mode=synthetic_lab_mode,
         synthetic_data_only=synthetic_data_only,
+        synthetic_multi_agent=sprint_b_flags['synthetic_multi_agent'],
+        synthetic_rag=sprint_b_flags['synthetic_rag'],
+        synthetic_registry=sprint_b_flags['synthetic_registry'],
+        synthetic_ebp=sprint_b_flags['synthetic_ebp'],
+        synthetic_mermaid=sprint_b_flags['synthetic_mermaid'],
+        synthetic_uploads=sprint_b_flags['synthetic_uploads'],
+        synthetic_ocr_mock=sprint_b_flags['synthetic_ocr_mock'],
+        synthetic_photo_mock=sprint_b_flags['synthetic_photo_mock'],
+        synthetic_feedback_memory=sprint_b_flags['synthetic_feedback_memory'],
         synthetic_lab_fixture_root=fixture_root,
         synthetic_lab_trace_ttl_sec=_bounded_int_env(source, 'SYNTHETIC_LAB_TRACE_TTL_SEC', 600, 30, 3600),
         synthetic_lab_trace_max_runs=_bounded_int_env(source, 'SYNTHETIC_LAB_TRACE_MAX_RUNS', 128, 1, 1000),
@@ -249,12 +288,14 @@ def build_capabilities(cfg: AppConfig = CONFIG) -> dict:
         if cfg.ebp_external_search_enabled
         else "Disabled until de-identified concept-query enforcement passes."
     )
+    lab_features = lab_feature_capabilities(cfg)
     return {
         "synthetic_lab_enabled": synthetic_lab_enabled(cfg),
         "synthetic_data_only": cfg.synthetic_data_only,
         "lab_namespace": LAB_NAMESPACE,
         "lab_external_provider_enabled": False,
-        "lab_feature_activation_status": LAB_FEATURE_ACTIVATION_STATUS if synthetic_lab_enabled(cfg) else "disabled",
+        "lab_feature_activation_status": lab_feature_activation_status(cfg),
+        **lab_features,
         "app_mode": cfg.app_mode,
         "safety_notice": SAFETY_NOTICE,
         "unsupported_notice": UNSUPPORTED_NOTICE,

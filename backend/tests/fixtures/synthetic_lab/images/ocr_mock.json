@@ -1,0 +1,11 @@
+{
+  "fixture_id": "SYN-OCR-001",
+  "fixture_version": "2026-06-07.1",
+  "synthetic_only": true,
+  "authoritative": false,
+  "clinical_use_allowed": false,
+  "source_type": "generated_fixture",
+  "created_for": "security_ux_orchestration_testing",
+  "mock_type": "ocr",
+  "document_label": "generated handwritten-style placeholder"
+}

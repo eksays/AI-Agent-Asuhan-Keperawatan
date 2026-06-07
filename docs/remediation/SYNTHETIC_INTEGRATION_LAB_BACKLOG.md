@@ -1,9 +1,10 @@
 # Synthetic Integration Lab Backlog
 
 This backlog freezes the three-sprint implementation plan for the synthetic
-showcase. Lab 0A is documentation only. Sprint A is now the controlled
-foundation implementation patch; Sprint B and Sprint C remain future controlled
-patches with focused tests, explicit staging allowlists, and rollback evidence.
+showcase. Lab 0A is documentation only. Sprint A is the controlled foundation
+implementation patch. Sprint B is the offline synthetic core feature activation
+patch under `/lab/*` only. Sprint C remains the future pitch-ready closure patch
+with browser QA, canary red-team, full regression, and runbook evidence.
 
 Global constraints for every sprint:
 
@@ -88,6 +89,39 @@ Sprint B exit criteria:
 - Mermaid malicious payload is inert
 - feedback memory does not cross namespaces
 - OCR and photo remain explicitly labeled mock
+
+Sprint B implementation checkpoint:
+
+- Added default-false Sprint B flags for multi-agent, RAG, registry, EBP,
+  Mermaid, uploads, OCR mock, photo mock, and feedback memory.
+- Added guarded lab routes: `POST /lab/run`, `POST /lab/rag`,
+  `POST /lab/registry`, `POST /lab/ebp`, `POST /lab/upload`,
+  `POST /lab/pathway`, `POST /lab/ocr`, `POST /lab/photo`, and
+  `POST /lab/feedback`.
+- Added generated synthetic-only fixture categories for cases, RAG corpus,
+  synthetic registry, offline EBP, uploads, rendering, image mocks, and expected
+  outputs.
+- Closure review hardened manifest loading with duplicate path/id rejection,
+  category and `.json` enforcement, size/depth bounds, and all-fixture
+  manifest coverage checks.
+- Added deterministic multi-stage orchestration prototype, synthetic lexical RAG
+  prototype, lab-only non-authoritative synthetic registry, offline synthetic EBP
+  fixture adapter, synthetic upload fixture execution, Mermaid fixture route,
+  deterministic OCR/photo mocks, isolated in-memory lab feedback, safe audit
+  metadata, and safe trace metadata.
+- Closure review binds trace reads to the creating principal and lab session;
+  `run_id` possession alone is insufficient.
+- Added a source-tested frontend trace panel with the labels `REAL LOCAL PATH`,
+  `SYNTHETIC PROTOTYPE`, `DETERMINISTIC MOCK`, `DISABLED`, and
+  `FORBIDDEN IN LAB`.
+- Preserved normal-route behavior: external LLM, EBP internet, clinical photo,
+  normal Mermaid, harvester, and real registry grounding remain disabled or
+  unavailable by default.
+
+Sprint B remains synthetic showcase software only. It is not patient-care
+software, not clinical validation, not current medical evidence, not swarm
+coordination, not hybrid RAG, not OCR, not photo analysis, and not
+production-ready.
 
 ## Lab Sprint C - Pitch-Ready Closure
 

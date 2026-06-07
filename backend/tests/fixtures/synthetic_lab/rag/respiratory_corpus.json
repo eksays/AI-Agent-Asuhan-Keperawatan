@@ -1,0 +1,29 @@
+{
+  "fixture_id": "SYN-RAG-RESP-001",
+  "fixture_version": "2026-06-07.1",
+  "synthetic_only": true,
+  "authoritative": false,
+  "clinical_use_allowed": false,
+  "source_type": "generated_fixture",
+  "created_for": "security_ux_orchestration_testing",
+  "documents": [
+    {
+      "document_id": "SYN-DOC-RESP-001",
+      "title": "Generated respiratory monitoring note",
+      "body": "synthetic respiratory monitoring oxygen saturation breathing observation safety label",
+      "tags": ["respiratory", "monitoring", "oxygen"]
+    },
+    {
+      "document_id": "SYN-DOC-PAIN-001",
+      "title": "Generated pain observation note",
+      "body": "synthetic pain comfort observation monitoring label",
+      "tags": ["pain", "comfort"]
+    },
+    {
+      "document_id": "SYN-DOC-FALL-001",
+      "title": "Generated fall-risk observation note",
+      "body": "synthetic fall risk mobility safety observation label",
+      "tags": ["fall", "mobility", "safety"]
+    }
+  ]
+}
