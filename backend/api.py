@@ -13,7 +13,7 @@ Fitur:
 Jalankan:  uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 """
 from __future__ import annotations
-import os, re, json, glob, threading, secrets, sys, time, hashlib, datetime
+import os, re, json, glob, threading, secrets, sys, time
 from typing import Optional, List, Tuple
 from collections import deque
 
@@ -49,6 +49,7 @@ from clinical_validator import STANDARD_MAP, safe_abstention, validate_clinical_
 from outbound_policy import DEFAULT_OUTBOUND_POLICY, OutboundPolicyError, wrap_llm
 from upload_security import UploadParseResult, config_from_app, parse_document_bytes, rejection
 from agents import bersihkan, bersihkan_stream, GUARDRAILS
+from audit_ledger import AuditEventInput, AuditLedgerError, LocalAppendOnlyLedgerBackend
 
 # ============================ KONFIGURASI ====================================
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -57,12 +58,23 @@ DATA_DIR = os.path.join(BASE, "data_terstruktur")
 # ----- Keamanan: batas upload, sandbox parsing, audit log, sanitasi error -----
 MAX_UPLOAD = 10 * 1024 * 1024     # 10 MB — divalidasi di BACKEND (jangan percaya frontend)
 _PARSE_TIMEOUT = 20               # detik — sandbox parsing PDF/DOCX agar file jebakan tak menggantung server
-_LEDGER = os.path.join(BASE, "audit_ledger.jsonl")   # Tamper-evident local hash-chain audit ledger, not WORM.
 UPLOAD_PARSER_CONFIG = config_from_app(CONFIG)
 MAX_UPLOAD = UPLOAD_PARSER_CONFIG.max_upload_bytes
-_ledger_lock = threading.Lock()
-_GENESIS = "0" * 64
-_last_hash = None
+
+def _audit_ledger_path() -> str | None:
+    if CONFIG.audit_ledger_path:
+        return CONFIG.audit_ledger_path
+    if CONFIG.audit_ledger_hmac_key:
+        return os.path.join(BASE, "audit_ledger.jsonl")
+    return None
+
+_AUDIT_LEDGER_KEY = CONFIG.audit_ledger_hmac_key or secrets.token_urlsafe(48)
+AUDIT_LEDGER = LocalAppendOnlyLedgerBackend(
+    _audit_ledger_path(),
+    _AUDIT_LEDGER_KEY,
+    key_id=CONFIG.audit_ledger_key_id,
+    verify_before_append=bool(_audit_ledger_path()),
+)
 
 
 def _log_err(e) -> None:
@@ -74,77 +86,106 @@ def _log_err(e) -> None:
         pass
 
 
-def _sid_tag(session_id: str) -> str:
-    return hashlib.sha256((session_id or "").encode("utf-8")).hexdigest()[:12] if session_id else "-"
-
-
-def _entry_hash(prev: str, ts: str, sid: str, action: str, status: str) -> str:
-    return hashlib.sha256(f"{prev}|{ts}|{sid}|{action}|{status}".encode("utf-8")).hexdigest()
-
-
-def _ledger_last_hash() -> str:
-    global _last_hash
-    if _last_hash is not None:
-        return _last_hash
-    last = _GENESIS
+def audit_event(
+    event_type: str,
+    *,
+    actor_type: str = "system",
+    actor_id: str = "",
+    route_class: str = "system",
+    action: str = "",
+    outcome: str = "",
+    status_code: int | None = None,
+    security_tags: tuple[str, ...] = (),
+    metadata: dict | None = None,
+) -> bool:
     try:
-        if os.path.exists(_LEDGER):
-            with open(_LEDGER, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        try:
-                            last = json.loads(line).get("current_hash", last)
-                        except Exception:
-                            pass
+        AUDIT_LEDGER.append_event(AuditEventInput(
+            event_type=event_type,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            route_class=route_class,
+            action=action,
+            outcome=outcome,
+            status_code=status_code,
+            security_tags=security_tags,
+            metadata=metadata or {},
+        ))
+        return True
+    except AuditLedgerError as e:
+        _log_err(e)
+        return False
     except Exception:
-        pass
-    _last_hash = last
-    return last
+        _log_err(RuntimeError("Audit ledger append failed."))
+        return False
+
+
+def _audit_required_failure_response():
+    return JSONResponse(
+        {
+            "status": "error",
+            "security_status": "audit_required_failed",
+            "pesan": "Required audit evidence could not be recorded.",
+        },
+        status_code=503,
+    )
+
+
+def _legacy_event_type(action: str, status: str) -> str:
+    action_l = (action or "").lower()
+    status_l = (status or "").lower()
+    if "directorlogin" in action_l and "success" in status_l:
+        return "mfa_succeeded"
+    if "photoanalysis" in action_l:
+        return "capability_denied"
+    if "consent" in action_l:
+        return "consent_recorded"
+    if "feedback" in action_l:
+        return "feedback_recorded"
+    if "upload" in action_l and "parser_timeout" in status_l:
+        return "upload_parser_timeout"
+    if "upload" in action_l and "parser_crashed" in status_l:
+        return "upload_parser_crashed"
+    if "upload" in action_l and "success" in status_l:
+        return "upload_accepted"
+    if "upload" in action_l:
+        return "upload_rejected"
+    if "analisis" in action_l and "success" in status_l:
+        return "analysis_succeeded"
+    if "analisis" in action_l:
+        return "analysis_failed"
+    if "deletemydata" in action_l:
+        return "session_deleted"
+    return "legacy_event"
 
 
 def audit_log(session_id: str, action: str, status: str) -> None:
-    """Tamper-evident local audit hash-chain. Hanya metadata (tanpa PHI); session_id disamarkan jadi hash."""
-    try:
-        with _ledger_lock:
-            global _last_hash
-            prev = _ledger_last_hash()
-            ts = datetime.datetime.utcnow().isoformat() + "Z"
-            sid = _sid_tag(session_id)
-            safe_action = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(action).text
-            safe_status = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(status).text
-            cur = _entry_hash(prev, ts, sid, safe_action, safe_status)
-            rec = {"prev_hash": prev, "timestamp": ts, "sid": sid, "action": safe_action, "status": safe_status, "current_hash": cur}
-            with open(_LEDGER, "a", encoding="utf-8") as f:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            _last_hash = cur
-    except Exception:
-        pass
+    audit_event(
+        _legacy_event_type(action, status),
+        actor_type="session" if session_id != "director" else "director",
+        actor_id=session_id or "anonymous",
+        route_class="legacy",
+        action=action,
+        outcome=status,
+        security_tags=("ledger",),
+        metadata={"legacy_action": action, "legacy_status": status},
+    )
 
 
 def verify_audit_chain():
-    """Verifikasi integritas rantai audit lokal. Return (ok, jumlah). Alarm bila ada entri yang diubah/dirusak."""
-    prev = _GENESIS
-    n = 0
-    try:
-        if not os.path.exists(_LEDGER):
-            return True, 0
-        with open(_LEDGER, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                rec = json.loads(line)
-                expect = _entry_hash(prev, rec.get("timestamp", ""), rec.get("sid", ""), rec.get("action", ""), rec.get("status", ""))
-                if rec.get("prev_hash") != prev or rec.get("current_hash") != expect:
-                    print(f"[SECURITY-INCIDENT][ERROR] INTEGRITAS AUDIT LEDGER RUSAK pada entri #{n + 1} — log kemungkinan diubah/dirusak.", file=sys.stderr)
-                    return False, n
-                prev = rec["current_hash"]
-                n += 1
-    except Exception as e:
-        _log_err(e)
-        return False, n
-    return True, n
+    result = AUDIT_LEDGER.verify()
+    if not result.ok:
+        print("[SECURITY-INCIDENT][ERROR] Audit ledger verification failed; local tamper evidence is not valid.", file=sys.stderr)
+        audit_event(
+            "ledger_verification_failed",
+            actor_type="system",
+            route_class="ledger",
+            action="verify_audit_chain",
+            outcome="verification_failed",
+            status_code=500,
+            security_tags=("ledger",),
+            metadata={"error_code": result.failure_code, "verified_count": result.record_count},
+        )
+    return result.ok, result.record_count
 
 
 def _too_big(up) -> bool:
@@ -548,6 +589,18 @@ def _clinical_meta(outcome) -> dict:
 
 def _validate_clinical_answer(raw: str, framework: str, patient_context: str):
     outcome = validate_clinical_output(raw, framework, CLINICAL_REGISTRY, patient_context=patient_context)
+    if not outcome.accepted:
+        audit_event(
+            "clinical_abstention",
+            actor_type="system",
+            actor_id=framework,
+            route_class="clinical_validation",
+            action="validate_clinical_output",
+            outcome=outcome.response.status,
+            status_code=200,
+            security_tags=("clinical",),
+            metadata={"clinical_status": outcome.response.status, "framework": framework},
+        )
     return _browser_safe_text(outcome.display_text), _clinical_meta(outcome)
 
 def _registry_abstention_answer(framework: str, status: str, missing_registries: list[str]):
@@ -567,6 +620,17 @@ def _registry_abstention_answer(framework: str, status: str, missing_registries:
         issue_code=issue_code,
         field="approved_registries",
         question=question,
+    )
+    audit_event(
+        status if status in {"registry_unavailable", "registry_incomplete"} else "clinical_abstention",
+        actor_type="system",
+        actor_id=framework,
+        route_class="clinical_registry",
+        action="registry_availability_check",
+        outcome=status,
+        status_code=200,
+        security_tags=("clinical", "registry"),
+        metadata={"clinical_status": status, "framework": framework, "missing_registries": missing_registries},
     )
     return _browser_safe_text(render_clinical_response(response)), _clinical_meta_from_response(response, False, missing_registries)
 
@@ -638,29 +702,90 @@ def _apply_rate_limit(request: Request, route_class: str, principal: AuthPrincip
     limit, window = RATE_LIMITS.get(route_class, (120, CONFIG.rate_limit_window_sec))
     subject = rate_subject(principal, _client_ip(request), SECURITY_PEPPER)
     decision = RATE_LIMITER.check(limit_key(route_class, subject, SECURITY_PEPPER), limit, window)
-    return None if decision.allowed else _security_response('rate_limited', decision.retry_after)
+    if decision.allowed:
+        return None
+    audit_event(
+        "rate_limited",
+        actor_type="api_principal" if principal else "client_ip",
+        actor_id=(principal.principal_id if principal else _client_ip(request)),
+        route_class=route_class,
+        action="rate_limit",
+        outcome="rate_limited",
+        status_code=429,
+        security_tags=("rate_limit",),
+        metadata={"route_class": route_class, "retry_after_bucket": 1 if decision.retry_after else 0},
+    )
+    return _security_response('rate_limited', decision.retry_after)
 
 
 def _auth_context(request: Request, authorization: Optional[str], route_class: str = 'AUTH'):
     auth = authenticate_api_key(authorization, CONFIG.api_auth_keys, SECURITY_PEPPER)
     if not auth.ok:
         limited = _apply_rate_limit(request, 'AUTH')
+        audit_event(
+            "authentication_failed",
+            actor_type="client_ip",
+            actor_id=_client_ip(request),
+            route_class=route_class,
+            action="api_key_auth",
+            outcome=auth.status,
+            status_code=status_code_for(auth.status),
+            security_tags=("auth",),
+            metadata={"status": auth.status, "route_class": route_class},
+        )
         return None, '', limited or _security_response(auth.status)
     limited = _apply_rate_limit(request, route_class, auth.principal)
     if limited:
         return None, '', limited
+    audit_event(
+        "authentication_succeeded",
+        actor_type="api_principal",
+        actor_id=auth.principal.credential_fingerprint,
+        route_class=route_class,
+        action="api_key_auth",
+        outcome="authenticated",
+        status_code=200,
+        security_tags=("auth",),
+        metadata={"route_class": route_class},
+    )
     return auth.principal, auth.raw_credential, None
 
 
 def _require_session(session_id: str, principal: AuthPrincipal, session_token: Optional[str], touch: bool = True):
     status = SESI.validate(session_id, principal, session_token or '', touch=touch)
-    return None if status == 'ok' else _security_response(status)
+    if status == 'ok':
+        return None
+    event_type = "authorization_failed" if status == "session_owner_mismatch" else status
+    if event_type not in {"session_expired", "session_token_invalid", "authorization_failed"}:
+        event_type = "session_token_invalid"
+    audit_event(
+        event_type,
+        actor_type="api_principal",
+        actor_id=principal.principal_id,
+        route_class="session",
+        action="session_validate",
+        outcome=status,
+        status_code=status_code_for(status),
+        security_tags=("session",),
+        metadata={"status": status},
+    )
+    return _security_response(status)
 
 
 
 def err_status(e: Exception) -> Tuple[int, str]:
     _log_err(e)   # detail teknis -> konsol server saja; user hanya menerima pesan generik di bawah
     if isinstance(e, OutboundPolicyError):
+        audit_event(
+            "outbound_policy_blocked",
+            actor_type="system",
+            route_class="outbound_policy",
+            action="external_payload_check",
+            outcome="blocked",
+            status_code=400,
+            security_tags=("privacy",),
+            metadata={"reason_code": "outbound_policy_blocked"},
+        )
         return 400, "Data mengandung identifier berisiko tinggi dan tidak dapat dikirim keluar aplikasi."
     s = str(e).lower()
     if any(x in s for x in ("401", "unauthorized", "invalid api key", "invalid_api_key",
@@ -961,6 +1086,16 @@ def _session_invalid():
 
 def _unavailable(capability: str, status_code: int = 503, extra: Optional[dict] = None):
     reason = capability_reason(capability, CONFIG)
+    audit_event(
+        "capability_denied",
+        actor_type="system",
+        route_class="capability",
+        action="capability_denied",
+        outcome=capability,
+        status_code=status_code,
+        security_tags=("capability",),
+        metadata={"capability": capability, "status_code": status_code},
+    )
     payload = {
         "status": "error",
         "capability": capability,
@@ -994,6 +1129,16 @@ def new_session(request: Request, authorization: Optional[str] = Header(None)):
     if error:
         return error
     session_id, session_token = SESI.issue(principal)
+    audit_event(
+        "session_created",
+        actor_type="api_principal",
+        actor_id=principal.principal_id,
+        route_class="session",
+        action="session_create",
+        outcome="created",
+        status_code=200,
+        security_tags=("session",),
+    )
     return {'status': 'sukses', 'session_id': session_id, 'session_token': session_token, 'session_ttl_sec': CONFIG.session_ttl_sec}
 
 
@@ -1017,8 +1162,32 @@ def director_login(request: Request, code: str = Form("")):
         lockout=CONFIG.mfa_lockout_sec,
     )
     if not result.ok:
+        if not audit_event(
+            "mfa_locked" if result.status == "mfa_locked" else "mfa_replay_rejected" if result.status == "mfa_replay_rejected" else "mfa_failed",
+            actor_type="director",
+            actor_id="director",
+            route_class="MFA",
+            action="director_login",
+            outcome=result.status,
+            status_code=status_code_for(result.status),
+            security_tags=("mfa", "director"),
+            metadata={"status": result.status},
+        ):
+            return _audit_required_failure_response()
         return _security_response(result.status, result.retry_after)
-    audit_log("director", "DirectorLogin", "Success")
+    if not audit_event(
+        "mfa_succeeded",
+        actor_type="director",
+        actor_id="director",
+        route_class="MFA",
+        action="director_login",
+        outcome="authenticated",
+        status_code=200,
+        security_tags=("mfa", "director"),
+    ):
+        if result.token:
+            director._tokens.pop(result.token, None)
+        return _audit_required_failure_response()
     return {'status': 'sukses', 'director_token': result.token, 'ttl_s': director._TOKEN_TTL}
 
 
@@ -1028,11 +1197,33 @@ def director_enroll(request: Request, x_director_bootstrap: Optional[str] = Head
     limited = _apply_rate_limit(request, 'DIRECTOR_PRIVILEGED')
     if limited:
         return limited
+    if not audit_event(
+        "director_enrollment_attempt",
+        actor_type="director_bootstrap",
+        actor_id="director_enrollment",
+        route_class="DIRECTOR_PRIVILEGED",
+        action="director_enroll",
+        outcome="attempted",
+        status_code=0,
+        security_tags=("director",),
+    ):
+        return _audit_required_failure_response()
     boot = CONFIG.director_bootstrap
     if CONFIG.app_mode != 'clinical_sandbox' or not CONFIG.director_enrollment_enabled or not boot:
         return _security_response('authorization_failed')
     if not constant_time_equal(x_director_bootstrap or '', boot):
         return _security_response('authorization_failed')
+    if not audit_event(
+        "director_enrollment_succeeded",
+        actor_type="director_bootstrap",
+        actor_id="director_enrollment",
+        route_class="DIRECTOR_PRIVILEGED",
+        action="director_enroll",
+        outcome="provisioned",
+        status_code=200,
+        security_tags=("director",),
+    ):
+        return _audit_required_failure_response()
     result = director.provision_otpauth_uri()
     if not result.ok:
         return _security_response('authorization_failed')
@@ -1405,6 +1596,20 @@ def reset(request: Request, session_id: str = Form("default"), authorization: Op
     principal, key, error = _auth_context(request, authorization, 'SESSION_MUTATION')
     if error:
         return error
+    status = SESI.validate(session_id, principal, session_token or '', touch=False)
+    if status != 'ok':
+        return _security_response(status)
+    if not audit_event(
+        "session_reset",
+        actor_type="api_principal",
+        actor_id=principal.principal_id,
+        route_class="SESSION_MUTATION",
+        action="session_reset",
+        outcome="reset",
+        status_code=200,
+        security_tags=("session",),
+    ):
+        return _audit_required_failure_response()
     status, new_token = SESI.reset(session_id, principal, session_token or '')
     if status != 'ok':
         return _security_response(status)
@@ -1419,12 +1624,25 @@ def delete_my_data(request: Request, session_id: str = Form(""), authorization: 
     principal, key, error = _auth_context(request, authorization, 'SESSION_MUTATION')
     if error:
         return error
+    status = SESI.validate(session_id, principal, session_token or '', touch=False)
+    if status != 'ok':
+        return _security_response(status)
+    if not audit_event(
+        "session_deleted",
+        actor_type="api_principal",
+        actor_id=principal.principal_id,
+        route_class="SESSION_MUTATION",
+        action="session_delete",
+        outcome="delete_authorized",
+        status_code=200,
+        security_tags=("session",),
+    ):
+        return _audit_required_failure_response()
     status = SESI.delete(session_id, principal, session_token or '')
     if status != 'ok':
         return _security_response(status)
     removed = memory.purge_session(session_id)     # hapus seluruh feedback milik sesi ini
     crypto_store.dek_destroy(session_id)           # CRYPTO-SHRED: musnahkan DEK -> data sisa jadi sampah kriptografis
-    audit_log(session_id, "DeleteMyData", "Success")
     return {"status": "ok", "feedback_dihapus": removed}
 
 

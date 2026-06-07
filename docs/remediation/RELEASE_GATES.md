@@ -138,3 +138,17 @@ Gate A remains **Not met**. Phase 6 does not provide durable identity, RBAC, SSO
 Phase 6 closure UI smoke note: `http://localhost:3000` rendered normally in Incognito, while `http://172.16.0.2:3000` reproduced a blank page because Next.js development resources were blocked cross-origin by default. This is classified as a local development-origin configuration issue, not an application startup regression. It is not full browser-rendered QA and does not change Gate A status.
 
 Phase 6 director-enrollment supplement: `/director/enroll` is disabled by default and is local-sandbox provisioning only when explicitly enabled. Startup no longer emits an enrollment URI. Browser-carried shared API keys remain visible to the browser and are not hospital identity, RBAC, SSO, OAuth/OIDC, controlled-pilot readiness, or production authentication. Gate A remains unmet.
+
+## Phase 7 Audit-Ledger Checkpoint
+
+Phase 7 local controls now available for sandbox verification:
+
+- Structured audit records include schema version, opaque event ID, UTC timestamp, sequence, event type, actor type, actor fingerprint, route class, action, outcome, status code, security tags, allowlisted metadata, previous record MAC, record MAC, and key ID.
+- Canonical JSON serialization uses sorted keys, compact separators, UTF-8, and excludes `record_mac` from authenticated bytes.
+- HMAC-SHA256 chains each record to the previous record MAC and detects field mutation, reordering, middle deletion, duplicate insertion, wrong keys, malformed JSON, partial lines, sequence rollback, and previous-MAC mismatch in tests.
+- Local backend appends newline-delimited records, flushes, fsyncs, and verifies persistent ledgers before append.
+- Verification CLI emits safe summaries only and exits non-zero for tampered ledgers or missing/weak keys.
+- Phase 7 tests prove raw synthetic PHI, API keys, session tokens, OTP/TOTP seed, director bootstrap, provider key, filesystem path, and uploaded-document body canaries are absent from ledger records.
+- Closure verification proves persistent verify-before-append fails closed for mutated, reordered, middle-deleted, partial-line, malformed, and wrong-key ledgers without overwriting prior bytes. It also documents that final-record tail truncation can leave a locally valid prefix.
+
+Residuals: this is not WORM storage, not immutable storage, not a digital signature, not asymmetric non-repudiation, not multi-process correctness, and not compliance evidence. Segment rotation is implemented, but key rotation and valid-prefix tail-truncation anchoring are not. Gate A remains **Not met**. External immutable storage, managed keys, durable centralized audit service, incident-response procedures, and formal review remain required before controlled-pilot, hospital, compliance, or production claims.

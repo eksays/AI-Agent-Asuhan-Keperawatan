@@ -53,6 +53,7 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Add TOTP replay prevention, lockout, and rate limits.
 
 8. **Phase 7 - Audit Ledger Redesign**
+   - Status: applied locally for HMAC-chained structured audit events, safe verification export, metadata minimization, and local segment rotation.
    - Rename local ledger honestly as tamper-evident only.
    - Add HMAC/signature and verifier tooling.
    - Separate local and production storage adapters.
@@ -225,3 +226,11 @@ Residuals:
 The director enrollment boundary is explicitly local-sandbox-only. The API no longer prints an enrollment URI at startup. `/director/enroll` requires all of the following: `APP_MODE=clinical_sandbox`, `DIRECTOR_ENROLLMENT_ENABLED=true`, a configured `DIRECTOR_BOOTSTRAP`, a matching `X-Director-Bootstrap` header, and no existing director TOTP seed. Body, query-string, FormData, and cookie bootstrap fallbacks are rejected. Controlled-pilot and production provisioning workflows remain undefined and out of scope.
 
 Browser-carried shared API keys remain visible to the browser client. Header-only transport is a leak-reduction measure, not a confidential server-side credential model.
+
+## Phase 7 Implementation Notes
+
+Phase 7 is limited to tamper-evident audit ledger hardening. It adds a structured event schema, canonical JSON serialization, HMAC-SHA256 record chaining, safe actor fingerprinting, bounded allowlisted metadata, local append-only writes with flush/fsync, a verification CLI, and local segment rotation linkage.
+
+Closure hardening adds direct tests for canonical field coverage, non-finite JSON rejection, append fail-closed behavior on mutated/reordered/malformed/wrong-key ledgers, valid-prefix tail-truncation limitations, path normalization and unsafe file-type rejection, privileged audit failure semantics, recursion safety, and expanded PHI/secret canaries.
+
+The ledger remains a local sandbox evidence control only. It is not WORM storage, not immutable filesystem storage, not a digital signature, and not asymmetric non-repudiation. A host administrator with both ledger and key access can still rewrite history. A valid-prefix tail truncation may still verify locally without an external checkpoint/footer/archive. Segment rotation is implemented; key rotation is not implemented. Multi-process correctness is not claimed; a durable centralized ledger service or external immutable archive remains required before controlled-pilot, compliance, hospital, or production claims.

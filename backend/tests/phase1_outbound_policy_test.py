@@ -20,6 +20,7 @@ import config  # noqa: E402
 import ebp  # noqa: E402
 import ekstraksi  # noqa: E402
 import memory  # noqa: E402
+from audit_ledger import LocalAppendOnlyLedgerBackend  # noqa: E402
 from clinical_registry import ClinicalRegistry  # noqa: E402
 from outbound_policy import OutboundDataPolicy, OutboundPolicyError, SafeLLM, wrap_llm  # noqa: E402
 from scripts import populate_sdki  # noqa: E402
@@ -283,11 +284,16 @@ class Phase1PolicyTests(unittest.TestCase):
 
     def test_audit_log_sanitizes_action_and_status_fields(self):
         with tempfile.TemporaryDirectory() as td:
-            ledger = os.path.join(td, "audit.jsonl")
-            with mock.patch.object(api, "_LEDGER", ledger), mock.patch.object(api, "_last_hash", None):
+            ledger_path = os.path.join(td, "audit.jsonl")
+            ledger = LocalAppendOnlyLedgerBackend(
+                ledger_path,
+                "phase7-audit-ledger-hmac-key-for-phase1-test-0001",
+                key_id="phase1-test-key",
+            )
+            with mock.patch.object(api, "AUDIT_LEDGER", ledger):
                 api.audit_log("session-with-phi", "Action " + CANARY, "Status " + CANARY)
 
-            with open(ledger, encoding="utf-8") as fh:
+            with open(ledger_path, encoding="utf-8") as fh:
                 line = fh.read()
 
         assert_no_raw_canary(self, line)

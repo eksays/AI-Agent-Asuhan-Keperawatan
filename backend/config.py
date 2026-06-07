@@ -57,6 +57,9 @@ class AppConfig:
     upload_max_docx_compression_ratio: float
     upload_parser_timeout_sec: int
     upload_max_parser_result_bytes: int
+    audit_ledger_hmac_key: str
+    audit_ledger_key_id: str
+    audit_ledger_path: str
 
     @property
     def external_llm_enabled(self) -> bool:
@@ -116,6 +119,9 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
     topics = _csv(source.get("HARVEST_TOPICS", "nursing care,clinical nursing,evidence based nursing"))
     api_keys = _csv(source.get('CDSS_API_KEYS', ','.join(SANDBOX_DEFAULT_API_KEYS)))
     cdss_secret = source.get('CDSS_SECRET_KEY', '').strip()
+    audit_ledger_key = source.get('AUDIT_LEDGER_HMAC_KEY', '').strip()
+    audit_ledger_key_id = (source.get('AUDIT_LEDGER_KEY_ID') or 'audit-ledger-local-v1').strip()
+    audit_ledger_path = source.get('AUDIT_LEDGER_PATH', '').strip()
     trusted_proxies = _csv(source.get('TRUSTED_PROXY_HOSTS', ''))
     if '*' in origins and app_mode != 'clinical_sandbox':
         raise RuntimeError('Wildcard CORS origins are not allowed outside clinical_sandbox mode.')
@@ -126,6 +132,12 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
             raise RuntimeError('Controlled pilot and production modes require a strong CDSS_SECRET_KEY.')
         if is_placeholder_secret(source.get('DIRECTOR_BOOTSTRAP', '')):
             raise RuntimeError('DIRECTOR_BOOTSTRAP must not be a placeholder in controlled pilot or production mode.')
+        if is_weak_secret(audit_ledger_key, 32):
+            raise RuntimeError('Controlled pilot and production modes require a strong AUDIT_LEDGER_HMAC_KEY.')
+    if audit_ledger_path and is_weak_secret(audit_ledger_key, 32):
+        raise RuntimeError('Persistent audit ledger storage requires a strong AUDIT_LEDGER_HMAC_KEY.')
+    if is_placeholder_secret(audit_ledger_key_id):
+        raise RuntimeError('AUDIT_LEDGER_KEY_ID must not be a placeholder value.')
 
     return AppConfig(
         app_mode=app_mode,
@@ -161,6 +173,9 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         upload_max_docx_compression_ratio=_float_env(source, 'UPLOAD_MAX_DOCX_COMPRESSION_RATIO', 100.0),
         upload_parser_timeout_sec=_int_env(source, 'UPLOAD_PARSER_TIMEOUT_SEC', 20),
         upload_max_parser_result_bytes=_int_env(source, 'UPLOAD_MAX_PARSER_RESULT_BYTES', 100 * 1024),
+        audit_ledger_hmac_key=audit_ledger_key,
+        audit_ledger_key_id=audit_ledger_key_id,
+        audit_ledger_path=audit_ledger_path,
         unpaywall_email=source.get("UNPAYWALL_EMAIL", "cdss.keperawatan@example.com"),
     )
 
