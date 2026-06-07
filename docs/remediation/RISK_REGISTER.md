@@ -137,3 +137,31 @@ Checkpoint references: Phase 0B `cef16b14166ebc5ad19b67c1a607bbdd9054956a`; Phas
 | Parser dependency risk remains | Medium | PDF and DOCX libraries run only in the child process, but dependency parser bugs can still crash the child. | Keep dependency scanning and parser crash tests in CI; consider hardened parser containers. |
 | Frontend accept hints are advisory | Low | Backend rejects unsupported or mismatched content regardless of browser metadata. | Optionally narrow frontend accept hints later without redesign, but do not rely on them. |
 | Gate A remains unmet after closure evidence | High | Phase 5 closure evidence is prepared locally, but Gate A still requires accepted closure, CI enforcement, hard parser resource-control resolution or explicit sandbox residual acceptance, registry/formal clinical review, and browser-rendered QA disposition. | Obtain Phase 5 closure acceptance, checkpoint the phase, and plan CI/resource-control follow-up before any gate claim. |
+
+## Phase 6 Status Update
+
+| ID | Phase 6 Status | Evidence | Residual Risk |
+|---|---|---|---|
+| SEC-API-001 | Partially mitigated for sandbox/API transport | `backend/security_controls.py` authenticates only `Authorization: Bearer` API keys with constant-time compare and keyed fingerprints. Protected clinical routes no longer define body `api_key` form parameters, and frontend transport no longer appends `api_key` to `FormData`. Tests reject form, JSON, query-string, and cookie API-key transport. | Shared API key authentication is not hospital user identity, RBAC, SSO, OAuth/OIDC, or user-level authorization. TLS and operational key rotation remain deployment responsibilities. |
+| SEC-SES-001 | Partially mitigated for in-memory sessions | `SecureSessionMemory` issues server `session_id` plus per-session `session_token`, stores only token digest, enforces principal ownership, TTL, idle timeout, max active session bound, cleanup, and reset token rotation. Tests reject fake session reset, no-auth reset/delete, wrong owner, wrong token, expired session, and old token after reset. | Session store is in memory and not distributed or durable. Restart clears sessions; multi-instance coordination is absent. |
+| SEC-MFA-001 | Partially mitigated for director TOTP sandbox | Director TOTP verification tracks accepted time steps, rejects replay, rate-limits failures by principal/IP, applies lockout with `Retry-After`, and avoids logging raw seed/OTP. Tests cover first-use acceptance, replay rejection, invalid-code lockout, lockout response, and unlock behavior. | MFA state and director tokens remain in memory. Restart clears counters and replay memory; enrollment governance and phishing-resistant MFA are not implemented. |
+| SEC-RATE-001 | Added bounded in-memory limiter | `BoundedRateLimiter` uses per-principal/per-IP/route-class keys, TTL cleanup, max key count, and safe `429` responses with `Retry-After`. Applied to AUTH, MFA, SESSION_MUTATION, CHAT, UPLOAD, and DIRECTOR_PRIVILEGED route classes. | In-memory rate limiting is sandbox containment only. Distributed enforcement requires a shared durable store before controlled pilot. |
+| SEC-SEC-001 | Secret loading hardened for non-sandbox modes | `controlled_pilot` and `production` reject missing, weak, or placeholder `CDSS_API_KEYS`, `CDSS_SECRET_KEY`, and `DIRECTOR_BOOTSTRAP`; production still requires safety prerequisite flags. Capabilities do not expose secret values. | No cloud/KMS secret manager, no rotation workflow enforcement, and no formal operational secret handling exists in Phase 6. |
+| SEC-CORS-001 | CORS boundary tightened for Phase 6 transport | Wildcard CORS origins are rejected outside `clinical_sandbox`; credentials are disabled; `X-Session-Token` is explicitly allowed for browser requests. | Deployment-specific trusted origins and proxy configuration still need operational review before pilot. |
+
+## Phase 6 Residuals
+
+| Risk | Severity | Status | Next Action |
+|---|---|---|---|
+| Shared API key is not user identity | High | Phase 6 derives an application principal fingerprint but does not identify individual nurses or hospital users. | Add real identity provider/RBAC in a later scoped phase before pilot claims. |
+| In-memory session/MFA/rate-limit state | High | Controls work in a single-process sandbox but are not durable or distributed. | Add durable shared stores and operational eviction/rollback behavior before controlled pilot. |
+| Local secrets are not managed secrets | Medium | Weak defaults fail closed outside sandbox, but local files/env vars remain the mechanism. | Add formal secret manager or deployment secret controls later; do not commit `.env`, `.cdss_key`, `.director_totp`, or seeds. |
+| Trusted proxy deployment is not configured by default | Medium | Forwarded headers are ignored unless `TRUSTED_PROXY_HOSTS` is explicitly configured. | Document and test proxy topology before deployment. |
+| Gate A remains unmet | High | Phase 6 improves auth/session/MFA/rate-limit/secrets only. | Continue evidence-driven release-gate work without pilot, hospital, compliance, or production claims. |
+
+## Phase 6 Director Enrollment Supplement
+
+| Risk | Severity | Status | Recommended Action |
+|---|---|---|---|
+| Browser-carried shared API key is visible to client code | High | Documented as a local sandbox containment control only; header-only transport avoids body/query/storage leakage but does not make the key server-confidential. | Use real identity provider, RBAC/SSO, or server-side mediation before controlled pilot. |
+| Director enrollment provisioning is local-sandbox only | High | `/director/enroll` is disabled by default, sandbox-only when explicitly enabled, header-bootstrap-only, rate-limited, and one-time unless future reset workflow is designed. | Define a formal provisioning lifecycle before pilot/production; do not use ad hoc browser enrollment. |

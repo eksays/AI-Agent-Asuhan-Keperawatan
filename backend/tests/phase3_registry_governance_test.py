@@ -706,11 +706,12 @@ class Phase3Phase2RegressionTests(unittest.TestCase):
              mock.patch.object(api, "bangun_konteks", return_value=""), \
              mock.patch.object(api.memory, "recall_block", return_value=""), \
              mock.patch.object(api, "CLINICAL_REGISTRY", registry):
-            session_id = self.client.post("/session").json()["session_id"]
+            session = self.client.post("/session", headers={"Authorization": "Bearer test-key"}).json()
+            session_id = session["session_id"]
             response = self.client.post(
                 "/chat",
                 data={"provider": "openai", "model": "mock", "framework": "3S", "session_id": session_id, "tier": "flash", "agent": "analisis", "pertanyaan": "Pasien batuk dengan RR 28 x/menit dan perlu analisis keperawatan."},
-                headers={"Authorization": "Bearer test-key"},
+                headers={"Authorization": "Bearer test-key", "X-Session-Token": session["session_token"]},
             )
         self.assertEqual(response.status_code, 200)
         data = response.json()

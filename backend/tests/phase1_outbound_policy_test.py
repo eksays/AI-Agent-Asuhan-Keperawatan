@@ -463,7 +463,12 @@ class Phase1ApiStreamingTests(unittest.TestCase):
         cls.client = TestClient(api.app)
 
     def _session_id(self) -> str:
-        return self.client.post("/session").json()["session_id"]
+        data = self.client.post("/session", headers=self._headers()).json()
+        self._session_headers = {"Authorization": "Bearer test-key", "X-Session-Token": data["session_token"]}
+        return data["session_id"]
+
+    def _headers(self) -> dict[str, str]:
+        return getattr(self, "_session_headers", {"Authorization": "Bearer test-key"})
 
     def test_chat_stream_precomputes_then_emits_sanitized_chunks(self):
         raw_llm = RecordingLLM(response="Analisis selesai.\n" + CANARY)
@@ -487,7 +492,7 @@ class Phase1ApiStreamingTests(unittest.TestCase):
                     "agent": "general",
                     "pertanyaan": CANARY,
                 },
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
 
         self.assertEqual(response.status_code, 200)
@@ -522,7 +527,7 @@ class Phase1ApiStreamingTests(unittest.TestCase):
                     "agent": "general",
                     "pertanyaan": "lanjutkan analisis klinis",
                 },
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
 
         self.assertEqual(response.status_code, 200)
@@ -537,7 +542,12 @@ class Phase1ApiNonStreamTests(unittest.TestCase):
         cls.client = TestClient(api.app)
 
     def _session_id(self) -> str:
-        return self.client.post("/session").json()["session_id"]
+        data = self.client.post("/session", headers=self._headers()).json()
+        self._session_headers = {"Authorization": "Bearer test-key", "X-Session-Token": data["session_token"]}
+        return data["session_id"]
+
+    def _headers(self) -> dict[str, str]:
+        return getattr(self, "_session_headers", {"Authorization": "Bearer test-key"})
 
     def _common_patches(self, raw_llm: RecordingLLM | RaisingLLM, cfg=None):
         return mock.patch.multiple(
@@ -566,7 +576,7 @@ class Phase1ApiNonStreamTests(unittest.TestCase):
                     "agent": "analisis",
                     "pertanyaan": CANARY,
                 },
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
 
         self.assertEqual(response.status_code, 200)
@@ -582,12 +592,12 @@ class Phase1ApiNonStreamTests(unittest.TestCase):
             first = self.client.post(
                 "/chat",
                 data={"provider": "openai", "model": "mock", "framework": "3S", "session_id": sid, "tier": "flash", "agent": "analisis", "pertanyaan": CANARY},
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
             second = self.client.post(
                 "/chat",
                 data={"provider": "openai", "model": "mock", "framework": "3S", "session_id": sid, "tier": "flash", "agent": "analisis", "pertanyaan": "lanjutkan evaluasi nyeri dan sesak"},
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
 
         self.assertEqual(first.status_code, 200)
@@ -612,12 +622,13 @@ class Phase1ApiNonStreamTests(unittest.TestCase):
                         "rating": "down",
                         "koreksi": "Correction text " + CANARY,
                     },
+                    headers=self._headers(),
                 )
                 with self._common_patches(raw_llm), mock.patch.object(api.memory, "_FILE", feedback_file):
                     response = self.client.post(
                         "/chat",
                         data={"provider": "openai", "model": "mock", "framework": "3S", "session_id": sid, "tier": "flash", "agent": "analisis", "pertanyaan": "keluhan nyeri sesak"},
-                        headers={"Authorization": "Bearer test-key"},
+                        headers=self._headers(),
                     )
                 with open(feedback_file, encoding="utf-8") as fh:
                     stored = fh.read()
@@ -636,7 +647,7 @@ class Phase1ApiNonStreamTests(unittest.TestCase):
                 "/analisis",
                 data={"provider": "openai", "model": "mock", "framework": "3S", "session_id": sid, "tier": "flash", "gejala": CANARY},
                 files={"file_dokumen": ("case.txt", CANARY.encode("utf-8"), "text/plain")},
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
 
         self.assertEqual(response.status_code, 200)
@@ -652,7 +663,7 @@ class Phase1ApiNonStreamTests(unittest.TestCase):
                 "/analisis_multi",
                 data={"provider": "openai", "model": "mock", "framework": "3S", "session_id": sid, "tier": "flash", "agent": "analisis", "gejala": "analisis nyeri sesak"},
                 files={"file_dokumen": ("case.txt", CANARY.encode("utf-8"), "text/plain")},
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
 
         self.assertEqual(response.status_code, 200)
@@ -668,7 +679,7 @@ class Phase1ApiNonStreamTests(unittest.TestCase):
             response = self.client.post(
                 "/pathway",
                 data={"provider": "openai", "model": "mock", "framework": "3S", "session_id": sid, "gejala": CANARY},
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
 
         self.assertEqual(response.status_code, 200)
@@ -682,7 +693,7 @@ class Phase1ApiNonStreamTests(unittest.TestCase):
             response = self.client.post(
                 "/chat",
                 data={"provider": "openai", "model": "mock", "framework": "3S", "session_id": sid, "tier": "flash", "agent": "analisis", "pertanyaan": "analisis nyeri"},
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
 
         self.assertEqual(response.status_code, 500)

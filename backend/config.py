@@ -5,6 +5,8 @@ from typing import Mapping
 
 import os
 
+from security_controls import SANDBOX_DEFAULT_API_KEYS, is_placeholder_secret, is_weak_secret
+
 
 APP_MODES = {"clinical_sandbox", "controlled_pilot", "production"}
 SAFETY_NOTICE = "Clinical sandbox — AI-generated suggestions require nurse review."
@@ -30,7 +32,18 @@ class AppConfig:
     frontend_origins: tuple[str, ...]
     shopee_base_url: str
     director_bootstrap: str
+    director_enrollment_enabled: bool
     cdss_secret_key: str
+    api_auth_keys: tuple[str, ...]
+    session_ttl_sec: int
+    session_idle_timeout_sec: int
+    session_max_active: int
+    rate_limit_window_sec: int
+    rate_limit_max_keys: int
+    mfa_failure_limit: int
+    mfa_failure_window_sec: int
+    mfa_lockout_sec: int
+    trusted_proxy_hosts: tuple[str, ...]
     harvest_interval_sec: int
     harvest_topics: tuple[str, ...]
     unpaywall_email: str
@@ -101,6 +114,19 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
 
     origins = _csv(source.get("FRONTEND_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"))
     topics = _csv(source.get("HARVEST_TOPICS", "nursing care,clinical nursing,evidence based nursing"))
+    api_keys = _csv(source.get('CDSS_API_KEYS', ','.join(SANDBOX_DEFAULT_API_KEYS)))
+    cdss_secret = source.get('CDSS_SECRET_KEY', '').strip()
+    trusted_proxies = _csv(source.get('TRUSTED_PROXY_HOSTS', ''))
+    if '*' in origins and app_mode != 'clinical_sandbox':
+        raise RuntimeError('Wildcard CORS origins are not allowed outside clinical_sandbox mode.')
+    if app_mode in {'controlled_pilot', 'production'}:
+        if not api_keys or any(is_weak_secret(key, 20) for key in api_keys):
+            raise RuntimeError('Controlled pilot and production modes require explicit strong CDSS_API_KEYS.')
+        if is_weak_secret(cdss_secret, 32):
+            raise RuntimeError('Controlled pilot and production modes require a strong CDSS_SECRET_KEY.')
+        if is_placeholder_secret(source.get('DIRECTOR_BOOTSTRAP', '')):
+            raise RuntimeError('DIRECTOR_BOOTSTRAP must not be a placeholder in controlled pilot or production mode.')
+
     return AppConfig(
         app_mode=app_mode,
         feature_external_llm=_bool_env(source, "FEATURE_EXTERNAL_LLM"),
@@ -108,9 +134,20 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         feature_clinical_photo_analysis=_bool_env(source, "FEATURE_CLINICAL_PHOTO_ANALYSIS"),
         feature_mermaid_pathway_rendering=_bool_env(source, "FEATURE_MERMAID_PATHWAY_RENDERING"),
         allow_unsafe_external_llm_for_local_debug=allow_debug,
+        api_auth_keys=api_keys,
+        session_ttl_sec=_int_env(source, 'SESSION_TTL_SEC', 3600),
+        session_idle_timeout_sec=_int_env(source, 'SESSION_IDLE_TIMEOUT_SEC', 900),
+        session_max_active=_int_env(source, 'SESSION_MAX_ACTIVE', 1000),
+        rate_limit_window_sec=_int_env(source, 'RATE_LIMIT_WINDOW_SEC', 60),
+        rate_limit_max_keys=_int_env(source, 'RATE_LIMIT_MAX_KEYS', 2048),
+        mfa_failure_limit=_int_env(source, 'MFA_FAILURE_LIMIT', 5),
+        mfa_failure_window_sec=_int_env(source, 'MFA_FAILURE_WINDOW_SEC', 300),
+        mfa_lockout_sec=_int_env(source, 'MFA_LOCKOUT_SEC', 300),
+        trusted_proxy_hosts=trusted_proxies,
         frontend_origins=origins,
         shopee_base_url=source.get("SHOPEE_BASE_URL", "https://openrouter.ai/api/v1"),
         director_bootstrap=source.get("DIRECTOR_BOOTSTRAP", ""),
+        director_enrollment_enabled=_bool_env(source, "DIRECTOR_ENROLLMENT_ENABLED"),
         cdss_secret_key=source.get("CDSS_SECRET_KEY", "").strip(),
         harvest_interval_sec=_int_env(source, "HARVEST_INTERVAL_SEC", 0),
         harvest_topics=topics,

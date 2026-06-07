@@ -19,8 +19,6 @@ export interface Msg {
 export interface Session { id: string; title: string; tab: Tab; messages: Msg[]; createdAt: number; pendingAction?: boolean }
 export interface BannerState { show: boolean; title: string; description: string }
 
-const LS = "cdss-creds";
-const CONSENT_KEY = "cdss-consent";
 const AGENT_OF: Record<Tab, Agent> = { Analisis: "analisis", Pathway: "pathway", Referensi: "referensi" };
 const EMPTY_ACTIVE: Record<Tab, string | null> = { Analisis: null, Pathway: null, Referensi: null };
 // Saat user HANYA mengunggah dokumen (tanpa perintah) di tab Analisis -> tanyakan dulu aksinya (ala Claude).
@@ -125,38 +123,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [consent, setConsentState] = useState(false);          // persetujuan eksplisit pemrosesan data (UU PDP)
-  const backendSidRef = useRef<Record<string, string>>({});   // id sesi LOKAL -> session_id kriptografis dari backend
+  const backendSidRef = useRef<Record<string, api.SessionBinding>>({});   // id sesi LOKAL -> session binding kriptografis dari backend
   const pendingDocRef = useRef<Record<string, File>>({});     // dokumen menunggu aksi (per-sesi) saat unggah dokumen tanpa perintah
   const consentRef = useRef(false);
 
-  // Kredensial HANYA di sessionStorage (per-tab, hilang saat tab ditutup) + bersihkan jejak lama di localStorage.
-  useEffect(() => {
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      try {
-        localStorage.removeItem(LS);
-        const r = sessionStorage.getItem(LS);
-        if (r) {
-          const c = JSON.parse(r) as Credentials;
-          if (c?.apiKey) { setCreds(c); setPhase("dashboard"); }
-        }
-        if (sessionStorage.getItem(CONSENT_KEY) === "1") { setConsentState(true); consentRef.current = true; }
-      } catch {}
-    });
-    return () => { active = false; };
-  }, []);
   useEffect(() => { let active = true; api.getCapabilities().then((d) => { if (active) setCapabilities(d); }); return () => { active = false; }; }, []);
   useEffect(() => { if (phase === "dashboard" && creds?.apiKey) api.getStatus(creds.apiKey).then((d) => setStatus(d.detail || {})).catch(() => {}); }, [phase, creds]);
 
   const login = useCallback((name: string, key: string, remember: boolean, provider?: ProviderId) => {
     const c: Credentials = { name: name.trim() || "Perawat", apiKey: key.trim(), provider: provider || detectProvider(key) };
-    setCreds(c); if (remember) try { sessionStorage.setItem(LS, JSON.stringify(c)); } catch {}
+    void remember;
+    setCreds(c);
     setPhase("dashboard");
   }, []);
-  const changeName = useCallback((name: string) => setCreds((c) => { if (!c) return c; const n = { ...c, name: name.trim() || c.name }; try { if (sessionStorage.getItem(LS)) sessionStorage.setItem(LS, JSON.stringify(n)); } catch {} return n; }), []);
-  const logoutCreds = useCallback(() => { try { sessionStorage.removeItem(LS); localStorage.removeItem(LS); } catch {} backendSidRef.current = {}; setCreds(null); setSessions([]); setActiveByTab(EMPTY_ACTIVE); setPhase("welcome"); }, []);
-  const setConsent = useCallback((b: boolean) => { setConsentState(b); consentRef.current = b; try { if (b) sessionStorage.setItem(CONSENT_KEY, "1"); else sessionStorage.removeItem(CONSENT_KEY); } catch {} }, []);
+  const changeName = useCallback((name: string) => setCreds((c) => c ? { ...c, name: name.trim() || c.name } : c), []);
+  const logoutCreds = useCallback(() => { backendSidRef.current = {}; setCreds(null); setSessions([]); setActiveByTab(EMPTY_ACTIVE); setPhase("welcome"); }, []);
+  const setConsent = useCallback((b: boolean) => { setConsentState(b); consentRef.current = b; }, []);
 
   const activeId = activeByTab[tab];
   const activeSession = sessions.find((s) => s.id === activeId);
@@ -230,23 +212,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let si = 0; const timer = setInterval(() => { si = Math.min(si + 1, stages.length); patch(sid, botId, { status: stages.slice(0, si) }); }, 650);
     const ctx: api.ChatCtx = { provider: creds.provider, apiKey: creds.apiKey, tier, framework };
     // session_id WAJIB diterbitkan backend (CSPRNG). Klien tidak lagi membuat sendiri.
-    const getBackendSid = async (force = false): Promise<string> => {
+    const getBackendSession = async (force = false): Promise<api.SessionBinding> => {
       if (!force && backendSidRef.current[sid]) return backendSidRef.current[sid];
-      const bs = await api.createSession();
+      const bs = await api.createSession(creds.apiKey);
       backendSidRef.current[sid] = bs;
       return bs;
     };
-    const runOnce = async (bsid: string): Promise<string> => {
+    const runOnce = async (binding: api.SessionBinding): Promise<string> => {
       if (file) {
         const isImg = (file.type || "").startsWith("image/");   // foto -> file_foto; dokumen -> file_dokumen
-        const d = await api.analisis(ctx, bsid, userContent, isImg ? undefined : file, isImg ? file : undefined, agent);
+        const d = await api.analisis(ctx, binding, userContent, isImg ? undefined : file, isImg ? file : undefined, agent);
         if (d.status === "sukses" && d.hasil != null) return d.hasil;
         if (d.pesan === "SESSION_INVALID") throw new Error("SESSION_INVALID");
         throw new Error(d.pesan || "Gagal.");
       }
       let acc = ""; let firstChunk = true;
       try {
-        for await (const chunk of api.chatStream(ctx, bsid, userContent, agent)) {
+        for await (const chunk of api.chatStream(ctx, binding, userContent, agent)) {
           if (firstChunk) { clearInterval(timer); firstChunk = false; }
           acc += chunk;
           patch(sid, botId, { content: acc, status: undefined, done: false });
@@ -256,7 +238,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (code === "409") throw new Error("SESSION_INVALID");
         if (/401|403|429/.test(code)) throw streamErr;            // auth/quota -> banner
         if (!acc.trim()) {                                         // stream tak tersedia -> fallback /chat
-          const d = await api.chat(ctx, bsid, userContent, agent);
+          const d = await api.chat(ctx, binding, userContent, agent);
           if (d.status === "sukses" && d.jawaban != null) return d.jawaban;
           if (d.pesan === "SESSION_INVALID") throw new Error("SESSION_INVALID");
           throw new Error(d.pesan || "Gagal.");
@@ -267,9 +249,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       let answer = "";
       try {
-        answer = await runOnce(await getBackendSid());
+        answer = await runOnce(await getBackendSession());
       } catch (e) {                                               // id basi (backend restart) -> terbitkan ulang, coba sekali lagi
-        if (e instanceof Error && e.message === "SESSION_INVALID") answer = await runOnce(await getBackendSid(true));
+        if (e instanceof Error && e.message === "SESSION_INVALID") answer = await runOnce(await getBackendSession(true));
         else throw e;
       }
       clearInterval(timer);
@@ -305,10 +287,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const runOnTab = useCallback((targetTab: Tab, text: string) => { void send(text, [], targetTab); }, [send]);
 
   const findQA = useCallback((mid: string) => { const s = sessions.find((x) => x.id === activeId); if (!s) return null; const i = s.messages.findIndex((m) => m.id === mid); if (i < 0) return null; let q = ""; for (let j = i - 1; j >= 0; j--) if (s.messages[j].role === "user") { q = s.messages[j].content; break; } return { pertanyaan: q, jawaban: s.messages[i].content }; }, [sessions, activeId]);
-  const setFeedback = useCallback((mid: string, fb: "up" | "down") => { if (!activeId) return; patch(activeId, mid, { feedback: fb }); if (fb === "up") { const qa = findQA(mid); if (qa) void api.sendFeedback({ framework, session_id: backendSidRef.current[activeId] || "", ...qa, rating: "up" }); } }, [activeId, patch, findQA, framework]);
-  const submitFeedback = useCallback((mid: string, koreksi: string) => { if (!activeId) return; const qa = findQA(mid); if (!qa) return; void api.sendFeedback({ framework, session_id: backendSidRef.current[activeId] || "", ...qa, rating: "down", koreksi }); patch(activeId, mid, { feedback: "down", feedbackSent: true }); }, [activeId, findQA, framework, patch]);
-  const hardReset = useCallback(async () => { try { await Promise.all(Object.values(backendSidRef.current).map((b) => api.resetSesi(b))); } catch {} backendSidRef.current = {}; setSessions([]); setActiveByTab(EMPTY_ACTIVE); }, []);
-  const deleteMyData = useCallback(async () => { try { await Promise.all(Object.values(backendSidRef.current).map((b) => api.deleteMyData(b))); } catch {} backendSidRef.current = {}; setSessions([]); setActiveByTab(EMPTY_ACTIVE); }, []);
+  const setFeedback = useCallback((mid: string, fb: "up" | "down") => { if (!activeId || !creds) return; patch(activeId, mid, { feedback: fb }); const binding = backendSidRef.current[activeId]; if (fb === "up" && binding) { const qa = findQA(mid); if (qa) void api.sendFeedback({ provider: creds.provider, apiKey: creds.apiKey, tier, framework }, binding, { framework, ...qa, rating: "up" }); } }, [activeId, creds, tier, patch, findQA, framework]);
+  const submitFeedback = useCallback((mid: string, koreksi: string) => { if (!activeId || !creds) return; const qa = findQA(mid); const binding = backendSidRef.current[activeId]; if (!qa || !binding) return; void api.sendFeedback({ provider: creds.provider, apiKey: creds.apiKey, tier, framework }, binding, { framework, ...qa, rating: "down", koreksi }); patch(activeId, mid, { feedback: "down", feedbackSent: true }); }, [activeId, creds, findQA, framework, patch, tier]);
+  const hardReset = useCallback(async () => { if (!creds) return; const ctx: api.ChatCtx = { provider: creds.provider, apiKey: creds.apiKey, tier, framework }; try { await Promise.all(Object.values(backendSidRef.current).map((b) => api.resetSesi(ctx, b))); } catch {} backendSidRef.current = {}; setSessions([]); setActiveByTab(EMPTY_ACTIVE); }, [creds, framework, tier]);
+  const deleteMyData = useCallback(async () => { if (!creds) return; const ctx: api.ChatCtx = { provider: creds.provider, apiKey: creds.apiKey, tier, framework }; try { await Promise.all(Object.values(backendSidRef.current).map((b) => api.deleteMyData(ctx, b))); } catch {} backendSidRef.current = {}; setSessions([]); setActiveByTab(EMPTY_ACTIVE); }, [creds, framework, tier]);
 
   return <C.Provider value={{ phase, creds, tier, setTier, framework, setFramework, tab, setTab, status, capabilities, capabilityAvailable, capabilityReason, sessions, activeId, messages, sending, banner, dismissBanner: () => setBanner((b) => ({ ...b, show: false })), sidebarOpen, setSidebarOpen, settingsOpen, setSettingsOpen, login, changeName, logoutCreds, newChat, selectSession, send, pendingDocAction, chooseDocAction, dismissDocPicker, runOnTab, revealMsg, setFeedback, submitFeedback, hardReset, consent, setConsent, deleteMyData }}>{children}</C.Provider>;
 }

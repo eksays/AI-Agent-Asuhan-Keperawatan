@@ -69,7 +69,12 @@ class Phase0BApiTests(unittest.TestCase):
         cls.client = TestClient(api.app)
 
     def _session_id(self) -> str:
-        return self.client.post("/session").json()["session_id"]
+        data = self.client.post("/session", headers=self._headers()).json()
+        self._session_headers = {"Authorization": "Bearer test-key", "X-Session-Token": data["session_token"]}
+        return data["session_id"]
+
+    def _headers(self) -> dict[str, str]:
+        return getattr(self, "_session_headers", {"Authorization": "Bearer test-key"})
 
     def _deny_external_calls(self):
         def fail(*_args, **_kwargs):
@@ -113,7 +118,7 @@ class Phase0BApiTests(unittest.TestCase):
                         "agent": "analisis",
                         "pertanyaan": "susun diagnosis",
                     },
-                    headers={"Authorization": "Bearer test-key"},
+                    headers=self._headers(),
                 )
                 self.assertEqual(r.status_code, 503)
                 self.assertEqual(r.json()["capability"], "external_llm")
@@ -131,7 +136,7 @@ class Phase0BApiTests(unittest.TestCase):
                     "agent": "analisis",
                     "pertanyaan": "susun diagnosis",
                 },
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
             self.assertEqual(r.status_code, 503)
             self.assertEqual(r.json()["capability"], "external_llm")
@@ -149,7 +154,7 @@ class Phase0BApiTests(unittest.TestCase):
                     "agent": "referensi",
                     "pertanyaan": "carikan jurnal EBP",
                 },
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
         self.assertEqual(r.status_code, 503)
         self.assertEqual(r.json()["capability"], "ebp_external_search")
@@ -168,7 +173,7 @@ class Phase0BApiTests(unittest.TestCase):
                     "gejala": "analisis foto",
                 },
                 files={"file_foto": ("synthetic.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
         self.assertEqual(r.status_code, 503)
         self.assertEqual(r.json()["capability"], "clinical_photo_analysis")
@@ -188,7 +193,7 @@ class Phase0BApiTests(unittest.TestCase):
                         "gejala": "susun analisis dari dokumen",
                     },
                     files={"file_dokumen": ("synthetic.txt", b"keluhan nyeri", "text/plain")},
-                    headers={"Authorization": "Bearer test-key"},
+                    headers=self._headers(),
                 )
                 self.assertEqual(r.status_code, 503)
                 self.assertEqual(r.json()["capability"], "external_llm")
@@ -204,7 +209,7 @@ class Phase0BApiTests(unittest.TestCase):
                     "session_id": self._session_id(),
                     "gejala": "buat pathway",
                 },
-                headers={"Authorization": "Bearer test-key"},
+                headers=self._headers(),
             )
         self.assertEqual(r.status_code, 503)
         self.assertEqual(r.json()["capability"], "mermaid_pathway_rendering")
@@ -218,13 +223,13 @@ class Phase0BApiTests(unittest.TestCase):
             sid = self._session_id()
             common = {"provider": "openai", "model": "dummy", "framework": "3S", "session_id": sid, "tier": "medium"}
             requests = [
-                self.client.post("/chat", data={**common, "agent": "analisis", "pertanyaan": "susun diagnosis"}, headers={"Authorization": "Bearer test-key"}),
-                self.client.post("/chat_stream", data={**common, "agent": "analisis", "pertanyaan": "susun diagnosis"}, headers={"Authorization": "Bearer test-key"}),
-                self.client.post("/chat", data={**common, "agent": "referensi", "pertanyaan": "cari jurnal"}, headers={"Authorization": "Bearer test-key"}),
-                self.client.post("/analisis", data={**common, "gejala": "analisis"}, headers={"Authorization": "Bearer test-key"}),
-                self.client.post("/analisis_multi", data={**common, "agent": "analisis", "gejala": "analisis"}, headers={"Authorization": "Bearer test-key"}),
-                self.client.post("/pathway", data={**common, "gejala": "pathway"}, headers={"Authorization": "Bearer test-key"}),
-                self.client.post("/analisis_multi", data={**common, "agent": "analisis", "gejala": "foto"}, files={"file_foto": ("synthetic.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")}, headers={"Authorization": "Bearer test-key"}),
+                self.client.post("/chat", data={**common, "agent": "analisis", "pertanyaan": "susun diagnosis"}, headers=self._headers()),
+                self.client.post("/chat_stream", data={**common, "agent": "analisis", "pertanyaan": "susun diagnosis"}, headers=self._headers()),
+                self.client.post("/chat", data={**common, "agent": "referensi", "pertanyaan": "cari jurnal"}, headers=self._headers()),
+                self.client.post("/analisis", data={**common, "gejala": "analisis"}, headers=self._headers()),
+                self.client.post("/analisis_multi", data={**common, "agent": "analisis", "gejala": "analisis"}, headers=self._headers()),
+                self.client.post("/pathway", data={**common, "gejala": "pathway"}, headers=self._headers()),
+                self.client.post("/analisis_multi", data={**common, "agent": "analisis", "gejala": "foto"}, files={"file_foto": ("synthetic.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")}, headers=self._headers()),
             ]
         self.assertTrue(all(r.status_code == 503 for r in requests))
 
