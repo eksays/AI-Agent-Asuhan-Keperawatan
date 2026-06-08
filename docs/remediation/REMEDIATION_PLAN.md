@@ -54,12 +54,19 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Add TOTP replay prevention, lockout, and rate limits.
 
 8. **Phase 7 - Audit Ledger Redesign**
-   - Status: applied and checkpoint committed locally for HMAC-chained structured audit events, safe verification export, metadata minimization, and local segment rotation; awaiting merge into `dev`.
+   - Status: applied, checkpoint committed, merged into `dev` at `adc712f`.
    - Rename local ledger honestly as tamper-evident only.
    - Add HMAC/signature and verifier tooling.
    - Separate local and production storage adapters.
 
 9. **Phase 8 - Complete and Govern Clinical Registries**
+   - Status: inventory and planning only on `audit/phase8-registry-completion` from `origin/dev` at `adc712f`. No implementation, registry activation, or code changes yet.
+   - Add durable registry store and manifest schema (P8-A).
+   - Add clinical review queue and approval artifacts (P8-B).
+   - Add governed import and extraction-quality reporting (P8-C).
+   - Add persistent release activation, active pointer, and rollback (P8-D).
+   - Add startup integration and server-authoritative registry metadata (P8-E).
+   - Add CI enforcement, migrations, backup, recovery, concurrency, and closure (P8-F).
    - Import only approved reference data with provenance and clinical review.
 
 10. **Phase 9 - Hybrid Retrieval and Explainability**

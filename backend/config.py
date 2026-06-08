@@ -60,6 +60,14 @@ class AppConfig:
     audit_ledger_hmac_key: str
     audit_ledger_key_id: str
     audit_ledger_path: str
+    registry_store_backend: str
+    registry_database_url: str
+    registry_database_admin_url: str
+    registry_runtime_mode: str
+    registry_activation_enabled: bool
+    registry_database_connect_timeout_sec: int
+    registry_database_max_retries: int
+    registry_database_retry_backoff_ms: int
 
     @property
     def external_llm_enabled(self) -> bool:
@@ -176,6 +184,14 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         audit_ledger_hmac_key=audit_ledger_key,
         audit_ledger_key_id=audit_ledger_key_id,
         audit_ledger_path=audit_ledger_path,
+        registry_store_backend=(source.get('REGISTRY_STORE_BACKEND') or 'disabled').strip().lower(),
+        registry_database_url=(source.get('REGISTRY_DATABASE_URL') or '').strip(),
+        registry_database_admin_url=(source.get('REGISTRY_DATABASE_ADMIN_URL') or '').strip(),
+        registry_runtime_mode=(source.get('REGISTRY_RUNTIME_MODE') or 'synthetic_governance_test').strip(),
+        registry_activation_enabled=_bool_env(source, 'REGISTRY_ACTIVATION_ENABLED'),
+        registry_database_connect_timeout_sec=_int_env(source, 'REGISTRY_DATABASE_CONNECT_TIMEOUT_SEC', 15),
+        registry_database_max_retries=_int_env(source, 'REGISTRY_DATABASE_MAX_RETRIES', 3),
+        registry_database_retry_backoff_ms=_int_env(source, 'REGISTRY_DATABASE_RETRY_BACKOFF_MS', 750),
         unpaywall_email=source.get("UNPAYWALL_EMAIL", "cdss.keperawatan@example.com"),
     )
 

@@ -102,3 +102,22 @@ No diagnosis-only active release is allowed for the normal care-plan workflow.
 ## Release Store Limitation
 
 The active release store added in Phase 3 is an in-memory test abstraction. It proves explicit activation and rollback behavior but is not durable, pilot-ready, or production-ready storage. A durable governed release store remains required before controlled pilot evaluation.
+
+## Phase 8 Planning Status
+
+Phase 8 inventory and planning has begun on `audit/phase8-registry-completion` from `origin/dev` at `adc712f`. No implementation, registry activation, or code changes are included in the planning checkpoint.
+
+The detailed Phase 8 plan is documented in `docs/remediation/PHASE8_REGISTRY_COMPLETION_PLAN.md`.
+
+Phase 8 slices:
+
+| Slice | Scope | Status |
+|---|---|---|
+| P8-A | Durable registry store and manifest schema | Planned |
+| P8-B | Clinical review queue and approval artifacts | Planned |
+| P8-C | Governed import and extraction-quality reporting | Planned |
+| P8-D | Persistent release activation, active pointer, and rollback | Planned |
+| P8-E | Startup integration and server-authoritative registry metadata | Planned |
+| P8-F | CI enforcement, migrations, backup, recovery, concurrency, and closure | Planned |
+
+All local registry data remains ignored, untracked, non-authoritative, and fully quarantined. No registry activation, formal clinical review, or license approval has occurred.

@@ -195,3 +195,17 @@ Phase 0A documentation evidence has no separate checkpoint commit recorded here.
 | Multi-process correctness is not proven | Medium | Phase 7 uses a process-local thread lock. | Use centralized durable ledger service or portable file-locking design before multi-worker deployment. |
 | Valid-prefix tail truncation is not fully detectable locally | Medium | Closure test shows removing only the final record leaves a locally valid prefix that verifies. | Add signed segment footers, externally persisted checkpoints, immutable archive, or external attestation before pilot/compliance claims. |
 | Key rotation is not implemented | Medium | Phase 7 stores a `key_id` identifier and tests wrong-key failure, but no key-rotation ceremony or dual-key verification workflow exists. | Define key rotation, retirement, and re-verification workflow with managed key custody. |
+
+## Phase 8 Planning Checkpoint
+
+Phase 8 inventory and planning has begun on `audit/phase8-registry-completion` from `origin/dev` at `adc712f`. No implementation, registry activation, code changes, or release-gate claims are included in the planning checkpoint.
+
+| Risk | Severity | Phase 8 Status | Recommended Action |
+|---|---|---|---|
+| CLI-VAL-002 | Critical | Governance infrastructure exists (Phase 3); durable store, clinical review queue, approval artifacts, startup integration remain pending | Implement Phase 8 slices P8-A through P8-F |
+| Active release store is in-memory | High | Pending P8-A/P8-D | Add durable store before pilot |
+| No formal clinical review workflow | Critical | Pending P8-B | Add approval record schema and review queue |
+| Import quality reporting is metadata-only | Medium | Pending P8-C | Add structured extraction-quality reports |
+| No startup registry loading | High | Pending P8-E | Add startup integration with fail-closed default |
+| CI enforcement incomplete | High | Pending P8-F | Extend CI to include Phase 8 tests |
+| Gate A remains unmet | High | Unchanged | Phase 8 reduces but does not eliminate Gate A blockers |

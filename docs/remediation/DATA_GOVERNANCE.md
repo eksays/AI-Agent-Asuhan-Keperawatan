@@ -139,3 +139,38 @@ Audit records must not contain raw patient narrative, uploaded document text, pr
 The local ledger path and any rotated segment or export are runtime evidence artifacts and must remain untracked. `.gitignore` excludes `backend/audit_ledger*.jsonl` and `backend/audit_exports/`. Local ledger content is not a registry artifact, not formal clinical evidence, not a compliance record, and not production audit storage.
 
 HMAC verification depends on secret key control. If the host and key are compromised, audit history can be rewritten. A valid-prefix tail truncation may still verify locally unless an external checkpoint, signed footer, immutable archive, or attestation exists. Segment rotation is local-linkage only; key rotation is not implemented. External immutable archive storage and managed key custody remain required before controlled-pilot, hospital, compliance, or production claims.
+
+## Phase 8 Registry Completion Planning Position
+
+Phase 8 inventory and planning has begun. No implementation, registry activation, or code changes are included in the planning checkpoint.
+
+Current local registry status at Phase 8 planning:
+
+| Dataset | Entries | Quarantined | Release Eligible | Authoritative |
+|---|---|---|---|---|
+| SDKI current | 152 | 152 | 0 | 0 |
+| SDKI backups (×6) | 152 each | 152 each | 0 | 0 |
+| SDKI population report | metadata | N/A | 0 | 0 |
+| SLKI | 0 | N/A | 0 | 0 |
+| SIKI | 0 | N/A | 0 | 0 |
+| NANDA | 0 | N/A | 0 | 0 |
+| NOC | 0 | N/A | 0 | 0 |
+| NIC | 0 | N/A | 0 | 0 |
+
+Conservative registry rules remain unchanged:
+
+- File presence is not approved registry availability.
+- OCR output is not approved registry content.
+- LLM-assisted population is not approved registry content.
+- Only explicitly reviewed and approved release artifacts may become authoritative.
+- Missing, unapproved, quarantined, or extraction-unverified SDKI/SLKI/SIKI/NANDA/NOC/NIC registries must preserve complete care-plan abstention.
+- License review remains incomplete unless formal evidence exists.
+- Formal clinical review remains incomplete unless formal evidence exists.
+- Durable release storage remains pending until Phase 8 implementation.
+- Gate A remains unmet.
+- Gate B remains unmet.
+- Gate C remains unmet.
+- Not patient-care software.
+- Not production-ready.
+- Not hospital-ready.
+- Not compliant.

@@ -707,3 +707,70 @@ Closure residuals: segment rotation is implemented, but key rotation is not impl
 | Phase 6 status source | Derived from git ancestry, not assumption; `36efc613556c706fe89fe2af5f14abd05850c1f9` is an ancestor of `origin/dev`. |
 | Phase 7 merge state | Local checkpoint awaits merge into `dev`. |
 | Prohibited claims | WORM, immutable storage, non-repudiation, compliance, hospital readiness, controlled-pilot readiness, and production-readiness claims remain prohibited. |
+
+## Phase 8 Planning Checkpoint - 2026-06-08
+
+Phase 8 inventory and planning only. No code changes, no registry activation, no implementation, no commits, no pushes.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Git repository health | PASS | `.git` is directory-based; no worktree corruption detected. |
+| Branch created | PASS | `audit/phase8-registry-completion` created from `origin/dev` at `adc712f`. |
+| Working tree clean | PASS | Only pre-existing `?? AUDIT.md`. No tracked or staged modifications. |
+| origin/dev ancestor | PASS | `git merge-base --is-ancestor origin/dev HEAD` exit 0. |
+| Synthetic lab isolated | PASS | `git merge-base --is-ancestor 0c4b62ad...HEAD` exit 1. |
+
+### Phase 8 Baseline Regression
+
+| Command | Exit Code | Summary |
+|---|---|---|
+| Phase 3 governance tests | 0 | 56 tests passed. |
+| Phase 2 clinical tests | 0 | 55 tests passed. |
+| All backend tests (discover) | 0 | 221 passed, 1 skipped. |
+| compileall | 0 | Clean. |
+| Bandit -ll | 0 | Medium 0, High 0. |
+| Frontend lint | 0 | 0 errors, 0 warnings. |
+| Frontend build | 0 | Build succeeded. |
+| npm audit | 0 | 0 vulnerabilities. |
+| git diff --check | 0 | Clean. |
+
+### Phase 8 Registry Inventory
+
+| Dataset | Entries | Quarantined | Release Eligible | Authoritative |
+|---|---|---|---|---|
+| SDKI current (187 KiB) | 152 | 152 | 0 | 0 |
+| SDKI backups (×6, 67–163 KiB) | 152 each | 152 each | 0 | 0 |
+| SDKI population report (5.6 KiB) | 1 metadata | N/A | 0 | 0 |
+| SLKI | 0 (not found) | N/A | 0 | 0 |
+| SIKI | 0 (not found) | N/A | 0 | 0 |
+| NANDA | 0 (not found) | N/A | 0 | 0 |
+| NOC | 0 (not found) | N/A | 0 | 0 |
+| NIC | 0 (not found) | N/A | 0 | 0 |
+
+### Phase 8 Product Gap Analysis
+
+| Gap | Severity | Phase 8 Slice |
+|---|---|---|
+| Active release store is in-memory; resets on restart | High | P8-A, P8-D |
+| No formal clinical review queue or approval record schema | Critical | P8-B |
+| Import quality reporting is basic metadata-only | Medium | P8-C |
+| No startup registry loading | High | P8-E |
+| No CI enforcement for Phase 7-8 tests | High | P8-F |
+| No durable rollback history | Medium | P8-D |
+| Capabilities endpoint hardcodes `enabled: false` for all registry capabilities | High | P8-E |
+| SDKI entries use `kode`/`nama` without `framework` or provenance | Critical | P8-C quality threshold |
+| Only SDKI data exists; 5 of 6 registry families are completely absent | Critical | External data sourcing |
+| Population report is LLM-assisted; not an approval record | Medium | P8-B |
+
+### Phase 8 Planning Position
+
+- No implementation was performed.
+- No commits were created.
+- No pushes were attempted.
+- No merges were attempted.
+- No registry data was activated.
+- No licensed content was copied.
+- Detailed plan: `docs/remediation/PHASE8_REGISTRY_COMPLETION_PLAN.md`.
+- Gate A remains unmet.
+- Gate B remains unmet.
+- Gate C remains unmet.
