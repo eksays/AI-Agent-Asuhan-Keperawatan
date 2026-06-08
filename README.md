@@ -96,6 +96,37 @@ browser-rendered QA remains Sprint C. Trace reads are bound to the creating
 principal and lab session, and fixture loading remains manifest-backed with
 duplicate, category, size/depth, traversal, and forbidden-root rejection.
 
+Sprint C closes the offline synthetic showcase for contributor review. To run
+the review branch locally:
+
+```powershell
+git fetch origin
+git switch review/synthetic-integration-lab
+git pull --ff-only
+```
+
+Use localhost only, placeholder-only values, and synthetic fixtures only. No
+provider API key is required; keep `FEATURE_EXTERNAL_LLM=false`,
+`FEATURE_EBP_EXTERNAL_SEARCH=false`, `FEATURE_CLINICAL_PHOTO_ANALYSIS=false`,
+`FEATURE_MERMAID_PATHWAY_RENDERING=false`, and `HARVEST_INTERVAL_SEC=0`.
+Enable only the documented `SYNTHETIC_*` lab flags in `clinical_sandbox`.
+The kill-switch is `SYNTHETIC_LAB_MODE=false`; after restart, every `/lab/*`
+route must close with `synthetic_lab_disabled` while normal routes remain
+unchanged. Ledger verification rehearsal must use a temporary ignored ledger
+and placeholder HMAC key only.
+
+When synthetic lab capability metadata is enabled, the dashboard includes a
+synthetic-lab-only Mermaid fixture runner. It calls guarded `/lab/pathway`, uses
+manifest-backed fixture IDs only, renders the safe fixture through the existing
+Mermaid SVG sanitizer, and treats the malicious fixture as rejected or inert.
+Normal Mermaid capability remains disabled.
+
+Contributor references:
+
+- `docs/remediation/SYNTHETIC_SHOWCASE_REHEARSAL.md`
+- `docs/remediation/SYNTHETIC_SHOWCASE_FEATURE_MATRIX.md`
+- `docs/remediation/SYNTHETIC_SHOWCASE_LIMITATIONS.md`
+
 ## Repository Structure
 
 ```text

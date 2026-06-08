@@ -94,6 +94,25 @@ pip install -r requirements.txt
   manifest-backed dan menolak duplikat, kategori/ekstensi tak dikenal,
   ukuran/kedalaman berlebih, traversal, dan root terlarang.
 - Trace panel baru source-tested; browser-rendered QA tetap pekerjaan Sprint C.
+- Sprint C menutup showcase sintetis offline untuk review contributor. Jalankan:
+  `git fetch origin`, `git switch review/synthetic-integration-lab`, lalu
+  `git pull --ff-only`.
+- Pakai `localhost` saja, data sintetis saja, dan placeholder local values saja.
+  Provider API key tidak diperlukan. External provider, EBP internet, Mermaid
+  normal route, clinical photo, dan harvester harus tetap disabled/off.
+- Kill-switch: set `SYNTHETIC_LAB_MODE=false`, restart backend, lalu pastikan
+  seluruh `/lab/*` route menutup dengan `synthetic_lab_disabled`.
+- Ledger verifier rehearsal harus memakai ledger sementara yang ignored dan key
+  placeholder kuat; jangan stage ledger runtime, export audit, segment audit,
+  secret, upload, data pasien, atau `backend/data_terstruktur/*`.
+- Saat lab aktif, dashboard menampilkan runner Mermaid khusus lab sintetis.
+  Runner ini hanya memakai fixture manifest, merender safe fixture lewat
+  sanitizer Mermaid yang sudah ada, dan malicious fixture harus rejected atau
+  inert. Capability Mermaid normal tetap disabled.
+- Runbook dan batasan Sprint C:
+  `docs/remediation/SYNTHETIC_SHOWCASE_REHEARSAL.md`,
+  `docs/remediation/SYNTHETIC_SHOWCASE_FEATURE_MATRIX.md`, dan
+  `docs/remediation/SYNTHETIC_SHOWCASE_LIMITATIONS.md`.
 
 ## Catatan keamanan Phase 7
 

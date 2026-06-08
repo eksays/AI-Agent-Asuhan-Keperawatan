@@ -11,6 +11,22 @@ export interface ChatCtx { provider: ProviderId; apiKey: string; tier: Tier; fra
 export interface SessionBinding { sessionId: string; sessionToken: string }
 export interface LabSessionBinding { labSessionId: string; labSessionToken: string }
 export interface LabTraceResponse { status: string; trace?: Record<string, unknown>; error_code?: string; message?: string }
+export interface LabPathwayResponse {
+  status: string;
+  mode?: string;
+  feature_label?: string;
+  run_id?: string;
+  mermaid?: string;
+  sanitizer_boundary?: string;
+  clinical_use_allowed?: boolean;
+  accepted_recommendations?: boolean;
+  nurse_review_required?: boolean;
+  registry_authoritative?: boolean;
+  validation_issue_codes?: string[];
+  trace?: Record<string, unknown>;
+  error_code?: string;
+  message?: string;
+}
 
 async function postForm<T>(path: string, apiKey: string, fields: Record<string, string | Blob | undefined>, session?: SessionBinding): Promise<T> {
   const fd = new FormData();
@@ -43,6 +59,27 @@ export async function createSession(apiKey: string): Promise<SessionBinding> {
   const d = (await r.json()) as { session_id?: string; session_token?: string };
   if (!d.session_id || !d.session_token) throw new Error("Gagal membuat sesi.");
   return { sessionId: d.session_id, sessionToken: d.session_token };
+}
+
+export async function createLabSession(apiKey: string): Promise<LabSessionBinding> {
+  const r = await fetch(`${API_BASE}/lab/session`, { method: "POST", headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined });
+  const d = (await r.json()) as { lab_session_id?: string; lab_session_token?: string; error_code?: string; message?: string };
+  if (!d.lab_session_id || !d.lab_session_token) throw new Error(d.error_code || "Gagal membuat sesi lab.");
+  return { labSessionId: d.lab_session_id, labSessionToken: d.lab_session_token };
+}
+
+export async function runLabPathway(apiKey: string, labSession: LabSessionBinding, fixtureId: string): Promise<LabPathwayResponse> {
+  const r = await fetch(`${API_BASE}/lab/pathway`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "X-Lab-Session-Id": labSession.labSessionId,
+      "X-Lab-Session-Token": labSession.labSessionToken,
+    },
+    body: JSON.stringify({ fixture_id: fixtureId }),
+  });
+  return (await r.json()) as LabPathwayResponse;
 }
 
 export async function getLabTrace(apiKey: string, labSession: LabSessionBinding, runId: string): Promise<LabTraceResponse> {

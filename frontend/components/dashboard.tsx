@@ -12,6 +12,7 @@ import { Banner } from "@/components/ui/banner";
 import { Messages } from "@/components/messages";
 import { ChatboxMaster } from "@/components/chatbox-master";
 import { SyntheticLabTracePanel } from "@/components/synthetic-lab-trace-panel";
+import { SyntheticLabMermaidRunner } from "@/components/synthetic-lab-mermaid-runner";
 import { CameraCapture } from "@/components/ui/claude-style-ai-input";
 import { type Tab } from "@/lib/types";
 
@@ -181,6 +182,7 @@ export function Dashboard() {
 
         {capabilities.synthetic_lab_enabled && <div className="px-4 pb-2"><Banner show closable={false} title="SYNTHETIC INTEGRATION LAB — DO NOT ENTER REAL PATIENT DATA." description="NOT FOR PATIENT CARE. OUTPUTS MAY BE MOCKED OR PROTOTYPE-ONLY." icon={<AlertTriangle className="h-5 w-5" />} className="border-amber-400/40 bg-amber-500/10 text-amber-100" /></div>}
         <SyntheticLabTracePanel capabilities={capabilities} trace={null} />
+        <SyntheticLabMermaidRunner capabilities={capabilities} credential={creds?.apiKey} />
         {banner.show && <div className="px-4 pb-2"><Banner show title={banner.title} description={banner.description} icon={<AlertTriangle className="h-5 w-5" />} onHide={dismissBanner} action={<button onClick={logoutCreds} className="rounded-md bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-500/30">Perbarui Kunci API</button>} /></div>}
 
         <div className="relative flex-1 overflow-y-auto">
