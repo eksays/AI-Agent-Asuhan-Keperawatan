@@ -140,11 +140,31 @@ The local ledger path and any rotated segment or export are runtime evidence art
 
 HMAC verification depends on secret key control. If the host and key are compromised, audit history can be rewritten. A valid-prefix tail truncation may still verify locally unless an external checkpoint, signed footer, immutable archive, or attestation exists. Segment rotation is local-linkage only; key rotation is not implemented. External immutable archive storage and managed key custody remain required before controlled-pilot, hospital, compliance, or production claims.
 
-## Phase 8 Registry Completion Planning Position
+## Phase 8 Registry Implementation Position
 
-Phase 8 inventory and planning has begun. No implementation, registry activation, or code changes are included in the planning checkpoint.
+Phase 8 P8-A has been committed and P8-BE implemented (synthetic-only, awaiting closure review).
 
-Current local registry status at Phase 8 planning:
+### P8-A — PostgreSQL Registry Store Foundation (Committed)
+
+Durable registry store backed by Neon PostgreSQL with migration CLI (V001–V004), connection pool/admin URL separation, retry bounds, and fail-closed `DisabledRegistryStore` default.
+
+### P8-BE — Governed Registry Workflow (Implemented)
+
+Combined accelerated slice implementing:
+
+| Capability | Implementation |
+|---|---|
+| Review queue | `registry_workflow.py`: pending/approved/rejected queue with reviewer identity |
+| Human extraction verification | `registry_workflow.py`: OCR/LLM entries require `verified_by_human` before approval |
+| Entry/release approval separation | `registry_workflow.py` + `registry_release_service.py`: separate approval artifacts |
+| Governed explicit-source import | `registry_import_service.py`: dry-run default, single-source, containment checks |
+| Deterministic manifest hash | `registry_release_service.py`: order-independent SHA-256 manifest hash |
+| Atomic activation/rollback | `registry_release_service.py`: SELECT FOR UPDATE pointer mutation |
+| Bounded startup probe | `registry_runtime.py`: max 3 attempts, 15s timeout, 2s backoff, fail-closed |
+| Authenticated status endpoint | `api.py`: `GET /registry/status` with bearer auth |
+| Complete-family policy | `registry_release_service.py`: 3S requires SDKI+SLKI+SIKI; 3N requires NANDA+NOC+NIC |
+
+### Current Local Registry Status
 
 | Dataset | Entries | Quarantined | Release Eligible | Authoritative |
 |---|---|---|---|---|
@@ -157,7 +177,7 @@ Current local registry status at Phase 8 planning:
 | NOC | 0 | N/A | 0 | 0 |
 | NIC | 0 | N/A | 0 | 0 |
 
-Conservative registry rules remain unchanged:
+### Conservative Rules (Unchanged)
 
 - File presence is not approved registry availability.
 - OCR output is not approved registry content.
@@ -166,7 +186,8 @@ Conservative registry rules remain unchanged:
 - Missing, unapproved, quarantined, or extraction-unverified SDKI/SLKI/SIKI/NANDA/NOC/NIC registries must preserve complete care-plan abstention.
 - License review remains incomplete unless formal evidence exists.
 - Formal clinical review remains incomplete unless formal evidence exists.
-- Durable release storage remains pending until Phase 8 implementation.
+- `REGISTRY_ACTIVATION_ENABLED` remains `false` in product configuration.
+- No real registry data has been imported to Neon PostgreSQL.
 - Gate A remains unmet.
 - Gate B remains unmet.
 - Gate C remains unmet.

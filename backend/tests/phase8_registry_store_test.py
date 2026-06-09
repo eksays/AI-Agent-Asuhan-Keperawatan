@@ -254,7 +254,7 @@ class P8AMigrationDefinitionTests(unittest.TestCase):
 
     def test_migration_count(self):
         from registry_migrations import ALL_MIGRATIONS
-        self.assertEqual(len(ALL_MIGRATIONS), 4)
+        self.assertEqual(len(ALL_MIGRATIONS), 7)  # V001-V004 (P8-A) + V005-V006 (P8-BE)
 
     def test_v001_creates_schema_migrations(self):
         from registry_migrations import MIGRATION_V001_BOOTSTRAP

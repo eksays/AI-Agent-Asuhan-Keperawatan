@@ -24,15 +24,18 @@ providers, activate real registry data, or satisfy any release gate by itself.
 | Complete framework family requirement | Implemented | `backend/registry_release.py` |
 | Rollback abstraction | Implemented | `backend/registry_release.py` |
 
-### In-Memory Limitations (Phase 3)
+### In-Memory Limitations (Phase 3 → Phase 8 Progress)
 
-| Limitation | Current State |
-|---|---|
-| Active release store | In-memory dict; resets on restart |
-| Active release pointer | In-memory; no persistence |
-| Approval records | Test fixtures only; no durable store |
-| Reviewer identity | Test string only; no identity binding |
-| Startup registry loading | Not implemented; default unavailable |
+| Limitation | Phase 3 State | Phase 8 State |
+|---|---|---|
+| Active release store | In-memory dict; resets on restart | P8-A: PostgreSQL `active_releases` (committed) |
+| Active release pointer | In-memory; no persistence | P8-A: atomic pointer with SELECT FOR UPDATE (committed) |
+| Approval records | Test fixtures only; no durable store | P8-BE: durable `approval_artifacts` + `release_approval_artifacts` tables |
+| Reviewer identity | Test string only; no identity binding | P8-BE: approver_id in approval artifacts + verified_by in extraction verification |
+| Startup registry loading | Not implemented; default unavailable | P8-BE: bounded startup probe with fail-closed loading |
+| Extraction verification | Not implemented | P8-BE: `extraction_verifications` table; OCR/LLM entries require human verification |
+| Release-level approval | Not separated from entry approval | P8-BE: separate `release_approval_artifacts` table |
+| Authenticated status endpoint | Not implemented | P8-BE: `GET /registry/status` with bearer auth |
 
 ### Local Ignored Registry Data (Phase 0.5 Metadata Inspection)
 
@@ -58,41 +61,60 @@ All local SDKI data dry-runs as **152 quarantined, 0 release-eligible, 0 authori
 | Quarantined, unapproved, extraction-unverified data | No authoritative grounding |
 | Model memory for missing components | Forbidden |
 
-## Proposed Phase 8 Slices
+## Phase 8 Slices Status
 
-### P8-A — Durable Registry Store and Manifest Schema
+### P8-A — Durable Registry Store and Manifest Schema ✅ COMMITTED
 
-**Scope**: Replace the in-memory `RegistryReleaseStore` with a durable file-based
-store. Add a serializable manifest schema that persists release manifests, approval
-records, and active release pointers to disk.
+**Scope**: PostgreSQL (Neon) durable registry store with migration CLI (V001–V004),
+`PostgresRegistryStore`, connection pool/admin URL separation, retry bounds, and
+`DisabledRegistryStore` fail-closed default.
 
-**Files**:
-- `backend/registry_store.py` (new) — durable store adapter
-- `backend/registry_release.py` — extract store interface; keep in-memory for tests
-- `backend/tests/phase8_registry_store_test.py` (new)
+**Committed**: `4050791ebae94739fbdefd25f75346c548020de6`
 
-**Tests**:
-- Persist and reload active release pointers across store restart
-- Persist release manifests and approval record references
-- Reject corrupt or tampered manifest files
-- Rollback persistence survives reload
-- Fail closed if store is unreadable or missing
+---
 
-**Risks**:
-- Filesystem corruption could invalidate release state → mitigate with checksums
-- Concurrent access without locking → document single-process limitation
+### P8-BE — Governed Registry Workflow, Import, Activation, Rollback, and Startup (COMBINED B+C+D+E)
 
-**Rollback**: Remove `registry_store.py`; revert to in-memory store.
+**Scope**: Accelerated combined slice implementing review queue, human extraction
+verification, entry/release approval separation, governed explicit-source import,
+deterministic manifest hashing, atomic activation/rollback, bounded startup probe,
+authenticated registry metadata endpoint, and complete-family policy.
 
-**Exit Criteria**:
-- Durable store round-trips release manifests and active pointers
-- Tests prove fail-closed on corrupt store
-- No registry activation in product routes
+**Status**: Implemented (synthetic-only). Closure-reviewed.
+
+**Files** (new):
+- `backend/registry_workflow.py` — review queue, approval artifacts, extraction verification
+- `backend/registry_import_service.py` — governed explicit-source import
+- `backend/registry_release_service.py` — release, activation, rollback, manifest hash
+- `backend/registry_runtime.py` — startup loader, safe metadata, bounded probe (~51s worst case)
+
+**Migrations** (new):
+- V005: extraction verification table + performance indexes
+- V006: release-level approval artifacts table
+- V007: reconcile entry lifecycle and release status CHECK constraints with P8-BE states
+
+**Tests** (new):
+- `backend/tests/phase8_registry_workflow_test.py`
+- `backend/tests/phase8_registry_import_test.py`
+- `backend/tests/phase8_registry_release_runtime_test.py` (includes import-time safety tests)
+- `backend/tests/phase8_registry_workflow_postgres_integration_test.py`
+
+**Closure Review Findings** (resolved):
+- Startup probe moved from module import to FastAPI lifespan (no DB connection at import)
+- First-activation pointer serialization hardened in both activate and rollback paths
+- Outbound allowlist updated (api.py line shift from lifespan insertion)
+- Startup bound documentation corrected from ~45s/~75s to ~51s
+- V007 migration added to reconcile CHECK constraints with P8-BE lifecycle states
+- Integration test cleanup fixed (classmethod tearDown, prefixed release versions)
+- No real registry body imported during P8-BE
+- Synthetic fixture content only used for integration tests
+- Registry bodies never enter logs, audit metadata, or safe status responses
+- Local SDKI remains ignored, quarantined, and non-authoritative
 
 **Non-Goals**:
-- Database migration
-- Multi-process concurrency
 - Real registry activation
+- Real clinical approval
+- Production deployment
 
 ---
 

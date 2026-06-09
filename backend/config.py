@@ -68,6 +68,9 @@ class AppConfig:
     registry_database_connect_timeout_sec: int
     registry_database_max_retries: int
     registry_database_retry_backoff_ms: int
+    registry_startup_max_attempts: int
+    registry_startup_connect_timeout_sec: int
+    registry_startup_backoff_sec: int
 
     @property
     def external_llm_enabled(self) -> bool:
@@ -192,6 +195,9 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         registry_database_connect_timeout_sec=_int_env(source, 'REGISTRY_DATABASE_CONNECT_TIMEOUT_SEC', 15),
         registry_database_max_retries=_int_env(source, 'REGISTRY_DATABASE_MAX_RETRIES', 3),
         registry_database_retry_backoff_ms=_int_env(source, 'REGISTRY_DATABASE_RETRY_BACKOFF_MS', 750),
+        registry_startup_max_attempts=max(1, min(_int_env(source, 'REGISTRY_STARTUP_MAX_ATTEMPTS', 3), 5)),
+        registry_startup_connect_timeout_sec=max(1, min(_int_env(source, 'REGISTRY_STARTUP_CONNECT_TIMEOUT_SEC', 15), 30)),
+        registry_startup_backoff_sec=max(1, min(_int_env(source, 'REGISTRY_STARTUP_BACKOFF_SEC', 2), 5)),
         unpaywall_email=source.get("UNPAYWALL_EMAIL", "cdss.keperawatan@example.com"),
     )
 

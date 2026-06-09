@@ -113,11 +113,16 @@ Phase 8 slices:
 
 | Slice | Scope | Status |
 |---|---|---|
-| P8-A | Durable registry store and manifest schema | Planned |
-| P8-B | Clinical review queue and approval artifacts | Planned |
-| P8-C | Governed import and extraction-quality reporting | Planned |
-| P8-D | Persistent release activation, active pointer, and rollback | Planned |
-| P8-E | Startup integration and server-authoritative registry metadata | Planned |
+| P8-A | Durable PostgreSQL registry store (Neon) and migration CLI | ✅ Committed |
+| P8-BE | Review queue, human extraction verification, entry/release approval, governed import, deterministic manifest hash, atomic activation/rollback, bounded startup probe, authenticated `/registry/status`, complete-family policy | Implemented (synthetic-only) |
 | P8-F | CI enforcement, migrations, backup, recovery, concurrency, and closure | Planned |
 
 All local registry data remains ignored, untracked, non-authoritative, and fully quarantined. No registry activation, formal clinical review, or license approval has occurred.
+
+### P8-BE Extraction Verification (New)
+
+OCR-derived or LLM-assisted entries are never permanently blocked. Instead, human extraction verification is required before approval:
+- Extraction review statuses: `unverified`, `verified_by_human`, `rejected`
+- OCR or LLM-assisted entry with `unverified` status → approval rejected
+- OCR or LLM-assisted entry with `verified_by_human` → approval may proceed if all other governance checks pass
+- Auto-approval of OCR-derived or LLM-assisted entries is never allowed

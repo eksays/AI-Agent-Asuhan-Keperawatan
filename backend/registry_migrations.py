@@ -189,6 +189,84 @@ CREATE TABLE IF NOT EXISTS release_history (
 """,
 )
 
+# V005: Extraction verification and performance indexes (P8-BE)
+MIGRATION_V005_EXTRACTION_VERIFICATION = Migration(
+    version='V005',
+    description='Add extraction verification artifacts and performance indexes',
+    sql="""\
+-- Extraction verification artifacts (P8-BE: human verification of OCR/LLM extractions)
+CREATE TABLE IF NOT EXISTS extraction_verifications (
+    verification_id VARCHAR(64) PRIMARY KEY,
+    entry_id        VARCHAR(64) NOT NULL REFERENCES registry_entries(entry_id),
+    extraction_review_status VARCHAR(32) NOT NULL DEFAULT 'unverified'
+        CHECK (extraction_review_status IN ('unverified', 'verified_by_human', 'rejected')),
+    verified_by     VARCHAR(128) NOT NULL DEFAULT '',
+    verified_at     TIMESTAMPTZ,
+    reason_code     VARCHAR(64) NOT NULL DEFAULT '',
+    notes           VARCHAR(512) NOT NULL DEFAULT '',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Performance indexes for review and release lookup
+CREATE INDEX IF NOT EXISTS idx_review_queue_entry_id ON review_queue(entry_id);
+CREATE INDEX IF NOT EXISTS idx_release_manifest_entries_manifest_id ON release_manifest_entries(manifest_id);
+CREATE INDEX IF NOT EXISTS idx_release_history_framework ON release_history(framework);
+CREATE INDEX IF NOT EXISTS idx_entry_provenance_entry_id ON entry_provenance(entry_id);
+CREATE INDEX IF NOT EXISTS idx_approval_artifacts_entry_id ON approval_artifacts(entry_id);
+CREATE INDEX IF NOT EXISTS idx_extraction_verifications_entry_id ON extraction_verifications(entry_id);
+""",
+)
+
+# V006: Release-level approval artifacts (P8-BE)
+MIGRATION_V006_RELEASE_APPROVAL = Migration(
+    version='V006',
+    description='Add release-level approval artifacts table',
+    sql="""\
+-- Release-level approval artifacts (separate from entry-level)
+CREATE TABLE IF NOT EXISTS release_approval_artifacts (
+    approval_id     VARCHAR(64) PRIMARY KEY,
+    manifest_id     VARCHAR(64) NOT NULL REFERENCES release_manifests(manifest_id),
+    approver_id     VARCHAR(128) NOT NULL,
+    approval_decision VARCHAR(32) NOT NULL
+        CHECK (approval_decision IN ('approved', 'rejected', 'conditional')),
+    manifest_hash_at_approval VARCHAR(128) NOT NULL,
+    approved_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    rationale       VARCHAR(512) NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_release_approval_manifest_id ON release_approval_artifacts(manifest_id);
+""",
+)
+
+# V007: Reconcile lifecycle/status CHECK constraints with P8-BE states
+MIGRATION_V007_LIFECYCLE_CONSTRAINTS = Migration(
+    version='V007',
+    description='Reconcile entry lifecycle and release status CHECK constraints with P8-BE states',
+    sql="""\
+-- Entry lifecycle: add 'draft', 'review_rejected', 'review_verified'
+ALTER TABLE registry_entries
+    DROP CONSTRAINT IF EXISTS registry_entries_lifecycle_state_check;
+ALTER TABLE registry_entries
+    ADD CONSTRAINT registry_entries_lifecycle_state_check
+    CHECK (lifecycle_state IN (
+        'quarantined', 'draft', 'pending_review',
+        'review_rejected', 'review_verified',
+        'approved', 'rejected', 'deprecated'
+    ));
+
+-- Release manifest status: add 'approved', 'superseded'
+ALTER TABLE release_manifests
+    DROP CONSTRAINT IF EXISTS release_manifests_status_check;
+ALTER TABLE release_manifests
+    ADD CONSTRAINT release_manifests_status_check
+    CHECK (status IN (
+        'candidate', 'validated', 'approved', 'active',
+        'superseded', 'deprecated', 'rolled_back'
+    ));
+""",
+)
+
+
 # ---------------------------------------------------------------------------
 # Ordered migration list
 # ---------------------------------------------------------------------------
@@ -198,6 +276,9 @@ ALL_MIGRATIONS: tuple[Migration, ...] = (
     MIGRATION_V002_CORE_TABLES,
     MIGRATION_V003_REVIEW_APPROVAL,
     MIGRATION_V004_RELEASE_TABLES,
+    MIGRATION_V005_EXTRACTION_VERIFICATION,
+    MIGRATION_V006_RELEASE_APPROVAL,
+    MIGRATION_V007_LIFECYCLE_CONSTRAINTS,
 )
 
 
