@@ -52,15 +52,15 @@ class TestP8FConcurrency(unittest.TestCase):
                               'release_approval_artifacts', 'release_manifests']:
                         try:
                             if t == 'release_manifest_entries':
-                                cur.execute(f"DELETE FROM {t} WHERE manifest_id LIKE %s", (f"{cls._p}%",))
+                                cur.execute(f"DELETE FROM {t} WHERE manifest_id LIKE %s", (f"{cls._p}%",))  # nosec B608
                             elif t == 'release_manifests':
-                                cur.execute(f"DELETE FROM {t} WHERE manifest_id LIKE %s", (f"{cls._p}%",))
+                                cur.execute(f"DELETE FROM {t} WHERE manifest_id LIKE %s", (f"{cls._p}%",))  # nosec B608
                             elif t == 'active_releases':
-                                cur.execute(f"DELETE FROM {t} WHERE framework = %s", (f"{cls._p}3S",))
+                                cur.execute(f"DELETE FROM {t} WHERE framework = %s", (f"{cls._p}3S",))  # nosec B608
                             elif t == 'release_history':
-                                cur.execute(f"DELETE FROM {t} WHERE framework = %s", (f"{cls._p}3S",))
+                                cur.execute(f"DELETE FROM {t} WHERE framework = %s", (f"{cls._p}3S",))  # nosec B608
                             elif t == 'release_approval_artifacts':
-                                cur.execute(f"DELETE FROM {t} WHERE manifest_id LIKE %s", (f"{cls._p}%",))
+                                cur.execute(f"DELETE FROM {t} WHERE manifest_id LIKE %s", (f"{cls._p}%",))  # nosec B608
                         except Exception:
                             conn.rollback()
         except Exception:

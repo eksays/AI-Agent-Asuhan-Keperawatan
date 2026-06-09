@@ -35,7 +35,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install fastapi uvicorn psycopg cryptography
+          pip install -r backend/requirements.txt
+          pip install httpx
       - name: Compileall
         run: python -m compileall backend -q -x ".*(venv|__pycache__).*"
       - name: Run Phase 1-8 unit tests
@@ -62,7 +63,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Install deps
         working-directory: frontend
         run: npm ci
