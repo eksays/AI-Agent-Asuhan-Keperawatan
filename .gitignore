@@ -57,3 +57,24 @@ data_terstruktur/
 *.pdf
 feedback_memory.json
 ebp_memory.json
+
+# (Phase 8) Local environment secrets in subdirectories
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# (Phase 8) Local database credentials
+.pgpass
+*.pgpass
+
+# (Phase 8) Local database exports and dumps
+*.dump
+*.backup
+*.sql.gz
+
+# (Phase 8) Local SQLite or fallback artifacts
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm

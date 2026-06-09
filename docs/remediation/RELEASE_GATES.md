@@ -69,7 +69,8 @@ Checkpoint reconciliation:
 
 - Phase 5 closure is accepted, checkpoint committed, and merged into `dev`.
 - Phase 6 auth-security checkpoint is implemented.
-- Phase 7 audit-ledger checkpoint is implemented locally on `audit/phase7-ledger-hardening` and awaiting merge into `dev`.
+- Phase 7 audit-ledger checkpoint is implemented and merged into dev
+at adc712f2d44b0c0c387e2c38d0155eddfcce2d34.
 Remaining missing or failing controls:
 
 - PHI firewall completeness beyond tested canary classes and future integrations.
@@ -98,7 +99,10 @@ Missing or failing controls:
 - Durable distributed session, MFA, token, and rate-limit state.
 - Managed secret custody and rotation workflow.
 - Formal clinical reviewer approval workflow.
-- Approved registry releases and durable release store.
+- Approved real registry releases remain missing.
+The PostgreSQL durable registry store exists as synthetic-only technical
+infrastructure, but controlled-pilot operational approval, formal review,
+and approved real registry activation remain absent.
 - Human confirmation workflow.
 - Expanded CI enforcement of build, lint, test, clinical, privacy, upload, browser, auth, audit, and safety gates.
 - External ledger anchors or approved audit-storage strategy where required.
@@ -163,3 +167,9 @@ Phase 7 local controls now available for sandbox verification:
 - Closure verification proves persistent verify-before-append fails closed for mutated, reordered, middle-deleted, partial-line, malformed, and wrong-key ledgers without overwriting prior bytes. It also documents that final-record tail truncation can leave a locally valid prefix.
 
 Residuals: this is not WORM storage, not immutable storage, not a digital signature, not asymmetric non-repudiation, not multi-process correctness, and not compliance evidence. Segment rotation is implemented, but key rotation and valid-prefix tail-truncation anchoring are not. Gate A remains **Not met**. External immutable storage, managed keys, durable centralized audit service, incident-response procedures, and formal review remain required before controlled-pilot, hospital, compliance, or production claims.
+
+Do not enable real registry activation merely by changing REGISTRY_ACTIVATION_ENABLED.
+Real activation still requires official sourcing, license review, provenance
+verification, complete approved registry families, formal clinical review,
+release approval, controlled operational review, browser-QA disposition,
+parser host-isolation disposition, and CI evidence.

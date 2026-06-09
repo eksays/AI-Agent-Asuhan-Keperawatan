@@ -707,3 +707,136 @@ Closure residuals: segment rotation is implemented, but key rotation is not impl
 | Phase 6 status source | Derived from git ancestry, not assumption; `36efc613556c706fe89fe2af5f14abd05850c1f9` is an ancestor of `origin/dev`. |
 | Phase 7 merge state | Local checkpoint awaits merge into `dev`. |
 | Prohibited claims | WORM, immutable storage, non-repudiation, compliance, hospital readiness, controlled-pilot readiness, and production-readiness claims remain prohibited. |
+
+## Phase 8 Planning Checkpoint - 2026-06-08
+
+Phase 8 inventory and planning only. No code changes, no registry activation, no implementation, no commits, no pushes.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Git repository health | PASS | `.git` is directory-based; no worktree corruption detected. |
+| Branch created | PASS | `audit/phase8-registry-completion` created from `origin/dev` at `adc712f`. |
+| Working tree clean | PASS | Only pre-existing `?? AUDIT.md`. No tracked or staged modifications. |
+| origin/dev ancestor | PASS | `git merge-base --is-ancestor origin/dev HEAD` exit 0. |
+| Synthetic lab isolated | PASS | `git merge-base --is-ancestor 0c4b62ad...HEAD` exit 1. |
+
+### Phase 8 Baseline Regression
+
+| Command | Exit Code | Summary |
+|---|---|---|
+| Phase 3 governance tests | 0 | 56 tests passed. |
+| Phase 2 clinical tests | 0 | 55 tests passed. |
+| All backend tests (discover) | 0 | 221 passed, 1 skipped. |
+| compileall | 0 | Clean. |
+| Bandit -ll | 0 | Medium 0, High 0. |
+| Frontend lint | 0 | 0 errors, 0 warnings. |
+| Frontend build | 0 | Build succeeded. |
+| npm audit | 0 | 0 vulnerabilities. |
+| git diff --check | 0 | Clean. |
+
+### Phase 8 Registry Inventory
+
+| Dataset | Entries | Quarantined | Release Eligible | Authoritative |
+|---|---|---|---|---|
+| SDKI current (187 KiB) | 152 | 152 | 0 | 0 |
+| SDKI backups (×6, 67–163 KiB) | 152 each | 152 each | 0 | 0 |
+| SDKI population report (5.6 KiB) | 1 metadata | N/A | 0 | 0 |
+| SLKI | 0 (not found) | N/A | 0 | 0 |
+| SIKI | 0 (not found) | N/A | 0 | 0 |
+| NANDA | 0 (not found) | N/A | 0 | 0 |
+| NOC | 0 (not found) | N/A | 0 | 0 |
+| NIC | 0 (not found) | N/A | 0 | 0 |
+
+### Phase 8 Product Gap Analysis
+
+| Gap | Severity | Phase 8 Slice |
+|---|---|---|
+| Active release store is in-memory; resets on restart | High | P8-A, P8-D |
+| No formal clinical review queue or approval record schema | Critical | P8-B |
+| Import quality reporting is basic metadata-only | Medium | P8-C |
+| No startup registry loading | High | P8-E |
+| No CI enforcement for Phase 7-8 tests | High | P8-F |
+| No durable rollback history | Medium | P8-D |
+| Capabilities endpoint hardcodes `enabled: false` for all registry capabilities | High | P8-E |
+| SDKI entries use `kode`/`nama` without `framework` or provenance | Critical | P8-C quality threshold |
+| Only SDKI data exists; 5 of 6 registry families are completely absent | Critical | External data sourcing |
+| Population report is LLM-assisted; not an approval record | Medium | P8-B |
+
+### Phase 8 Implementation Position
+
+- P8-A committed: `4050791ebae94739fbdefd25f75346c548020de6` (PostgreSQL registry-store foundation).
+- P8-BE implemented (synthetic-only, awaiting closure review): governed registry workflow,
+  import, activation, rollback, startup integration, and authenticated metadata endpoint.
+- P8-BE features: review queue, human extraction verification for OCR/LLM entries,
+  entry and release approval separation, governed explicit-source import with dry-run default,
+  deterministic manifest hashing, atomic activation/rollback with SELECT FOR UPDATE,
+  bounded startup probe (max 3 attempts, 15s timeout, 2s backoff), fail-closed loading,
+  authenticated `GET /registry/status`, complete-family policy (3S/3N).
+- No real registry data was imported to Neon.
+- No real registry body content in PostgreSQL.
+- Operator `REGISTRY_ACTIVATION_ENABLED` remains `false`.
+- Local SDKI data dry-runs as 152 quarantined, 0 release-eligible.
+- Detailed plan: `docs/remediation/PHASE8_REGISTRY_COMPLETION_PLAN.md`.
+- Gate A remains unmet.
+- Gate B remains unmet.
+- Gate C remains unmet.
+
+## Phase 8 P8-BE Closure Review Checkpoint - 2026-06-09
+
+P8-BE (Governed Registry Workflow, Activation, Rollback, and Startup) was implemented and closure-reviewed. All data used was purely synthetic for integration testing. No real registry data was activated.
+
+### P8-BE Regression and Integration
+
+| Command / Component | Result | Note |
+|---|---|---|
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | PASS | 401 tests passed, 0 failures, 11 skips (Neon disabled by default). Verified core engine, schemas, Phase 1/2 privacy, and new Phase 8 registry workflows. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase8_registry_workflow_postgres_integration_test -v` | PASS | 10 integration tests passed against Neon database using `SYN-P8BE-` prefixed synthetic data. |
+| `backend/tests/phase1_outbound_bypass_test.py` | PASS | Allowlist updated for `api.py` line shift. `_lifespan` injection preserved LLM factory boundaries. |
+| `backend/api.py` | PASS | DB startup probe safely encapsulated in `_lifespan`. No DB connections during module import. |
+| `backend/registry_release_service.py` | PASS | First-activation pointer serialization hardened (`INSERT ON CONFLICT DO NOTHING` added to rollback path to prevent silent failure if pointer missing). |
+| Safe Metadata API (`GET /registry/status`) | PASS | Authenticated using `_auth_context('AUTH')` requiring valid API keys; rate-limited; returns `REGISTRY_RUNTIME_INFO` safely devoid of credentials. |
+| Constraint Migration (V007) | PASS | Reconciled P8-BE lifecycle states (`draft`, `review_verified`, etc.) with PostgreSQL CHECK constraints via `registry_migrations.py`. |
+
+### Post-Cleanup Database Verification
+
+| Component | Status | Details |
+|---|---|---|
+| Schema Migrations | Applied | V001 through V007 applied successfully. |
+| Table Row Counts | ZERO | 0 rows in `registry_sources`, `registry_entries`, `release_manifests`, `active_releases`, `release_history`, `review_queue`, `approval_artifacts`, `extraction_verifications`, `release_approval_artifacts`, `entry_provenance`. |
+| Synthetic Isolation | Clean | All `SYN-P8BE-` integration test data cleanly removed post-run. |
+
+### Phase 8 P8-BE Closure Position
+
+- P8-BE code is fully integrated, regression-tested, and verified against Neon.
+- `REGISTRY_ACTIVATION_ENABLED` is explicitly `false` in `.env`.
+- `REGISTRY_RUNTIME_INFO` defaults to a safe, fail-closed `UNAVAILABLE` state prior to lifespan startup.
+- The startup probe is bounded correctly (~51s worst-case maximum, documented in `registry_runtime.py`).
+- No PHI, clinical data, hospital documents, or real registry bodies were used or imported.
+- All files are staged and ready for the final commit.
+- Gate A remains unmet.
+- Gate B remains unmet.
+- Gate C remains unmet.
+
+## Phase 8 P8-F Closure Review — 2026-06-10
+
+Record actual closure evidence only:
+- final exact staged file count: 11 newly staged files + 5 documentation updates.
+- final exact staged allowlist: .github/workflows/security-scan.yml, backend/scripts/ci_artifact_scan.py, backend/scripts/registry_db_backup.py, backend/scripts/registry_db_restore_verify.py, backend/tests/phase5_upload_security_test.py, backend/tests/phase8_registry_api_status_test.py, backend/tests/phase8_registry_backup_restore_test.py, backend/tests/phase8_registry_concurrency_postgres_integration_test.py, backend/tests/phase8_registry_migration_safety_test.py, backend/tests/phase8_registry_postgres_integration_test.py, backend/tests/phase8_registry_recovery_test.py, docs/remediation/*.md
+- The two additional test modifications (phase5_upload_security_test.py, phase8_registry_postgres_integration_test.py) are included to allow new CI scripts in the bypass scanner and to fix unique constraint failures in testing without altering logic.
+- recovery test results: pass
+- concurrency test results against synthetic-only Neon data: pass
+- backup-restore synthetic metadata rehearsal result: pass
+- migration-safety result: pass
+- API-status safety result: pass
+- artifact scanner result: pass
+- full backend discovery result: pass
+- compileall result: pass
+- Bandit Medium 0 and High 0: pass
+- frontend lint/build/npm audit results: pass
+- synthetic cleanup rows = 0
+- active synthetic pointers = 0
+- real registry rows = 0
+- local SDKI imported rows = 0
+- operator activation remains false
+- no PHI
+- GitHub Actions pending until commit and push

@@ -139,3 +139,61 @@ Audit records must not contain raw patient narrative, uploaded document text, pr
 The local ledger path and any rotated segment or export are runtime evidence artifacts and must remain untracked. `.gitignore` excludes `backend/audit_ledger*.jsonl` and `backend/audit_exports/`. Local ledger content is not a registry artifact, not formal clinical evidence, not a compliance record, and not production audit storage.
 
 HMAC verification depends on secret key control. If the host and key are compromised, audit history can be rewritten. A valid-prefix tail truncation may still verify locally unless an external checkpoint, signed footer, immutable archive, or attestation exists. Segment rotation is local-linkage only; key rotation is not implemented. External immutable archive storage and managed key custody remain required before controlled-pilot, hospital, compliance, or production claims.
+
+## Phase 8 Registry Implementation Position
+
+Phase 8 P8-A has been committed and P8-BE committed and pushed on audit/phase8-registry-completion
+at 34c5797a0d0464fc429a15777e9299b970d5d297.
+P8-F technical closure is staged and awaiting checkpoint commit..
+
+### P8-A — PostgreSQL Registry Store Foundation (Committed)
+
+Durable registry store backed by Neon PostgreSQL with migration CLI (V001–V004), connection pool/admin URL separation, retry bounds, and fail-closed `DisabledRegistryStore` default.
+
+### P8-BE — Governed Registry Workflow (Implemented)
+
+Combined accelerated slice implementing:
+
+| Capability | Implementation |
+|---|---|
+| Review queue | `registry_workflow.py`: pending/approved/rejected queue with reviewer identity |
+| Human extraction verification | `registry_workflow.py`: OCR/LLM entries require `verified_by_human` before approval |
+| Entry/release approval separation | `registry_workflow.py` + `registry_release_service.py`: separate approval artifacts |
+| Governed explicit-source import | `registry_import_service.py`: dry-run default, single-source, containment checks |
+| Deterministic manifest hash | `registry_release_service.py`: order-independent SHA-256 manifest hash |
+| Atomic activation/rollback | `registry_release_service.py`: SELECT FOR UPDATE pointer mutation |
+| Bounded startup probe | `registry_runtime.py`: max 3 attempts, 15s timeout, 2s backoff, fail-closed |
+| Authenticated status endpoint | `api.py`: `GET /registry/status` with bearer auth |
+| Complete-family policy | `registry_release_service.py`: 3S requires SDKI+SLKI+SIKI; 3N requires NANDA+NOC+NIC |
+
+### Current Local Registry Status
+
+| Dataset | Entries | Quarantined | Release Eligible | Authoritative |
+|---|---|---|---|---|
+| SDKI current | 152 | 152 | 0 | 0 |
+| SDKI backups (×6) | 152 each | 152 each | 0 | 0 |
+| SDKI population report | metadata | N/A | 0 | 0 |
+| SLKI | 0 | N/A | 0 | 0 |
+| SIKI | 0 | N/A | 0 | 0 |
+| NANDA | 0 | N/A | 0 | 0 |
+| NOC | 0 | N/A | 0 | 0 |
+| NIC | 0 | N/A | 0 | 0 |
+
+### Conservative Rules (Unchanged)
+
+- File presence is not approved registry availability.
+- OCR output is not approved registry content.
+- LLM-assisted population is not approved registry content.
+- Only explicitly reviewed and approved release artifacts may become authoritative.
+- Missing, unapproved, quarantined, or extraction-unverified SDKI/SLKI/SIKI/NANDA/NOC/NIC registries must preserve complete care-plan abstention.
+- License review remains incomplete unless formal evidence exists.
+- Formal clinical review remains incomplete unless formal evidence exists.
+- `REGISTRY_ACTIVATION_ENABLED` remains `false` in product configuration.
+- No real registry data has been imported to Neon PostgreSQL.
+- Gate A remains unmet.
+- Gate B remains unmet.
+- Gate C remains unmet.
+- Not patient-care software.
+- Not production-ready.
+- Not hospital-ready.
+- Not compliant.

@@ -14,6 +14,7 @@ Jalankan:  uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 """
 from __future__ import annotations
 import os, re, json, glob, threading, secrets, sys, time
+from contextlib import asynccontextmanager
 from typing import Optional, List, Tuple
 from collections import deque
 
@@ -50,6 +51,9 @@ from outbound_policy import DEFAULT_OUTBOUND_POLICY, OutboundPolicyError, wrap_l
 from upload_security import UploadParseResult, config_from_app, parse_document_bytes, rejection
 from agents import bersihkan, bersihkan_stream, GUARDRAILS
 from audit_ledger import AuditEventInput, AuditLedgerError, LocalAppendOnlyLedgerBackend
+from registry_store import load_registry_store_config
+from registry_runtime import RegistryRuntimeInfo, probe_registry_store, safe_registry_metadata, RegistryRuntimeStatus
+
 
 # ============================ KONFIGURASI ====================================
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -233,6 +237,14 @@ DEGRADE_NOTE = ("\n\n⚠️ **Informasi Sistem:** Dokumen referensi SLKI dan SIK
 # ============================ DATA / RAG =====================================
 DATA: dict[str, list] = {}
 CLINICAL_REGISTRY = ClinicalRegistry.unavailable()
+
+# P8-BE: Registry runtime state (fail-closed; safe bounded probe at lifespan startup)
+REGISTRY_RUNTIME_INFO = RegistryRuntimeInfo(
+    status=RegistryRuntimeStatus.UNAVAILABLE,
+    failure_reason_code='not_started',
+    store_backend=CONFIG.registry_store_backend,
+)
+
 
 
 def muat_data():
@@ -991,8 +1003,42 @@ def extract_text(up: Optional[UploadFile]) -> str:
     return result.text if result and result.ok else ""
 
 
+# ============================ LIFESPAN =========================================
+@asynccontextmanager
+async def _lifespan(application: FastAPI):
+    """P8-BE: Bounded registry startup probe runs here, not at import."""
+    global REGISTRY_RUNTIME_INFO
+    try:
+        _reg_cfg = load_registry_store_config(
+            backend=CONFIG.registry_store_backend,
+            database_url=CONFIG.registry_database_url,
+            admin_url=CONFIG.registry_database_admin_url,
+            runtime_mode=CONFIG.registry_runtime_mode,
+            activation_enabled=CONFIG.registry_activation_enabled,
+        )
+        REGISTRY_RUNTIME_INFO = probe_registry_store(
+            _reg_cfg,
+            max_attempts=CONFIG.registry_startup_max_attempts,
+            connect_timeout_sec=CONFIG.registry_startup_connect_timeout_sec,
+            backoff_sec=CONFIG.registry_startup_backoff_sec,
+        )
+        print(f"[registry] status={REGISTRY_RUNTIME_INFO.status.value} "
+              f"backend={REGISTRY_RUNTIME_INFO.store_backend} "
+              f"health={REGISTRY_RUNTIME_INFO.store_health} "
+              f"activation={REGISTRY_RUNTIME_INFO.activation_enabled} "
+              f"reason={REGISTRY_RUNTIME_INFO.failure_reason_code or 'none'}")
+    except Exception as _reg_err:
+        REGISTRY_RUNTIME_INFO = RegistryRuntimeInfo(
+            status=RegistryRuntimeStatus.UNAVAILABLE,
+            failure_reason_code='startup_error',
+            store_backend=CONFIG.registry_store_backend,
+        )
+        print(f"[registry] startup probe failed safely: {type(_reg_err).__name__}")
+    yield
+
+
 # ============================ APP ============================================
-app = FastAPI(title="CDSS AI Keperawatan", version="3.0")
+app = FastAPI(title="CDSS AI Keperawatan", version="3.0", lifespan=_lifespan)
 # CORS: HANYA origin frontend yang sah (bukan "*"). Override via env FRONTEND_ORIGINS (pisah koma) untuk produksi.
 FRONTEND_ORIGINS = list(CONFIG.frontend_origins)
 app.add_middleware(CORSMiddleware, allow_origins=FRONTEND_ORIGINS, allow_credentials=False,
@@ -1059,6 +1105,8 @@ if harvester.start(audit_log, interval=CONFIG.harvest_interval_sec, topics=CONFI
     print("[harvester] Knowledge Harvester aktif (interval mingguan, menghangatkan cache jurnal RAG).")
 
 
+
+
 @app.get("/")
 def root():
     return {"app": "CDSS AI Keperawatan", "status": "aktif", "versi": "3.0"}
@@ -1078,6 +1126,16 @@ def status(request: Request, authorization: Optional[str] = Header(None)):
     if not detail:
         detail = {"basis_pengetahuan": "kosong"}
     return {"status": "aktif", "detail": detail, "providers": PROVIDERS, **memory.stats(), **ebp.stats()}
+
+
+@app.get("/registry/status")
+def registry_status(request: Request, authorization: Optional[str] = Header(None)):
+    """P8-BE: Authenticated registry status. Returns safe metadata only."""
+    principal, key, error = _auth_context(request, authorization, 'AUTH')
+    if error:
+        return error
+    return JSONResponse(safe_registry_metadata(REGISTRY_RUNTIME_INFO), status_code=200)
+
 
 
 def _session_invalid():

@@ -102,3 +102,27 @@ No diagnosis-only active release is allowed for the normal care-plan workflow.
 ## Release Store Limitation
 
 The active release store added in Phase 3 is an in-memory test abstraction. It proves explicit activation and rollback behavior but is not durable, pilot-ready, or production-ready storage. A durable governed release store remains required before controlled pilot evaluation.
+
+## Phase 8 Planning Status
+
+Phase 8 inventory and planning has begun on `audit/phase8-registry-completion` from `origin/dev` at `adc712f`. No implementation, registry activation, or code changes are included in the planning checkpoint.
+
+The detailed Phase 8 plan is documented in `docs/remediation/PHASE8_REGISTRY_COMPLETION_PLAN.md`.
+
+Phase 8 slices:
+
+| Slice | Scope | Status |
+|---|---|---|
+| P8-A | Durable PostgreSQL registry store (Neon) and migration CLI | ✅ Committed |
+| P8-BE | Review queue, human extraction verification, entry/release approval, governed import, deterministic manifest hash, atomic activation/rollback, bounded startup probe, authenticated `/registry/status`, complete-family policy | Implemented (synthetic-only) |
+| P8-F | CI enforcement, migrations, backup, recovery, concurrency, and closure | Planned |
+
+All local registry data remains ignored, untracked, non-authoritative, and fully quarantined. No registry activation, formal clinical review, or license approval has occurred.
+
+### P8-BE Extraction Verification (New)
+
+OCR-derived or LLM-assisted entries are never permanently blocked. Instead, human extraction verification is required before approval:
+- Extraction review statuses: `unverified`, `verified_by_human`, `rejected`
+- OCR or LLM-assisted entry with `unverified` status → approval rejected
+- OCR or LLM-assisted entry with `verified_by_human` → approval may proceed if all other governance checks pass
+- Auto-approval of OCR-derived or LLM-assisted entries is never allowed

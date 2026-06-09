@@ -36,6 +36,13 @@ ALLOWED_EVENT_TYPES = frozenset({
     'clinical_abstention', 'registry_unavailable', 'registry_incomplete',
     'capability_denied', 'ledger_verification_failed', 'consent_recorded',
     'analysis_succeeded', 'analysis_failed', 'feedback_recorded', 'legacy_event',
+    # P8-BE: governed registry workflow events
+    'registry_source_registered', 'registry_import_dry_run',
+    'registry_import_applied', 'registry_review_enqueued',
+    'registry_review_decided', 'registry_entry_approved',
+    'registry_release_candidate_created', 'registry_release_validated',
+    'registry_release_approved', 'registry_release_activated',
+    'registry_release_rollback',
 })
 
 ALLOWED_METADATA_KEYS = frozenset({
@@ -44,7 +51,62 @@ ALLOWED_METADATA_KEYS = frozenset({
     'legacy_action', 'legacy_status', 'upload_status', 'status_code', 'segment_id',
     'verified_count', 'error_code', 'agent', 'accepted_recommendations',
     'nurse_review_required',
+    # P8-BE: registry governance metadata keys
+    'source_id', 'entry_id', 'release_id', 'manifest_hash', 'content_hash',
+    'registry_family', 'review_status', 'approval_status',
+    'entry_count', 'quarantined_count',
 })
+
+# P8-BE: registry metadata value validation
+_REGISTRY_SAFE_ID_CHARS = frozenset('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-:')
+_REGISTRY_SHA256_HEX = frozenset('abcdef0123456789')
+_REGISTRY_FAMILIES = frozenset({'SDKI', 'SLKI', 'SIKI', 'NANDA', 'NOC', 'NIC'})
+_REGISTRY_STATUSES = frozenset({
+    'quarantined', 'draft', 'pending_review', 'review_rejected', 'review_verified',
+    'approved', 'deprecated', 'pending', 'in_review', 'rejected', 'deferred',
+    'candidate', 'validated', 'active', 'superseded', 'rolled_back',
+    'unverified', 'verified_by_human',
+})
+_REGISTRY_REASON_CODES = frozenset({
+    'store_disabled', 'activation_disabled', 'connection_failed', 'unsupported_schema',
+    'no_active_release', 'missing_release', 'release_not_active', 'entry_hash_mismatch',
+    'entry_not_approved', 'missing_release_approval', 'unexpected_error',
+    'health_check_failed', 'manifest_hash_mismatch',
+})
+
+
+def validate_registry_metadata_value(key: str, value: Any) -> Any:
+    """Validate registry-specific metadata values for safety.
+
+    Returns sanitized value or '[FILTERED]' if unsafe.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    # Block newlines, slashes, URLs, absolute paths, credentials
+    if any(c in text for c in ('\n', '\r', '\\')):
+        return '[FILTERED]'
+    if '://' in text or text.startswith('/') or (len(text) > 1 and text[1] == ':'):
+        return '[FILTERED]'
+    if key in ('manifest_hash', 'content_hash'):
+        if len(text) == 64 and all(c in _REGISTRY_SHA256_HEX for c in text.lower()):
+            return text.lower()
+        return '[FILTERED]'
+    if key in ('source_id', 'entry_id', 'release_id'):
+        if len(text) <= 128 and all(c in _REGISTRY_SAFE_ID_CHARS for c in text):
+            return text
+        return '[FILTERED]'
+    if key == 'registry_family':
+        return text.upper() if text.upper() in _REGISTRY_FAMILIES else '[FILTERED]'
+    if key in ('review_status', 'approval_status'):
+        return text.lower() if text.lower() in _REGISTRY_STATUSES else '[FILTERED]'
+    if key == 'reason_code':
+        return text.lower() if text.lower() in _REGISTRY_REASON_CODES else _clean_token(text, 64)
+    if key in ('entry_count', 'quarantined_count'):
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+        return '[FILTERED]'
+    return _clean_token(text)
 
 SAFE_SECURITY_TAGS = frozenset({
     'auth', 'session', 'rate_limit', 'mfa', 'director', 'upload', 'clinical',
