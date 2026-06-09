@@ -60,7 +60,13 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Separate local and production storage adapters.
 
 9. **Phase 8 - Complete and Govern Clinical Registries**
-   - Status: inventory and planning only on `audit/phase8-registry-completion` from `origin/dev` at `adc712f`. No implementation, registry activation, or code changes yet.
+   - Status:
+  - P8-A committed and pushed at: 4050791ebae94739fbdefd25f75346c548020de6
+  - P8-BE committed and pushed at: 34c5797a0d0464fc429a15777e9299b970d5d297
+  - P8-F closure-reviewed and staged, awaiting checkpoint commit.
+  - no real registry imported
+  - no real registry activated
+  - operator activation remains false
    - Add durable registry store and manifest schema (P8-A).
    - Add clinical review queue and approval artifacts (P8-B).
    - Add governed import and extraction-quality reporting (P8-C).

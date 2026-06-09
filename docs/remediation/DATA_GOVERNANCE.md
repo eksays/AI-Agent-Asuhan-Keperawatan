@@ -142,7 +142,9 @@ HMAC verification depends on secret key control. If the host and key are comprom
 
 ## Phase 8 Registry Implementation Position
 
-Phase 8 P8-A has been committed and P8-BE implemented (synthetic-only, awaiting closure review).
+Phase 8 P8-A has been committed and P8-BE committed and pushed on audit/phase8-registry-completion
+at 34c5797a0d0464fc429a15777e9299b970d5d297.
+P8-F technical closure is staged and awaiting checkpoint commit..
 
 ### P8-A — PostgreSQL Registry Store Foundation (Committed)
 

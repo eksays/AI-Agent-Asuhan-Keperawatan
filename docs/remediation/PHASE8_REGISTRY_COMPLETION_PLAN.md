@@ -118,6 +118,10 @@ authenticated registry metadata endpoint, and complete-family policy.
 
 ---
 
+## Historical Pre-Acceleration Plan — Superseded by P8-BE
+
+**Historical Note**: The standalone P8-B, P8-C, P8-D, and P8-E sections below remain only as historical planning evidence and were consolidated into P8-BE.
+
 ### P8-B — Clinical Review Queue and Approval Artifacts
 
 **Scope**: Add a local approval-record schema and review-queue model that captures
@@ -266,24 +270,30 @@ contains an incomplete framework family.
 
 ### P8-F — CI Enforcement, Migrations, Backup, Recovery, Concurrency, and Closure
 
-**Scope**: Add CI workflow extensions for Phase 8 tests, durable store migration
-strategy documentation, backup/recovery documentation, concurrency limitations
-documentation, and Phase 8 closure verification.
+**Status**: Closure-reviewed and staged, awaiting checkpoint commit.
+
+**Scope**: Actual recovery handling, concurrency pointer locking, backup-restore rehearsals, artifact scanner integration, and CI enforcement files.
 
 **Files**:
-- `.github/workflows/security-scan.yml` — add Phase 8 test commands
-- `docs/remediation/REGISTRY_STORE_OPERATIONS.md` (new) — ops docs
-- `docs/remediation/PHASE8_CLOSURE.md` (new) — closure evidence
-- `backend/tests/phase8_concurrency_test.py` (new)
+- `.github/workflows/security-scan.yml`
+- `backend/scripts/ci_artifact_scan.py`
+- `backend/scripts/registry_db_backup.py`
+- `backend/scripts/registry_db_restore_verify.py`
+- `backend/tests/phase8_registry_api_status_test.py`
+- `backend/tests/phase8_registry_backup_restore_test.py`
+- `backend/tests/phase8_registry_concurrency_postgres_integration_test.py`
+- `backend/tests/phase8_registry_migration_safety_test.py`
+- `backend/tests/phase8_registry_recovery_test.py`
+- `docs/remediation/PHASE8_REGISTRY_COMPLETION_PLAN.md`
+- `docs/remediation/VERIFICATION_LOG.md`
 
 **Tests**:
 - CI runs Phase 8 tests alongside Phase 1-7
-- Concurrent read during write does not corrupt store (single-process thread lock)
+- Concurrent read during write does not corrupt store
 - Backup and restore round-trip for durable store
 
 **Risks**:
 - CI expansion could increase build times
-- Concurrency tests may not cover multi-process cases
 
 **Rollback**: Revert CI changes; keep Phase 8 code as local-only.
 
@@ -295,7 +305,6 @@ documentation, and Phase 8 closure verification.
 
 **Non-Goals**:
 - Multi-process distributed store
-- Database backend
 - Production deployment procedures
 
 ## Dependency Graph

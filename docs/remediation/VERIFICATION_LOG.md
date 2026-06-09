@@ -816,3 +816,27 @@ P8-BE (Governed Registry Workflow, Activation, Rollback, and Startup) was implem
 - Gate A remains unmet.
 - Gate B remains unmet.
 - Gate C remains unmet.
+
+## Phase 8 P8-F Closure Review — 2026-06-10
+
+Record actual closure evidence only:
+- final exact staged file count: 11 newly staged files + 5 documentation updates.
+- final exact staged allowlist: .github/workflows/security-scan.yml, backend/scripts/ci_artifact_scan.py, backend/scripts/registry_db_backup.py, backend/scripts/registry_db_restore_verify.py, backend/tests/phase5_upload_security_test.py, backend/tests/phase8_registry_api_status_test.py, backend/tests/phase8_registry_backup_restore_test.py, backend/tests/phase8_registry_concurrency_postgres_integration_test.py, backend/tests/phase8_registry_migration_safety_test.py, backend/tests/phase8_registry_postgres_integration_test.py, backend/tests/phase8_registry_recovery_test.py, docs/remediation/*.md
+- The two additional test modifications (phase5_upload_security_test.py, phase8_registry_postgres_integration_test.py) are included to allow new CI scripts in the bypass scanner and to fix unique constraint failures in testing without altering logic.
+- recovery test results: pass
+- concurrency test results against synthetic-only Neon data: pass
+- backup-restore synthetic metadata rehearsal result: pass
+- migration-safety result: pass
+- API-status safety result: pass
+- artifact scanner result: pass
+- full backend discovery result: pass
+- compileall result: pass
+- Bandit Medium 0 and High 0: pass
+- frontend lint/build/npm audit results: pass
+- synthetic cleanup rows = 0
+- active synthetic pointers = 0
+- real registry rows = 0
+- local SDKI imported rows = 0
+- operator activation remains false
+- no PHI
+- GitHub Actions pending until commit and push

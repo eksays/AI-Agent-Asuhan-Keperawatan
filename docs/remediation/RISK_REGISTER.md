@@ -11,6 +11,9 @@ Checkpoint references:
 - Phase 5 = `cc42bec837d5e5458bf768fae6f2da26d1966d62`
 - Phase 6 = `36efc613556c706fe89fe2af5f14abd05850c1f9`
 - Phase 7 = `52eb16d1916bb6089a2e342e3da54f6efe9549d4`
+- Phase 8A = 4050791ebae94739fbdefd25f75346c548020de6
+- Phase 8BE = 34c5797a0d0464fc429a15777e9299b970d5d297
+- Phase 8F = staged technical closure; checkpoint commit pending
 
 Phase 0A documentation evidence has no separate checkpoint commit recorded here.
 
@@ -196,7 +199,7 @@ Phase 0A documentation evidence has no separate checkpoint commit recorded here.
 | Valid-prefix tail truncation is not fully detectable locally | Medium | Closure test shows removing only the final record leaves a locally valid prefix that verifies. | Add signed segment footers, externally persisted checkpoints, immutable archive, or external attestation before pilot/compliance claims. |
 | Key rotation is not implemented | Medium | Phase 7 stores a `key_id` identifier and tests wrong-key failure, but no key-rotation ceremony or dual-key verification workflow exists. | Define key rotation, retirement, and re-verification workflow with managed key custody. |
 
-## Phase 8 Planning Checkpoint
+## Phase 8 Status Update
 
 Phase 8 inventory and planning has begun on `audit/phase8-registry-completion` from `origin/dev` at `adc712f`. No implementation, registry activation, code changes, or release-gate claims are included in the planning checkpoint.
 

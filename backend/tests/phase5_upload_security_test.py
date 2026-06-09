@@ -422,6 +422,7 @@ class Phase5BypassScannerTests(unittest.TestCase):
         allowlist = {
             'ThreadPoolExecutor': {'agents.py', 'ebp.py'},
             'ctx.Process(': {'upload_security.py'},
+            'subprocess.run(': {'ci_artifact_scan.py', 'run_neon_tests.py', 'run_regression.py'},
         }
         unexpected: list[tuple[str, str]] = []
         for path in root.rglob('*.py'):

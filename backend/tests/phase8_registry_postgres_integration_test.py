@@ -117,7 +117,7 @@ class P8APostgresIntegrationTests(unittest.TestCase):
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO registry_sources (source_id, framework, source_title) "
-                "VALUES (%s, %s, %s)",
+                "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                 ('SYN-SOURCE-001', '3S', 'Synthetic Test Source'),
             )
         conn.commit()
@@ -134,7 +134,7 @@ class P8APostgresIntegrationTests(unittest.TestCase):
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO registry_sources (source_id, framework, source_title) "
-                "VALUES (%s, %s, %s)",
+                "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                 ('SYN-SOURCE-001', '3S', 'Synthetic Test Source'),
             )
             cur.execute(
@@ -171,13 +171,13 @@ class P8APostgresIntegrationTests(unittest.TestCase):
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO registry_sources (source_id, framework, source_title) "
-                "VALUES (%s, %s, %s)",
-                ('SYN-SOURCE-001', '3S', 'Synthetic Test Source'),
+                "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                ('SYN-SOURCE-UNIQ', '3S', 'Synthetic Test Source'),
             )
             cur.execute(
                 "INSERT INTO registry_entries (entry_id, source_id, framework, registry_family, entry_code, entry_name, content_hash) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                ('SYN-D-001', 'SYN-SOURCE-001', '3S', 'SDKI', 'SYN.0001', 'Synthetic Diagnosis One', 'sha256:syn001'),
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                ('SYN-D-UNIQ', 'SYN-SOURCE-UNIQ', '3S', 'SDKI', 'SYN.UNIQ', 'Synthetic Diagnosis One', 'sha256:uniq'),
             )
         conn.commit()
         with self.assertRaises(psycopg.errors.UniqueViolation):
@@ -185,7 +185,7 @@ class P8APostgresIntegrationTests(unittest.TestCase):
                 cur.execute(
                     "INSERT INTO registry_entries (entry_id, source_id, framework, registry_family, entry_code, entry_name, content_hash) "
                     "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                    ('SYN-D-001-dup', 'SYN-SOURCE-001', '3S', 'SDKI', 'SYN.0001', 'Duplicate', 'sha256:syn001'),
+                    ('SYN-D-UNIQ-DUP', 'SYN-SOURCE-UNIQ', '3S', 'SDKI', 'SYN.UNIQ', 'Duplicate', 'sha256:uniq'),
                 )
         conn.rollback()
 
@@ -230,7 +230,7 @@ class P8APostgresIntegrationTests(unittest.TestCase):
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO registry_sources (source_id, framework, source_title) "
-                "VALUES (%s, %s, %s)",
+                "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                 ('SYN-SOURCE-001', '3S', 'Synthetic Test Source'),
             )
             cur.execute(
@@ -257,7 +257,7 @@ class P8APostgresIntegrationTests(unittest.TestCase):
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO registry_sources (source_id, framework, source_title) "
-                "VALUES (%s, %s, %s)",
+                "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                 ('SYN-SOURCE-001', '3S', 'Synthetic Test Source'),
             )
             cur.execute(
@@ -284,7 +284,7 @@ class P8APostgresIntegrationTests(unittest.TestCase):
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO registry_sources (source_id, framework, source_title) "
-                "VALUES (%s, %s, %s)",
+                "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                 ('SYN-SOURCE-001', '3S', 'Synthetic Test Source'),
             )
             cur.execute(
@@ -333,7 +333,7 @@ class P8APostgresIntegrationTests(unittest.TestCase):
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO registry_sources (source_id, framework, source_title) "
-                "VALUES (%s, %s, %s)",
+                "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                 ('SYN-SOURCE-001', '3S', 'Synthetic Test Source'),
             )
             cur.execute(
@@ -393,7 +393,7 @@ class P8APostgresIntegrationTests(unittest.TestCase):
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO registry_sources (source_id, framework, source_title) "
-                "VALUES (%s, %s, %s)",
+                "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                 ('SYN-SOURCE-CLEANUP', '3S', 'Cleanup Test'),
             )
         conn.commit()
