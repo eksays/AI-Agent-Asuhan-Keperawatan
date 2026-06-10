@@ -79,6 +79,16 @@ class AppConfig:
     rag_vector_retrieval_enabled: bool
     rag_index_activation_enabled: bool
     rag_external_embedding_provider_enabled: bool
+    rag_synthetic_fixture_root: str
+    rag_max_document_chars: int
+    rag_max_staging_chunks: int
+    rag_chunk_target_words: int
+    rag_chunk_overlap_words: int
+    rag_max_results: int
+    rag_max_excerpt_chars: int
+    rag_min_lexical_rank: float
+    rag_max_selected_chunk_ids: int
+    rag_staging_ttl_seconds: int
 
     @property
     def external_llm_enabled(self) -> bool:
@@ -121,6 +131,12 @@ def _float_env(env: Mapping[str, str], name: str, default: float) -> float:
         return float(raw)
     except ValueError:
         return default
+
+def _bounded_int_env(env: Mapping[str, str], name: str, default: int, minimum: int, maximum: int) -> int:
+    return max(minimum, min(_int_env(env, name, default), maximum))
+
+def _bounded_float_env(env: Mapping[str, str], name: str, default: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(_float_env(env, name, default), maximum))
 
 
 def _csv(raw: str) -> tuple[str, ...]:
@@ -175,9 +191,18 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
     if app_mode in {'controlled_pilot', 'production'} and rag_experimental_enabled:
         raise RuntimeError('Experimental RAG activation flags are not allowed outside clinical_sandbox mode.')
     if rag_vector_retrieval_enabled or rag_external_embedding_provider_enabled:
-        raise RuntimeError('RAG vector retrieval and external embedding providers are not implemented in P9-A.')
-    if rag_index_activation_enabled:
-        raise RuntimeError('RAG index activation is not implemented in P9-A.')
+        raise RuntimeError('RAG vector retrieval and external embedding providers are not implemented.')
+    p9b_synthetic_activation_allowed = (
+        app_mode == 'clinical_sandbox'
+        and rag_runtime_mode == 'synthetic_corpus_test'
+        and rag_store_enabled
+        and rag_ingestion_enabled
+        and rag_lexical_retrieval_enabled
+        and rag_index_activation_enabled
+        and not registry_activation_enabled
+    )
+    if rag_index_activation_enabled and not p9b_synthetic_activation_allowed:
+        raise RuntimeError('RAG index activation is limited to the full synthetic P9-B test posture.')
     if rag_experimental_enabled and rag_runtime_mode != 'synthetic_corpus_test':
         raise RuntimeError('RAG database mutations require RAG_RUNTIME_MODE=synthetic_corpus_test.')
     if '*' in origins and app_mode != 'clinical_sandbox':
@@ -251,6 +276,16 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         rag_vector_retrieval_enabled=rag_vector_retrieval_enabled,
         rag_index_activation_enabled=rag_index_activation_enabled,
         rag_external_embedding_provider_enabled=rag_external_embedding_provider_enabled,
+        rag_synthetic_fixture_root=source.get('RAG_SYNTHETIC_FIXTURE_ROOT', '').strip(),
+        rag_max_document_chars=_bounded_int_env(source, 'RAG_MAX_DOCUMENT_CHARS', 12000, 1000, 50000),
+        rag_max_staging_chunks=_bounded_int_env(source, 'RAG_MAX_STAGING_CHUNKS', 200, 1, 1000),
+        rag_chunk_target_words=_bounded_int_env(source, 'RAG_CHUNK_TARGET_WORDS', 90, 40, 300),
+        rag_chunk_overlap_words=_bounded_int_env(source, 'RAG_CHUNK_OVERLAP_WORDS', 12, 0, 60),
+        rag_max_results=_bounded_int_env(source, 'RAG_MAX_RESULTS', 5, 1, 20),
+        rag_max_excerpt_chars=_bounded_int_env(source, 'RAG_MAX_EXCERPT_CHARS', 360, 80, 1200),
+        rag_min_lexical_rank=_bounded_float_env(source, 'RAG_MIN_LEXICAL_RANK', 0.01, 0.0, 10.0),
+        rag_max_selected_chunk_ids=_bounded_int_env(source, 'RAG_MAX_SELECTED_CHUNK_IDS', 8, 1, 20),
+        rag_staging_ttl_seconds=_bounded_int_env(source, 'RAG_STAGING_TTL_SECONDS', 3600, 60, 86400),
         unpaywall_email=source.get("UNPAYWALL_EMAIL", "cdss.keperawatan@example.com"),
     )
 
@@ -302,11 +337,11 @@ def build_capabilities(cfg: AppConfig = CONFIG) -> dict:
             "nic": {"enabled": False, "reason": "Approved registry is unavailable."},
             "rag_lexical_retrieval": {
                 "enabled": False,
-                "reason": "Phase 9 P9-A adds default-off corpus foundations only; product lexical retrieval is not enabled.",
+                "reason": "Phase 9 P9-B adds synthetic-only lexical retrieval for explicit tests; product lexical retrieval is not enabled.",
             },
             "rag_vector_retrieval": {
                 "enabled": False,
-                "reason": "Embeddings and vector retrieval are not implemented in P9-A.",
+                "reason": "Embeddings and vector retrieval are not implemented.",
             },
             "rag_external_embedding_provider": {
                 "enabled": False,
@@ -314,7 +349,7 @@ def build_capabilities(cfg: AppConfig = CONFIG) -> dict:
             },
             "rag_index_activation": {
                 "enabled": False,
-                "reason": "RAG index activation flow is not implemented in P9-A.",
+                "reason": "Only explicit synthetic P9-B test activation is available; product RAG index activation is disabled.",
             },
         },
     }

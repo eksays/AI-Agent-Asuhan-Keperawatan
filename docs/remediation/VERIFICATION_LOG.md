@@ -849,6 +849,8 @@ Record actual closure evidence only:
 
 P9-A implements default-off RAG corpus foundation and pgvector readiness only. No external LLM, external EBP service, external embedding API, real registry activation, real corpus ingestion, licensed clinical body copying, patient data, PHI, vector retrieval, hybrid retrieval, reranking, or product index activation is enabled.
 
+Checkpoint provenance: P9-A source checkpoint `96024f43f41b1f1d9afca08b6b2d5db4b167cb9a`; P9-A dev merge `59884ecfba983d02924fb1cd4d5a81ff0af46455`; P9-A dev GitHub Actions PASS.
+
 Implemented evidence:
 
 | Area | Result | Evidence |
@@ -874,3 +876,45 @@ Closure-review integration evidence:
 - No PHI, patient data, real corpus body, licensed clinical body, real registry activation, external LLM call, EBP call, embedding-provider call, or pgvector installation occurred.
 
 Gate status remains unchanged: Gate A, Gate B, and Gate C are not met. This checkpoint is not patient-care software, not clinically validated, not production-ready, not hospital-ready, and not compliant.
+
+# Phase 9 P9-B Governed Synthetic Lexical RAG - 2026-06-10
+
+P9-B implements explicit-test-only governed synthetic ingestion, deterministic hierarchy-aware chunking, PostgreSQL lexical FTS retrieval, safe citation packaging, typed abstention, and metadata-only retrieval telemetry. Current closure-review status: P9-B is a closure-reviewed checkpoint candidate on the review branch and has not been merged into dev. No product retrieval route, frontend integration, real corpus ingestion, licensed clinical body copying, patient data, PHI, embeddings, vector retrieval, hybrid retrieval, reranking, external provider call, pgvector installation, optional vector migration application, or registry activation was introduced.
+
+This snapshot was recorded before checkpoint commit.
+
+Implemented evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Branch baseline | PASS | Work is on `audit/phase9b-governed-lexical-rag` from `dev` at `59884ecfba983d02924fb1cd4d5a81ff0af46455`. |
+| Synthetic fixtures | PASS | Committed fixtures are generated synthetic-only, manifest-allowlisted, non-authoritative, and not clinical-use-approved. |
+| Fixture loader | PASS | Rejects traversal, absolute paths, non-manifest files, symlink escapes where detectable, missing synthetic labels, unknown license status, oversized files, and PHI canaries. |
+| Chunking | PASS | Deterministic NFKC normalization, heading/list/table grouping, bounded overlap, duplicate suppression, stable chunk IDs, stable hashes, and `fts_config_code=simple`. |
+| Ingestion and release | PASS | Explicit synthetic-only flow creates staging rows, validates and promotes approved chunks, builds a synthetic release manifest, updates the synthetic active pointer transactionally, refuses non-synthetic pointer overwrite, and appends synthetic-only history. |
+| Lexical retrieval | PASS | Uses parameterized PostgreSQL FTS through `websearch_to_tsquery('simple', ...)`, bounded query/top-k controls, active synthetic release requirement, and synthetic metadata filters. |
+| Citations | PASS | Citation packages contain bounded plain-text excerpts and safe synthetic locator metadata only. |
+| Abstention | PASS | Typed reason codes are returned without raw query, prompt, corpus body, raw exception, stack trace, PHI, or patient data. |
+| Telemetry | PASS | `rag_retrieval_events` writes bounded allowlisted metadata only and excludes raw query, prompt, query hash/fingerprint/HMAC, path, URL, credential, PHI, patient text, corpus body, raw exception, and stack trace fields. |
+| Vector boundary | PASS | pgvector remains available but not installed; optional vector schema remains defined but unapplied; `rag_chunk_embeddings` is not used; embeddings, vector retrieval, hybrid retrieval, and reranking remain unimplemented. |
+
+Regression evidence:
+
+| Command | Result | Summary |
+|---|---|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase9b_rag_chunking_test -v` | PASS | 7 tests, 1 expected symlink skip. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase9b_rag_lexical_service_test -v` | PASS | 7 tests. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase9b_rag_postgres_integration_test -v` | PASS | Default run skipped safely without explicit synthetic opt-in. |
+| Explicit synthetic PostgreSQL opt-in integration | PASS | 6 tests passed; synthetic ingestion, pointer activation with empty previous pointer, pointer restoration after success and exception cleanup, refusal to overwrite non-synthetic pointer, partial-ingestion cleanup, retrieval-failure cleanup, lexical retrieval, citation packaging, abstention, metadata-only telemetry, pgvector-not-installed check, and cleanup completed. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | PASS | 469 tests passed, 26 expected skips. |
+| `backend\venv\Scripts\python.exe -m compileall backend -q -x ".*(venv|__pycache__).*"` | PASS | Clean. |
+| `backend\venv\Scripts\bandit.exe -r backend -ll -x backend/env,backend/venv` | PASS | Exit 0; Medium 0 and High 0 confirmed by quiet JSON readback. |
+| `backend\venv\Scripts\python.exe backend\scripts\ci_artifact_scan.py` | PASS | No forbidden tracked files. |
+| `npm --prefix frontend ci` | PASS | 0 vulnerabilities after install. |
+| `npm --prefix frontend run lint` | PASS | ESLint completed. |
+| `npm --prefix frontend run build` | PASS | Redirected build command exit 0. |
+| `npm --prefix frontend audit --audit-level=moderate` | PASS | 0 vulnerabilities. |
+
+Post-cleanup safety position: synthetic integration cleanup completed, registry activation remained false, real corpus rows remained zero, temporary staging rows were removed, synthetic pointers were restored or cleared safely, pgvector was not installed, vector migration was not applied, and no external LLM, EBP, or embedding provider was called.
+
+Gate status remains unchanged: Gate A, Gate B, and Gate C are not met. P9-B is not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.

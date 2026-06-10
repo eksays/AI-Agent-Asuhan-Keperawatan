@@ -219,6 +219,8 @@ Historical planning snapshot before implementation.
 
 ## Phase 9 P9-A Status Update
 
+P9-A source checkpoint: `96024f43f41b1f1d9afca08b6b2d5db4b167cb9a`; P9-A dev merge: `59884ecfba983d02924fb1cd4d5a81ff0af46455`; P9-A dev GitHub Actions: PASS.
+
 | Risk | Severity | P9-A Status | Recommended Action |
 |---|---|---|---|
 | CLI-RAG-001 | Medium | Separate default-off RAG corpus foundation added; product RAG remains lexical prototype only | Do not enable retrieval until governed corpus ingestion, benchmark, and closure review are complete |
@@ -227,3 +229,17 @@ Historical planning snapshot before implementation.
 | RAG-PRIV-001 | Critical | Retrieval telemetry schema is bounded metadata-only and excludes raw query/prompt/hash/fingerprint/HMAC/path/URL/credentials/PHI/body fields | Maintain canary tests whenever retrieval events change |
 | RAG-STAGE-001 | Medium | Staging rows include TTL/cleanup metadata, are non-searchable, and cannot enter release manifests | Add cleanup operations in a later governed ingestion slice |
 | Gate A remains unmet | High | Unchanged after P9-A | Complete formal registry/corpus governance, retrieval benchmarks, browser QA disposition, and remaining release-gate work before any pilot claim |
+
+## Phase 9 P9-B Status Update
+
+Current P9-B closure status: P9-B is a closure-reviewed checkpoint candidate on the review branch and has not been merged into dev.
+
+| Risk | Severity | P9-B Status | Recommended Action |
+|---|---|---|---|
+| CLI-RAG-001 | Medium | Governed synthetic ingestion, deterministic chunking, and lexical PostgreSQL FTS retrieval are implemented for explicit synthetic tests only | Do not expose product retrieval routes or clinical workflows until real corpus governance, benchmarks, and closure review are complete |
+| RAG-SYN-001 | High | Fixture loading is manifest-allowlisted and rejects traversal, absolute paths, unknown license status, missing synthetic labels, oversized files, and PHI canaries | Keep committed fixtures generated and synthetic-only; do not ingest real or licensed clinical bodies |
+| RAG-LEX-001 | Medium | Lexical retrieval uses parameterized PostgreSQL FTS with `simple` config, bounded top-k, typed abstention, and synthetic-only release filters | Benchmark lexical quality before any broader retrieval claim; do not claim multilingual stemming or clinical adequacy |
+| RAG-CITE-001 | Medium | Citation packaging returns bounded plain-text synthetic excerpts with authority and clinical-use labels set false | Add formal corpus approval and citation review before any authoritative source display |
+| RAG-PRIV-001 | Critical | Retrieval telemetry remains bounded metadata-only and excludes raw query, prompt, hashes, HMACs, paths, URLs, credentials, PHI, patient text, corpus bodies, raw exceptions, and stack traces | Preserve canary tests and metadata allowlists before expanding telemetry |
+| RAG-VEC-001 | High | pgvector remains available but not installed; optional vector schema is defined but unapplied; embeddings, vector retrieval, hybrid retrieval, and reranking are not implemented | Defer P9-C/vector decisions until benchmark and provider-safety review |
+| Gate A remains unmet | High | Unchanged after P9-B | Complete formal registry/corpus governance, clinical review, benchmark evidence, browser QA disposition, and remaining release-gate work before any pilot claim |
