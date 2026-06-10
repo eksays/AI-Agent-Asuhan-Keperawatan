@@ -9,6 +9,7 @@ from security_controls import SANDBOX_DEFAULT_API_KEYS, is_placeholder_secret, i
 
 
 APP_MODES = {"clinical_sandbox", "controlled_pilot", "production"}
+RAG_RUNTIME_MODES = {"disabled", "synthetic_corpus_test"}
 SAFETY_NOTICE = "Clinical sandbox — AI-generated suggestions require nurse review."
 UNSUPPORTED_NOTICE = "Unsupported or unverified features are disabled."
 
@@ -71,6 +72,13 @@ class AppConfig:
     registry_startup_max_attempts: int
     registry_startup_connect_timeout_sec: int
     registry_startup_backoff_sec: int
+    rag_runtime_mode: str
+    rag_store_enabled: bool
+    rag_ingestion_enabled: bool
+    rag_lexical_retrieval_enabled: bool
+    rag_vector_retrieval_enabled: bool
+    rag_index_activation_enabled: bool
+    rag_external_embedding_provider_enabled: bool
 
     @property
     def external_llm_enabled(self) -> bool:
@@ -79,6 +87,14 @@ class AppConfig:
     @property
     def ebp_external_search_enabled(self) -> bool:
         return self.feature_ebp_external_search and self.external_llm_enabled
+
+    @property
+    def rag_db_mutation_allowed(self) -> bool:
+        return (
+            self.app_mode == "clinical_sandbox"
+            and self.rag_runtime_mode == "synthetic_corpus_test"
+            and not self.registry_activation_enabled
+        )
 
 
 def _bool_env(env: Mapping[str, str], name: str, default: bool = False) -> bool:
@@ -134,6 +150,36 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
     audit_ledger_key_id = (source.get('AUDIT_LEDGER_KEY_ID') or 'audit-ledger-local-v1').strip()
     audit_ledger_path = source.get('AUDIT_LEDGER_PATH', '').strip()
     trusted_proxies = _csv(source.get('TRUSTED_PROXY_HOSTS', ''))
+    registry_activation_enabled = _bool_env(source, 'REGISTRY_ACTIVATION_ENABLED')
+    rag_runtime_mode = (source.get('RAG_RUNTIME_MODE') or 'disabled').strip().lower()
+    if rag_runtime_mode not in RAG_RUNTIME_MODES:
+        raise RuntimeError(f"Invalid RAG_RUNTIME_MODE: {rag_runtime_mode!r}")
+    rag_store_enabled = _bool_env(source, 'RAG_STORE_ENABLED')
+    rag_ingestion_enabled = _bool_env(source, 'RAG_INGESTION_ENABLED')
+    rag_lexical_retrieval_enabled = _bool_env(source, 'RAG_LEXICAL_RETRIEVAL_ENABLED')
+    rag_vector_retrieval_enabled = _bool_env(source, 'RAG_VECTOR_RETRIEVAL_ENABLED')
+    rag_index_activation_enabled = _bool_env(source, 'RAG_INDEX_ACTIVATION_ENABLED')
+    rag_external_embedding_provider_enabled = _bool_env(source, 'RAG_EXTERNAL_EMBEDDING_PROVIDER_ENABLED')
+    rag_experimental_enabled = any((
+        rag_store_enabled,
+        rag_ingestion_enabled,
+        rag_lexical_retrieval_enabled,
+        rag_vector_retrieval_enabled,
+        rag_index_activation_enabled,
+        rag_external_embedding_provider_enabled,
+    ))
+    if rag_runtime_mode == 'synthetic_corpus_test' and app_mode != 'clinical_sandbox':
+        raise RuntimeError('RAG_RUNTIME_MODE=synthetic_corpus_test is only valid in clinical_sandbox mode.')
+    if rag_runtime_mode == 'synthetic_corpus_test' and registry_activation_enabled:
+        raise RuntimeError('RAG_RUNTIME_MODE=synthetic_corpus_test requires REGISTRY_ACTIVATION_ENABLED=false.')
+    if app_mode in {'controlled_pilot', 'production'} and rag_experimental_enabled:
+        raise RuntimeError('Experimental RAG activation flags are not allowed outside clinical_sandbox mode.')
+    if rag_vector_retrieval_enabled or rag_external_embedding_provider_enabled:
+        raise RuntimeError('RAG vector retrieval and external embedding providers are not implemented in P9-A.')
+    if rag_index_activation_enabled:
+        raise RuntimeError('RAG index activation is not implemented in P9-A.')
+    if rag_experimental_enabled and rag_runtime_mode != 'synthetic_corpus_test':
+        raise RuntimeError('RAG database mutations require RAG_RUNTIME_MODE=synthetic_corpus_test.')
     if '*' in origins and app_mode != 'clinical_sandbox':
         raise RuntimeError('Wildcard CORS origins are not allowed outside clinical_sandbox mode.')
     if app_mode in {'controlled_pilot', 'production'}:
@@ -191,13 +237,20 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         registry_database_url=(source.get('REGISTRY_DATABASE_URL') or '').strip(),
         registry_database_admin_url=(source.get('REGISTRY_DATABASE_ADMIN_URL') or '').strip(),
         registry_runtime_mode=(source.get('REGISTRY_RUNTIME_MODE') or 'synthetic_governance_test').strip(),
-        registry_activation_enabled=_bool_env(source, 'REGISTRY_ACTIVATION_ENABLED'),
+        registry_activation_enabled=registry_activation_enabled,
         registry_database_connect_timeout_sec=_int_env(source, 'REGISTRY_DATABASE_CONNECT_TIMEOUT_SEC', 15),
         registry_database_max_retries=_int_env(source, 'REGISTRY_DATABASE_MAX_RETRIES', 3),
         registry_database_retry_backoff_ms=_int_env(source, 'REGISTRY_DATABASE_RETRY_BACKOFF_MS', 750),
         registry_startup_max_attempts=max(1, min(_int_env(source, 'REGISTRY_STARTUP_MAX_ATTEMPTS', 3), 5)),
         registry_startup_connect_timeout_sec=max(1, min(_int_env(source, 'REGISTRY_STARTUP_CONNECT_TIMEOUT_SEC', 15), 30)),
         registry_startup_backoff_sec=max(1, min(_int_env(source, 'REGISTRY_STARTUP_BACKOFF_SEC', 2), 5)),
+        rag_runtime_mode=rag_runtime_mode,
+        rag_store_enabled=rag_store_enabled,
+        rag_ingestion_enabled=rag_ingestion_enabled,
+        rag_lexical_retrieval_enabled=rag_lexical_retrieval_enabled,
+        rag_vector_retrieval_enabled=rag_vector_retrieval_enabled,
+        rag_index_activation_enabled=rag_index_activation_enabled,
+        rag_external_embedding_provider_enabled=rag_external_embedding_provider_enabled,
         unpaywall_email=source.get("UNPAYWALL_EMAIL", "cdss.keperawatan@example.com"),
     )
 
@@ -247,6 +300,22 @@ def build_capabilities(cfg: AppConfig = CONFIG) -> dict:
             "nanda": {"enabled": False, "reason": "Approved registry is unavailable."},
             "noc": {"enabled": False, "reason": "Approved registry is unavailable."},
             "nic": {"enabled": False, "reason": "Approved registry is unavailable."},
+            "rag_lexical_retrieval": {
+                "enabled": False,
+                "reason": "Phase 9 P9-A adds default-off corpus foundations only; product lexical retrieval is not enabled.",
+            },
+            "rag_vector_retrieval": {
+                "enabled": False,
+                "reason": "Embeddings and vector retrieval are not implemented in P9-A.",
+            },
+            "rag_external_embedding_provider": {
+                "enabled": False,
+                "reason": "External embedding providers are disabled and not integrated.",
+            },
+            "rag_index_activation": {
+                "enabled": False,
+                "reason": "RAG index activation flow is not implemented in P9-A.",
+            },
         },
     }
 

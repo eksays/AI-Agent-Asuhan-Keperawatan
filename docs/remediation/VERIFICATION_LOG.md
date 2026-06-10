@@ -839,4 +839,38 @@ Record actual closure evidence only:
 - local SDKI imported rows = 0
 - operator activation remains false
 - no PHI
-- GitHub Actions pending until commit and push
+- P8-F committed at 34808a8823e224bcf4ccb9ca6d7d8ba48750d12d
+- CI follow-up committed at 04dee8c55d786e2c6cc32360f78d557c2e7d127e
+- merged into dev at 281738e3bbf824f565c820dd21cd31a876474b86
+- dev GitHub Actions passed
+- no real registry imported
+- operator activation remains false
+# Phase 9 P9-A Governed RAG Corpus Foundation - 2026-06-10
+
+P9-A implements default-off RAG corpus foundation and pgvector readiness only. No external LLM, external EBP service, external embedding API, real registry activation, real corpus ingestion, licensed clinical body copying, patient data, PHI, vector retrieval, hybrid retrieval, reranking, or product index activation is enabled.
+
+Implemented evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Branch baseline | PASS | Work began from `dev` at `281738e3bbf824f565c820dd21cd31a876474b86`; implementation branch is `audit/phase9-rag-foundation`. |
+| Default-off config | PASS | RAG flags default false and `RAG_RUNTIME_MODE=disabled`; synthetic corpus mode is sandbox-only and rejected when registry activation is true. |
+| Separate migrations | PASS | RAG migrations live in `backend/rag_migrations.py` with independent `rag_schema_migrations`; `backend/registry_migrations.py` is unchanged. |
+| Migration journal integrity | PASS | Migration id, name, checksum, and timestamp are stored; checksum mismatch fails closed. |
+| pgvector split | PASS | Core lexical schema does not require pgvector; optional pgvector extension and embedding table require explicit admin CLI `--enable-pgvector`. |
+| Startup safety | PASS | API startup does not run RAG migrations or install pgvector. |
+| Staging safety | PASS | Staging tables include TTL/cleanup metadata, are non-searchable, and cannot enter release manifests. |
+| Telemetry privacy | PASS | Retrieval event schema excludes raw query, prompt, query hash/fingerprint/HMAC, patient text, PHI, path, URL, credentials, raw exceptions, stack traces, and corpus bodies. |
+
+Closure-review integration evidence:
+
+- pgvector availability was probed safely by metadata-only read-only checks.
+- pgvector is available on the PostgreSQL service but is not installed.
+- Optional vector migration is defined but was not applied; `rag_chunk_embeddings` remains absent.
+- Vector schema readiness is false and vector retrieval remains disabled.
+- Core lexical schema readiness is true after explicit synthetic-only migration.
+- Lexical core synthetic PostgreSQL integration passed using `SYN-P9-*` identifiers only.
+- Synthetic cleanup rows = 0; temporary staging rows = 0; active synthetic pointers = 0; real corpus rows = 0.
+- No PHI, patient data, real corpus body, licensed clinical body, real registry activation, external LLM call, EBP call, embedding-provider call, or pgvector installation occurred.
+
+Gate status remains unchanged: Gate A, Gate B, and Gate C are not met. This checkpoint is not patient-care software, not clinically validated, not production-ready, not hospital-ready, and not compliant.
