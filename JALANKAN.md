@@ -25,7 +25,7 @@ $env:CDSS_SECRET_KEY="local-sandbox-secret-change-me"
 # $env:AUDIT_LEDGER_HMAC_KEY="isi-dengan-secret-kuat-operator-lokal"
 # $env:AUDIT_LEDGER_KEY_ID="audit-ledger-local-v1"
 # $env:AUDIT_LEDGER_PATH="backend\audit_ledger.jsonl"
-# RAG Phase 9 P9-A default-off. Jangan aktifkan kecuali menjalankan uji sintetis lokal yang eksplisit.
+# RAG Phase 9 P9-B default-off. Jangan aktifkan kecuali menjalankan uji sintetis lokal yang eksplisit.
 # $env:RAG_RUNTIME_MODE="disabled"
 python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 ```
@@ -74,14 +74,17 @@ pip install -r requirements.txt
 - Ledger lokal bukan WORM, bukan immutable storage, bukan tanda tangan digital, dan bukan bukti compliance.
 - Admin host yang memiliki file ledger dan key masih dapat menulis ulang histori; penghapusan record terakhir dapat menyisakan prefix yang tetap valid secara lokal tanpa checkpoint eksternal. Segment rotation tersedia, key rotation belum tersedia. Storage immutable eksternal tetap diperlukan sebelum klaim pilot/produksi.
 
-## Catatan keamanan Phase 9 P9-A
+## Catatan keamanan Phase 9 P9-B
 
-- P9-A hanya menambahkan fondasi skema corpus RAG dan probe pgvector yang aman.
-- RAG produk saat ini tetap prototipe leksikal; hybrid retrieval, embedding, vector retrieval, reranking, dan provider embedding eksternal belum diimplementasikan.
+- P9-A menambahkan fondasi skema corpus RAG dan probe pgvector yang aman; source checkpoint `96024f43f41b1f1d9afca08b6b2d5db4b167cb9a` sudah merge ke dev di `59884ecfba983d02924fb1cd4d5a81ff0af46455` dengan GitHub Actions dev PASS.
+- P9-B menambahkan ingestion fixture sintetis, chunking deterministik, retrieval leksikal PostgreSQL FTS, citation packaging, abstention, dan telemetry metadata-only untuk uji sintetis eksplisit saja. Status P9-B saat ini: P9-B is a closure-reviewed checkpoint candidate on the review branch and has not been merged into dev.
+- Tidak ada route retrieval produk, integrasi frontend, real corpus ingestion, atau aktivasi registry.
+- Hybrid retrieval, embedding, vector retrieval, reranking, dan provider embedding eksternal belum diimplementasikan.
 - `RAG_RUNTIME_MODE=disabled` dan semua flag RAG bernilai `false` secara default.
-- `RAG_RUNTIME_MODE=synthetic_corpus_test` hanya untuk sandbox lokal dan mensyaratkan `REGISTRY_ACTIVATION_ENABLED=false`.
+- `RAG_RUNTIME_MODE=synthetic_corpus_test` hanya untuk sandbox lokal, mensyaratkan `REGISTRY_ACTIVATION_ENABLED=false`, dan hanya boleh dipakai untuk uji sintetis eksplisit.
 - Jangan ingest data pasien, PHI, corpus klinis berlisensi, atau isi SDKI/SLKI/SIKI/NANDA/NOC/NIC ke tabel RAG.
-- Tabel active index release harus tetap kosong pada P9-A; tidak ada aktivasi index produk.
+- pgvector tersedia tetapi tidak terinstal; schema vector opsional tetap didefinisikan tetapi belum diterapkan.
+- Active index release hanya boleh diisi oleh alur sintetis P9-B eksplisit; tidak ada aktivasi index produk.
 
 ## Perilaku agen
 
@@ -95,5 +98,5 @@ pip install -r requirements.txt
 - `GET http://127.0.0.1:8000/docs` dapat dipakai untuk menguji API langsung.
 - Basis pengetahuan lokal di `backend/data_terstruktur/` tetap non-authoritative dan tidak boleh diaktifkan hanya karena file ada.
 - Registry resmi memerlukan provenance, lisensi, review klinis, release manifest, dan aktivasi eksplisit.
-- Fondasi RAG resmi memerlukan governance corpus, review lisensi, benchmark retrieval, dan aktivasi eksplisit pada fase berikutnya; P9-A belum memenuhi itu.
+- Fondasi RAG resmi memerlukan governance corpus nyata, review lisensi, benchmark retrieval, dan aktivasi eksplisit pada fase berikutnya; P9-B belum memenuhi itu.
 - Koreksi/feedback lokal dapat memuat data sensitif; jangan commit file memori runtime.

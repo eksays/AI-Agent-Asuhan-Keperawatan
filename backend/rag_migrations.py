@@ -233,6 +233,53 @@ CREATE TABLE IF NOT EXISTS rag_index_release_history (
 )
 
 
+MIGRATION_RAG_C007 = RagMigration(
+    migration_id="RAG_C007",
+    migration_name="add synthetic lexical retrieval metadata columns",
+    sql="""\
+ALTER TABLE rag_documents
+    ADD COLUMN IF NOT EXISTS synthetic_only BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS authority BOOLEAN NOT NULL DEFAULT FALSE CHECK (authority = FALSE),
+    ADD COLUMN IF NOT EXISTS clinical_use_allowed BOOLEAN NOT NULL DEFAULT FALSE CHECK (clinical_use_allowed = FALSE),
+    ADD COLUMN IF NOT EXISTS source_title_safe VARCHAR(256) NOT NULL DEFAULT '';
+
+ALTER TABLE rag_chunks
+    ADD COLUMN IF NOT EXISTS source_version_id VARCHAR(96) REFERENCES rag_source_versions(source_version_id),
+    ADD COLUMN IF NOT EXISTS section_path VARCHAR(512) NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS word_count INTEGER NOT NULL DEFAULT 0 CHECK (word_count >= 0 AND word_count <= 5000),
+    ADD COLUMN IF NOT EXISTS language_code VARCHAR(16) NOT NULL DEFAULT 'id'
+        CHECK (language_code IN ('id', 'en')),
+    ADD COLUMN IF NOT EXISTS fts_config_code VARCHAR(16) NOT NULL DEFAULT 'simple'
+        CHECK (fts_config_code IN ('simple')),
+    ADD COLUMN IF NOT EXISTS synthetic_only BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS authority BOOLEAN NOT NULL DEFAULT FALSE CHECK (authority = FALSE),
+    ADD COLUMN IF NOT EXISTS clinical_use_allowed BOOLEAN NOT NULL DEFAULT FALSE CHECK (clinical_use_allowed = FALSE),
+    ADD COLUMN IF NOT EXISTS chunking_profile VARCHAR(64) NOT NULL DEFAULT '';
+
+ALTER TABLE rag_ingestion_staging_chunks
+    ADD COLUMN IF NOT EXISTS section_path VARCHAR(512) NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS word_count INTEGER NOT NULL DEFAULT 0 CHECK (word_count >= 0 AND word_count <= 5000),
+    ADD COLUMN IF NOT EXISTS chunking_profile VARCHAR(64) NOT NULL DEFAULT '';
+
+ALTER TABLE rag_index_release_manifests
+    ADD COLUMN IF NOT EXISTS synthetic_only BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS authority BOOLEAN NOT NULL DEFAULT FALSE CHECK (authority = FALSE),
+    ADD COLUMN IF NOT EXISTS clinical_use_allowed BOOLEAN NOT NULL DEFAULT FALSE CHECK (clinical_use_allowed = FALSE),
+    ADD COLUMN IF NOT EXISTS retrieval_backend VARCHAR(32) NOT NULL DEFAULT 'lexical'
+        CHECK (retrieval_backend IN ('lexical')),
+    ADD COLUMN IF NOT EXISTS chunking_profile VARCHAR(64) NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_synthetic_lexical_fts
+    ON rag_chunks USING GIN (search_vector)
+    WHERE retrieval_eligible = TRUE
+      AND lifecycle_state = 'approved'
+      AND synthetic_only = TRUE
+      AND authority = FALSE
+      AND clinical_use_allowed = FALSE;
+""",
+)
+
+
 MIGRATION_RAG_CORE_V006 = RagMigration(
     migration_id="RAG_CORE_V006",
     migration_name="create bounded metadata only rag retrieval telemetry",
@@ -292,6 +339,7 @@ CORE_MIGRATIONS: tuple[RagMigration, ...] = (
     MIGRATION_RAG_CORE_V003,
     MIGRATION_RAG_CORE_V004,
     MIGRATION_RAG_CORE_V005,
+    MIGRATION_RAG_C007,
     MIGRATION_RAG_CORE_V006,
 )
 

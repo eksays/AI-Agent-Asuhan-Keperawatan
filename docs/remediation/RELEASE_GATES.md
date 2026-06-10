@@ -178,8 +178,20 @@ parser host-isolation disposition, and CI evidence.
 
 P9-A adds default-off governed RAG corpus foundation tables, separate RAG migration journaling, read-only pgvector probing, and optional explicit admin-only pgvector schema preparation. It does not ingest real corpus bodies, copy licensed clinical content, ingest patient data, store PHI, enable product lexical retrieval, enable vector retrieval, implement hybrid retrieval, integrate embedding providers, rerank results, activate a RAG index release, or activate registry data.
 
+Checkpoint provenance: P9-A source checkpoint `96024f43f41b1f1d9afca08b6b2d5db4b167cb9a`; P9-A dev merge `59884ecfba983d02924fb1cd4d5a81ff0af46455`; P9-A dev GitHub Actions PASS.
+
 Gate A remains **Not met**. P9-A is not clinical validation, registry approval, corpus approval, privacy compliance, controlled-pilot readiness, hospital readiness, or production readiness.
 
 Gate B remains **Not met** because Gate A remains unmet and identity/RBAC, durable distributed controls, formal operational review, approved corpus releases, and external audit/storage controls remain absent.
+
+Gate C remains **Not met** because Gate B remains unmet and formal privacy/security/legal/regulatory review, clinical validation study, incident response, monitoring, and production responsibility model remain absent.
+
+## Phase 9 P9-B Governed Synthetic Lexical RAG Checkpoint
+
+P9-B adds governed synthetic ingestion, deterministic hierarchy-aware chunking, explicit synthetic-only PostgreSQL lexical FTS retrieval, safe citation packaging, typed abstention, and metadata-only telemetry for local and optional PostgreSQL integration testing. At this time, P9-B is a closure-reviewed checkpoint candidate on the review branch and has not been merged into dev. It does not add a product API route, frontend integration, real corpus ingestion, licensed clinical body copying, patient data processing, PHI processing, embeddings, vector retrieval, hybrid retrieval, reranking, external provider calls, pgvector installation, optional vector migration application, Qdrant integration, or clinical registry activation.
+
+Gate A remains **Not met**. P9-B is a sandbox technical checkpoint only and does not provide formal corpus approval, real clinical source licensing, clinical validation, browser QA completion, parser host-isolation closure, or production-grade operational review.
+
+Gate B remains **Not met** because Gate A remains unmet and identity/RBAC, durable distributed controls, managed secret custody, formal operational review, approved real registry/corpus releases, and external audit/storage controls remain absent.
 
 Gate C remains **Not met** because Gate B remains unmet and formal privacy/security/legal/regulatory review, clinical validation study, incident response, monitoring, and production responsibility model remain absent.

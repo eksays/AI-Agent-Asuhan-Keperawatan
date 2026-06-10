@@ -1,0 +1,16 @@
+# Synthetic Pain Observation Workflow
+
+## Purpose
+This generated fixture is a sandbox-only text sample for lexical retrieval. It describes simulated discomfort observation steps without any real person, real facility, or clinical authority.
+
+## Structured Observation
+- Ask the training actor to choose a synthetic comfort score from the exercise card.
+- Note visible posture changes from the scripted scenario.
+- Separate observed signals from assumptions.
+- Mark uncertain findings for human training review.
+
+## Deterministic Notes
+The words discomfort, posture, comfort score, and review appear intentionally so lexical retrieval can find this generated document during tests.
+
+## Safety Boundary
+The fixture is synthetic generated content only. It is not a recommendation, not a registry entry, and not suitable for operational use.

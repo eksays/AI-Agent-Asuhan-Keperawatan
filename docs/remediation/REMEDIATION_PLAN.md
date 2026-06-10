@@ -79,9 +79,11 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Import only approved reference data with provenance and clinical review.
 
 10. **Phase 9 - Governed RAG Corpus Foundation, Retrieval, and Explainability**
-    - Status: P9-A foundation implemented as default-off schema/probe work only; no product retrieval, embeddings, external providers, real corpus ingestion, patient data, PHI, licensed clinical body copying, or registry activation.
-    - P9-A adds separate RAG migrations, migration checksum journal, bounded explicit migration lock, read-only pgvector probe, optional admin-only pgvector migration path, and metadata-only governance tables.
-    - Later Phase 9 slices may add governed ingestion, lexical retrieval, benchmarks, and hybrid retrieval only after safety review.
+- Status: P9-B is a closure-reviewed checkpoint candidate on the review branch and has not been merged into dev. No product route, frontend integration, embeddings, external providers, real corpus ingestion, patient data, PHI, licensed clinical body copying, or registry activation is added.
+- P9-A adds separate RAG migrations, migration checksum journal, bounded explicit migration lock, read-only pgvector probe, optional admin-only pgvector migration path, and metadata-only governance tables.
+- P9-A source checkpoint: `96024f43f41b1f1d9afca08b6b2d5db4b167cb9a`; P9-A dev merge: `59884ecfba983d02924fb1cd4d5a81ff0af46455`; P9-A dev GitHub Actions: PASS.
+- P9-B adds generated synthetic fixture ingestion, deterministic hierarchy-aware chunking, PostgreSQL lexical FTS retrieval, citation packaging, typed abstention, and metadata-only telemetry for explicit synthetic tests.
+    - Later Phase 9 slices may add benchmarks, governed real-corpus approval, product integration, and hybrid retrieval only after safety review.
 
 11. **Phase 10 - EBP Retrieval, OCR, Feedback Governance, and Reliability**
     - Govern EBP/OCR/feedback and complete release reliability gates.
