@@ -11,6 +11,7 @@ The current safety posture is intentionally fail-closed: unsupported or unverifi
 - Evidence retrieval from external scholarly services is disabled by default until de-identification enforcement is verified.
 - Clinical photo analysis is unavailable; validated OCR or vision processing is not implemented.
 - Mermaid pathway rendering is disabled by default until strict SVG sanitization and XSS regression tests pass.
+- Phase 9 RAG corpus foundations are default-off. Current product RAG remains a lexical prototype only; hybrid retrieval, embeddings, vector retrieval, reranking, and external embedding providers are not implemented.
 - Local registry files are not approved authoritative clinical references.
 - API keys are accepted only through Authorization: Bearer <key>; body, query-string, and cookie API-key transport is not supported.
 - Browser-carried shared API keys are visible to the browser client; this is a sandbox containment control, not confidential server-side authentication.
@@ -27,6 +28,8 @@ The current safety posture is intentionally fail-closed: unsupported or unverifi
 | EBP external search | Disabled by default | Awaiting de-identification enforcement |
 | Clinical photo analysis | Unavailable | Validated OCR or vision workflow not implemented |
 | Mermaid pathway rendering | Disabled by default | Awaiting SVG sanitization and XSS regression suite |
+| Governed RAG corpus | Foundation only | P9-A schema/probe only; no corpus ingestion or product retrieval |
+| Hybrid/vector retrieval | Not implemented | pgvector is proposed/probed only; embeddings are not implemented |
 | SDKI authoritative grounding | Unavailable for production | Registry governance incomplete |
 | SLKI/SIKI | Unavailable | Approved registries unavailable |
 | NANDA/NOC/NIC | Unavailable | Approved registries unavailable |
@@ -61,6 +64,13 @@ DIRECTOR_ENROLLMENT_ENABLED=false
 AUDIT_LEDGER_HMAC_KEY=
 AUDIT_LEDGER_KEY_ID=audit-ledger-local-v1
 AUDIT_LEDGER_PATH=
+RAG_RUNTIME_MODE=disabled
+RAG_STORE_ENABLED=false
+RAG_INGESTION_ENABLED=false
+RAG_LEXICAL_RETRIEVAL_ENABLED=false
+RAG_VECTOR_RETRIEVAL_ENABLED=false
+RAG_INDEX_ACTIVATION_ENABLED=false
+RAG_EXTERNAL_EMBEDDING_PROVIDER_ENABLED=false
 ```
 
 `ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=true` is accepted only in `clinical_sandbox` mode. It must not be used with real patient data. `test-key` is a sandbox default only; controlled-pilot and production modes require explicit strong `CDSS_API_KEYS`, `CDSS_SECRET_KEY`, `DIRECTOR_BOOTSTRAP`, and `AUDIT_LEDGER_HMAC_KEY` values. In sandbox mode, persistent local audit ledger storage also requires an explicit strong `AUDIT_LEDGER_HMAC_KEY`; otherwise the backend uses an ephemeral in-process ledger for local development.
@@ -116,11 +126,13 @@ Do not commit local secrets, TOTP seed files, raw patient content, raw clinical 
 
 The current local registry data is sandbox-only. Missing or unapproved SDKI/SLKI/SIKI/NANDA/NOC/NIC content must not be filled from model memory or treated as authoritative.
 
+Phase 9 P9-A adds default-off RAG corpus schema and pgvector readiness tooling only. It does not ingest real corpus bodies, copy licensed clinical content, ingest patient data, store PHI, enable lexical product retrieval, enable vector retrieval, integrate embedding providers, or activate registry data.
+
 ## Remediation Roadmap
 
 See `docs/remediation/` for the remediation plan, verification log, risk register, data governance notes, and release gates.
 
-Gate A is not passed yet. Phase 0B through Phase 7 controls are sandbox checkpoints only. Later work still needs durable identity/session/rate-limit storage, formal registry and clinical review, browser-rendered QA disposition, hard parser resource controls, external immutable audit storage or equivalent audit service, CI enforcement, and legal/regulatory review before any pilot or production claim.
+Gate A is not passed yet. Phase 0B through Phase 9 P9-A controls are sandbox checkpoints only. Later work still needs durable identity/session/rate-limit storage, formal registry and clinical review, browser-rendered QA disposition, hard parser resource controls, external immutable audit storage or equivalent audit service, CI enforcement, governed corpus approval, benchmarked retrieval, and legal/regulatory review before any pilot or production claim.
 
 
 Director MFA enrollment is disabled by default. Local sandbox provisioning requires DIRECTOR_ENROLLMENT_ENABLED=true and X-Director-Bootstrap; controlled-pilot and production provisioning workflows are not implemented.

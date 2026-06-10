@@ -2,7 +2,7 @@
 
 Status saat ini: clinical sandbox. Fitur yang belum terverifikasi dinonaktifkan secara default oleh backend. Saran AI wajib ditinjau perawat dan aplikasi ini tidak boleh dipakai untuk keputusan klinis mandiri.
 
-Secara default, analisis LLM eksternal, pencarian EBP eksternal, analisis foto klinis, dan rendering Mermaid pathway dinonaktifkan. Phase 7 menambahkan audit ledger lokal berbasis HMAC. Kontrol autentikasi, sesi, MFA, rate limit, dan audit tetap kontrol sandbox lokal, bukan kontrol produksi terdistribusi.
+Secara default, analisis LLM eksternal, pencarian EBP eksternal, analisis foto klinis, rendering Mermaid pathway, dan fondasi RAG Phase 9 dinonaktifkan. Phase 7 menambahkan audit ledger lokal berbasis HMAC. Kontrol autentikasi, sesi, MFA, rate limit, audit, dan RAG tetap kontrol sandbox lokal, bukan kontrol produksi terdistribusi.
 
 Aplikasi terdiri dari dua bagian:
 
@@ -25,6 +25,8 @@ $env:CDSS_SECRET_KEY="local-sandbox-secret-change-me"
 # $env:AUDIT_LEDGER_HMAC_KEY="isi-dengan-secret-kuat-operator-lokal"
 # $env:AUDIT_LEDGER_KEY_ID="audit-ledger-local-v1"
 # $env:AUDIT_LEDGER_PATH="backend\audit_ledger.jsonl"
+# RAG Phase 9 P9-A default-off. Jangan aktifkan kecuali menjalankan uji sintetis lokal yang eksplisit.
+# $env:RAG_RUNTIME_MODE="disabled"
 python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -72,6 +74,15 @@ pip install -r requirements.txt
 - Ledger lokal bukan WORM, bukan immutable storage, bukan tanda tangan digital, dan bukan bukti compliance.
 - Admin host yang memiliki file ledger dan key masih dapat menulis ulang histori; penghapusan record terakhir dapat menyisakan prefix yang tetap valid secara lokal tanpa checkpoint eksternal. Segment rotation tersedia, key rotation belum tersedia. Storage immutable eksternal tetap diperlukan sebelum klaim pilot/produksi.
 
+## Catatan keamanan Phase 9 P9-A
+
+- P9-A hanya menambahkan fondasi skema corpus RAG dan probe pgvector yang aman.
+- RAG produk saat ini tetap prototipe leksikal; hybrid retrieval, embedding, vector retrieval, reranking, dan provider embedding eksternal belum diimplementasikan.
+- `RAG_RUNTIME_MODE=disabled` dan semua flag RAG bernilai `false` secara default.
+- `RAG_RUNTIME_MODE=synthetic_corpus_test` hanya untuk sandbox lokal dan mensyaratkan `REGISTRY_ACTIVATION_ENABLED=false`.
+- Jangan ingest data pasien, PHI, corpus klinis berlisensi, atau isi SDKI/SLKI/SIKI/NANDA/NOC/NIC ke tabel RAG.
+- Tabel active index release harus tetap kosong pada P9-A; tidak ada aktivasi index produk.
+
 ## Perilaku agen
 
 - Menjalankan persis sesuai perintah.
@@ -84,4 +95,5 @@ pip install -r requirements.txt
 - `GET http://127.0.0.1:8000/docs` dapat dipakai untuk menguji API langsung.
 - Basis pengetahuan lokal di `backend/data_terstruktur/` tetap non-authoritative dan tidak boleh diaktifkan hanya karena file ada.
 - Registry resmi memerlukan provenance, lisensi, review klinis, release manifest, dan aktivasi eksplisit.
+- Fondasi RAG resmi memerlukan governance corpus, review lisensi, benchmark retrieval, dan aktivasi eksplisit pada fase berikutnya; P9-A belum memenuhi itu.
 - Koreksi/feedback lokal dapat memuat data sensitif; jangan commit file memori runtime.

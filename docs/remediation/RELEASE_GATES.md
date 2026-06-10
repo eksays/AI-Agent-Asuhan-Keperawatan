@@ -173,3 +173,13 @@ Real activation still requires official sourcing, license review, provenance
 verification, complete approved registry families, formal clinical review,
 release approval, controlled operational review, browser-QA disposition,
 parser host-isolation disposition, and CI evidence.
+
+## Phase 9 P9-A RAG Foundation Checkpoint
+
+P9-A adds default-off governed RAG corpus foundation tables, separate RAG migration journaling, read-only pgvector probing, and optional explicit admin-only pgvector schema preparation. It does not ingest real corpus bodies, copy licensed clinical content, ingest patient data, store PHI, enable product lexical retrieval, enable vector retrieval, implement hybrid retrieval, integrate embedding providers, rerank results, activate a RAG index release, or activate registry data.
+
+Gate A remains **Not met**. P9-A is not clinical validation, registry approval, corpus approval, privacy compliance, controlled-pilot readiness, hospital readiness, or production readiness.
+
+Gate B remains **Not met** because Gate A remains unmet and identity/RBAC, durable distributed controls, formal operational review, approved corpus releases, and external audit/storage controls remain absent.
+
+Gate C remains **Not met** because Gate B remains unmet and formal privacy/security/legal/regulatory review, clinical validation study, incident response, monitoring, and production responsibility model remain absent.

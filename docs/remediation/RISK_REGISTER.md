@@ -13,7 +13,9 @@ Checkpoint references:
 - Phase 7 = `52eb16d1916bb6089a2e342e3da54f6efe9549d4`
 - Phase 8A = 4050791ebae94739fbdefd25f75346c548020de6
 - Phase 8BE = 34c5797a0d0464fc429a15777e9299b970d5d297
-- Phase 8F = staged technical closure; checkpoint commit pending
+- Phase 8F = 34808a8823e224bcf4ccb9ca6d7d8ba48750d12d
+- Phase 8 CI follow-up = 04dee8c55d786e2c6cc32360f78d557c2e7d127e
+- Phase 8 dev merge = 281738e3bbf824f565c820dd21cd31a876474b86
 
 Phase 0A documentation evidence has no separate checkpoint commit recorded here.
 
@@ -201,7 +203,9 @@ Phase 0A documentation evidence has no separate checkpoint commit recorded here.
 
 ## Phase 8 Status Update
 
-Phase 8 inventory and planning has begun on `audit/phase8-registry-completion` from `origin/dev` at `adc712f`. No implementation, registry activation, code changes, or release-gate claims are included in the planning checkpoint.
+Current Phase 8 closure status: durable PostgreSQL registry infrastructure is technically implemented and synthetic-only verification is completed. Real registry approval remains absent, formal reviewer identity binding remains absent, official sourcing and license review remain incomplete, and Gate A/B/C remain unmet.
+
+Historical planning snapshot before implementation.
 
 | Risk | Severity | Phase 8 Status | Recommended Action |
 |---|---|---|---|
@@ -212,3 +216,14 @@ Phase 8 inventory and planning has begun on `audit/phase8-registry-completion` f
 | No startup registry loading | High | Pending P8-E | Add startup integration with fail-closed default |
 | CI enforcement incomplete | High | Pending P8-F | Extend CI to include Phase 8 tests |
 | Gate A remains unmet | High | Unchanged | Phase 8 reduces but does not eliminate Gate A blockers |
+
+## Phase 9 P9-A Status Update
+
+| Risk | Severity | P9-A Status | Recommended Action |
+|---|---|---|---|
+| CLI-RAG-001 | Medium | Separate default-off RAG corpus foundation added; product RAG remains lexical prototype only | Do not enable retrieval until governed corpus ingestion, benchmark, and closure review are complete |
+| RAG-GOV-001 | High | `rag_schema_migrations` records migration checksums and fails closed on drift | Keep RAG migrations forward-only and separate from registry migrations |
+| RAG-GOV-002 | High | Core lexical schema succeeds without pgvector; pgvector is optional explicit admin migration only | Keep vector retrieval disabled until embeddings and benchmark policy are reviewed |
+| RAG-PRIV-001 | Critical | Retrieval telemetry schema is bounded metadata-only and excludes raw query/prompt/hash/fingerprint/HMAC/path/URL/credentials/PHI/body fields | Maintain canary tests whenever retrieval events change |
+| RAG-STAGE-001 | Medium | Staging rows include TTL/cleanup metadata, are non-searchable, and cannot enter release manifests | Add cleanup operations in a later governed ingestion slice |
+| Gate A remains unmet | High | Unchanged after P9-A | Complete formal registry/corpus governance, retrieval benchmarks, browser QA disposition, and remaining release-gate work before any pilot claim |

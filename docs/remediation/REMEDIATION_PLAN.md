@@ -61,12 +61,15 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
 
 9. **Phase 8 - Complete and Govern Clinical Registries**
    - Status:
-  - P8-A committed and pushed at: 4050791ebae94739fbdefd25f75346c548020de6
-  - P8-BE committed and pushed at: 34c5797a0d0464fc429a15777e9299b970d5d297
-  - P8-F closure-reviewed and staged, awaiting checkpoint commit.
-  - no real registry imported
-  - no real registry activated
-  - operator activation remains false
+     - P8-A committed and pushed at: 4050791ebae94739fbdefd25f75346c548020de6
+     - P8-BE committed and pushed at: 34c5797a0d0464fc429a15777e9299b970d5d297
+     - P8-F committed at: 34808a8823e224bcf4ccb9ca6d7d8ba48750d12d
+     - P8-F CI follow-up committed at: 04dee8c55d786e2c6cc32360f78d557c2e7d127e
+     - Phase 8 merged into dev at: 281738e3bbf824f565c820dd21cd31a876474b86
+     - Dev GitHub Actions passed.
+     - No real registry imported.
+     - No real registry activated.
+     - Operator activation remains false.
    - Add durable registry store and manifest schema (P8-A).
    - Add clinical review queue and approval artifacts (P8-B).
    - Add governed import and extraction-quality reporting (P8-C).
@@ -75,8 +78,10 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Add CI enforcement, migrations, backup, recovery, concurrency, and closure (P8-F).
    - Import only approved reference data with provenance and clinical review.
 
-10. **Phase 9 - Hybrid Retrieval and Explainability**
-    - Add hybrid retrieval and objective evaluation without replacing deterministic validation.
+10. **Phase 9 - Governed RAG Corpus Foundation, Retrieval, and Explainability**
+    - Status: P9-A foundation implemented as default-off schema/probe work only; no product retrieval, embeddings, external providers, real corpus ingestion, patient data, PHI, licensed clinical body copying, or registry activation.
+    - P9-A adds separate RAG migrations, migration checksum journal, bounded explicit migration lock, read-only pgvector probe, optional admin-only pgvector migration path, and metadata-only governance tables.
+    - Later Phase 9 slices may add governed ingestion, lexical retrieval, benchmarks, and hybrid retrieval only after safety review.
 
 11. **Phase 10 - EBP Retrieval, OCR, Feedback Governance, and Reliability**
     - Govern EBP/OCR/feedback and complete release reliability gates.
@@ -90,6 +95,8 @@ Phase 0B changes are intentionally limited to truthful sandbox configuration, se
 Phase 1 changes are intentionally limited to outbound data policy, mocked-provider canary tests, EBP concept-query de-identification, safe LLM wrapping, safe output chunking for `/chat_stream`, and log/audit free-text sanitization. Phase 1 does not implement typed clinical schemas, registry quarantine, Mermaid hardening, isolated upload parsing, authentication hardening, MFA hardening, or production audit storage.
 
 Phase 2 changes are intentionally limited to typed clinical response schemas, deterministic clinical validation, trusted evidence binding, server-owned status/provenance fields, a fixture-friendly registry abstraction, fail-fast approved-registry checks, API-boundary abstention for clinical analysis output, synthetic adversarial tests, and nursing review documentation. Phase 2 does not approve local registry data, implement governed registry import/release workflow, enrich SDKI/SLKI/SIKI/NANDA/NOC/NIC datasets, optimize prompts for more diagnoses, add embeddings/vector databases, harden Mermaid, isolate parsers, change authentication/MFA/rate limits, redesign the audit ledger, or enable external capabilities by default.
+
+Phase 9 P9-A changes are intentionally limited to default-off governed RAG corpus foundation tables, safe configuration, read-only pgvector probing, and explicit admin-only migrations. P9-A does not modify Phase 8 registry migrations, edit frontend files, enable product retrieval, implement hybrid retrieval, add reranking, integrate embedding providers, ingest real or licensed corpus bodies, ingest patient data, use PHI, activate RAG index releases, activate registry data, or satisfy Gate A/B/C.
 
 ## Phase 0B Closure Notes
 
