@@ -22,7 +22,7 @@ class SyntheticCounts:
 
 
 def ensure_core_schema(conn) -> list[str]:
-    return run_migrations(conn, include_pgvector=False)
+    return run_migrations(conn, include_pgvector_extension=False, include_vector_schema=False)
 
 
 def sha256_hex(value: str) -> str:
@@ -235,12 +235,53 @@ class RagRepository:
             rows = [dict(zip(columns, result)) for result in cur.fetchall()]
         return release_id, rows
 
+    def fetch_active_vector(self, *, query_vector: list[float], max_results: int) -> tuple[str | None, list[dict[str, object]]]:
+        limit = max(1, min(int(max_results), 20))
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT ar.release_id FROM rag_active_index_release ar "
+                "JOIN rag_index_release_manifests rm ON rm.release_id = ar.release_id "
+                "WHERE ar.pointer_name = %s AND rm.synthetic_only = true AND rm.authority = false "
+                "AND rm.clinical_use_allowed = false",
+                (ACTIVE_POINTER_NAME,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None, []
+            release_id = row[0]
+
+            # Use exact cosine distance <=> for vector retrieval. We do not use ANN indexes.
+            # We enforce embedding_model_id = 'synthetic-hash-vector-v1'
+            vector_str = '[' + ','.join(str(f) for f in query_vector) + ']'
+
+            cur.execute(
+                "SELECT c.chunk_id, c.document_id, c.source_version_id, d.source_title_safe, c.section_path, "
+                "c.chunk_ordinal, c.chunk_hash, c.chunk_text, c.synthetic_only, c.authority, c.clinical_use_allowed, "
+                "1 - (e.embedding <=> %s::vector) AS retrieval_score "
+                "FROM rag_index_release_manifest_chunks mc "
+                "JOIN rag_chunks c ON c.chunk_id = mc.chunk_id "
+                "JOIN rag_documents d ON d.document_id = c.document_id "
+                "JOIN rag_chunk_embeddings e ON e.chunk_id = c.chunk_id "
+                "WHERE mc.release_id = %s "
+                "AND c.lifecycle_state = 'approved' AND c.retrieval_eligible = true "
+                "AND c.synthetic_only = true AND c.authority = false AND c.clinical_use_allowed = false "
+                "AND d.synthetic_only = true AND d.authority = false AND d.clinical_use_allowed = false "
+                "AND e.synthetic_only = true "
+                "AND e.embedding_model_id = 'synthetic-hash-vector-v1' "
+                "ORDER BY e.embedding <=> %s::vector ASC, mc.chunk_rank ASC LIMIT %s",
+                (vector_str, release_id, vector_str, limit),
+            )
+            columns = [desc.name for desc in cur.description]
+            rows = [dict(zip(columns, result)) for result in cur.fetchall()]
+        return release_id, rows
+
     def insert_retrieval_event(
         self,
         *,
         event_id: str,
         release_id: str | None,
         event_type: str,
+        retrieval_backend: str,
         result_count: int,
         selected_chunk_ids: list[str],
         abstention_reason: str,
@@ -252,11 +293,12 @@ class RagRepository:
                 "INSERT INTO rag_retrieval_events "
                 "(event_id, release_id, event_type, retrieval_backend, filter_policy, result_count, "
                 "selected_chunk_count, selected_chunk_ids, abstention_reason, safe_metadata) "
-                "VALUES (%s, %s, %s, 'lexical', 'synthetic_only_v1', %s, %s, %s, %s, %s)",
+                "VALUES (%s, %s, %s, %s, 'synthetic_only_v1', %s, %s, %s, %s, %s)",
                 (
                     event_id,
                     release_id,
                     event_type,
+                    retrieval_backend[:32],
                     max(0, min(int(result_count), 50)),
                     len(bounded_ids),
                     ','.join(bounded_ids)[:4096],

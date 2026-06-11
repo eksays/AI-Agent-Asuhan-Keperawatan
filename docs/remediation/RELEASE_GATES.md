@@ -188,9 +188,23 @@ Gate C remains **Not met** because Gate B remains unmet and formal privacy/secur
 
 ## Phase 9 P9-B Governed Synthetic Lexical RAG Checkpoint
 
-P9-B adds governed synthetic ingestion, deterministic hierarchy-aware chunking, explicit synthetic-only PostgreSQL lexical FTS retrieval, safe citation packaging, typed abstention, and metadata-only telemetry for local and optional PostgreSQL integration testing. At this time, P9-B is a closure-reviewed checkpoint candidate on the review branch and has not been merged into dev. It does not add a product API route, frontend integration, real corpus ingestion, licensed clinical body copying, patient data processing, PHI processing, embeddings, vector retrieval, hybrid retrieval, reranking, external provider calls, pgvector installation, optional vector migration application, Qdrant integration, or clinical registry activation.
+P9-B adds governed synthetic ingestion, deterministic hierarchy-aware chunking, explicit synthetic-only PostgreSQL lexical FTS retrieval, safe citation packaging, typed abstention, and metadata-only telemetry for local and optional PostgreSQL integration testing. P9-B checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e` was merged into dev at `9dbb6470fc4aea446f9108133bbd262c213113ca`; dev GitHub Actions passed after merge. It does not add a product API route, frontend integration, real corpus ingestion, licensed clinical body copying, patient data processing, PHI processing, embeddings, vector retrieval, hybrid retrieval, reranking, external provider calls, pgvector installation, optional vector migration application, Qdrant integration, or clinical registry activation.
 
 Gate A remains **Not met**. P9-B is a sandbox technical checkpoint only and does not provide formal corpus approval, real clinical source licensing, clinical validation, browser QA completion, parser host-isolation closure, or production-grade operational review.
+
+Gate B remains **Not met** because Gate A remains unmet and identity/RBAC, durable distributed controls, managed secret custody, formal operational review, approved real registry/corpus releases, and external audit/storage controls remain absent.
+
+Gate C remains **Not met** because Gate B remains unmet and formal privacy/security/legal/regulatory review, clinical validation study, incident response, monitoring, and production responsibility model remain absent.
+
+## Phase 9 P9-C Synthetic Vector Readiness Checkpoint
+
+P9-C installed pgvector explicitly on an operator-attested isolated test database only and applied the optional vector schema explicitly for synthetic testing only. Focused P9-C tests are unittest-discovered: synthetic vectors 8, benchmark 5, red-team 9, and PostgreSQL vector integration 3. Full discovery ran 494 tests with 18 expected skips and no failures or errors. The deterministic `synthetic-hash-vector-v1` generator and exact-cosine synthetic vector baseline are retrieval infrastructure plumbing only, not semantic retrieval-quality validation, not clinical retrieval-quality validation, and not a pgvector-versus-Qdrant architecture decision.
+
+Integration evidence: 54 synthetic vectors inserted across test runs, 4 exact-cosine queries, 1 lexical query, 3 benchmark runs, 6 red-team rejection checks, synthetic vector rows 0 after cleanup, synthetic corpus rows 0, staging rows 0, active synthetic pointers 0, real corpus rows 0, registry activation false, external provider calls 0.
+
+P9-C does not add a product API route, frontend integration, real corpus ingestion, licensed clinical body copying, patient data processing, PHI processing, external embedding providers, ANN indexes, HNSW, IVFFlat, hybrid retrieval, reranking, Qdrant integration, or clinical registry activation.
+
+Gate A remains **Not met**. P9-C is not clinical validation, corpus approval, controlled-pilot readiness, hospital readiness, production readiness, or compliance evidence.
 
 Gate B remains **Not met** because Gate A remains unmet and identity/RBAC, durable distributed controls, managed secret custody, formal operational review, approved real registry/corpus releases, and external audit/storage controls remain absent.
 

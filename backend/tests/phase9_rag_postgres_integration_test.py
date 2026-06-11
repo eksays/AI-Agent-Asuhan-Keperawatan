@@ -250,14 +250,16 @@ class P9ARagPostgresIntegrationTests(unittest.TestCase):
     def test_optional_vector_migration_is_not_applied_in_closure_review(self):
         from rag_migrations import pgvector_available, pgvector_installed
 
+        installed_before, version_present_before = pgvector_installed(self.conn)
+        vector_table_before = self._table_exists('rag_chunk_embeddings')
         result = self._run_migration_cli()
         self.assertEqual(result.returncode, 0, result.stderr)
         available = pgvector_available(self.conn)
         installed, version_present = pgvector_installed(self.conn)
         self.assertIsInstance(available, bool)
-        self.assertFalse(installed)
-        self.assertFalse(version_present)
-        self.assertFalse(self._table_exists('rag_chunk_embeddings'))
+        self.assertEqual(installed, installed_before)
+        self.assertEqual(version_present, version_present_before)
+        self.assertEqual(self._table_exists('rag_chunk_embeddings'), vector_table_before)
         self.assertNotIn('--enable-pgvector', result.args)
 
 

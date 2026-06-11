@@ -43,7 +43,7 @@ def record_metadata_only_event(repo: RagRepository, telemetry: RetrievalTelemetr
     safe_metadata = {
         'retrieval_event_id': telemetry.retrieval_event_id[:96],
         'index_release_id': (telemetry.index_release_id or '')[:96],
-        'retrieval_backend': 'lexical',
+        'retrieval_backend': telemetry.retrieval_backend[:32],
         'filter_summary_code': telemetry.filter_summary_code[:64],
         'score_min': max(0.0, min(float(telemetry.score_min), 1000.0)),
         'score_max': max(0.0, min(float(telemetry.score_max), 1000.0)),
@@ -54,6 +54,7 @@ def record_metadata_only_event(repo: RagRepository, telemetry: RetrievalTelemetr
         event_id=telemetry.retrieval_event_id,
         release_id=telemetry.index_release_id,
         event_type='abstained' if telemetry.abstention_reason_code else 'retrieved',
+        retrieval_backend=telemetry.retrieval_backend,
         result_count=max(0, min(int(telemetry.result_count), 50)),
         selected_chunk_ids=bounded_ids,
         abstention_reason=telemetry.abstention_reason_code,

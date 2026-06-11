@@ -313,9 +313,14 @@ class P9BRagPostgresIntegrationTests(unittest.TestCase):
             self.assertLessEqual(len(selected_ids), 4096)
 
         installed, version_present = pgvector_installed(self.conn)
-        self.assertFalse(installed)
-        self.assertFalse(version_present)
-        self.assertFalse(self._table_exists('rag_chunk_embeddings'))
+        if _enabled('RAG_ISOLATED_TEST_DATABASE_CONFIRMED'):
+            self.assertTrue(installed)
+            self.assertTrue(version_present)
+            self.assertTrue(self._table_exists('rag_chunk_embeddings'))
+        else:
+            self.assertFalse(installed)
+            self.assertFalse(version_present)
+            self.assertFalse(self._table_exists('rag_chunk_embeddings'))
 
     def test_retrieval_failure_records_safe_abstention_and_cleanup(self):
         from rag_fixture_loader import default_fixture_root

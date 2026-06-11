@@ -232,7 +232,7 @@ P9-A source checkpoint: `96024f43f41b1f1d9afca08b6b2d5db4b167cb9a`; P9-A dev mer
 
 ## Phase 9 P9-B Status Update
 
-Current P9-B closure status: P9-B is a closure-reviewed checkpoint candidate on the review branch and has not been merged into dev.
+Current P9-B status: checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e` was merged into dev at `9dbb6470fc4aea446f9108133bbd262c213113ca`; P9-B dev GitHub Actions passed.
 
 | Risk | Severity | P9-B Status | Recommended Action |
 |---|---|---|---|
@@ -241,5 +241,17 @@ Current P9-B closure status: P9-B is a closure-reviewed checkpoint candidate on 
 | RAG-LEX-001 | Medium | Lexical retrieval uses parameterized PostgreSQL FTS with `simple` config, bounded top-k, typed abstention, and synthetic-only release filters | Benchmark lexical quality before any broader retrieval claim; do not claim multilingual stemming or clinical adequacy |
 | RAG-CITE-001 | Medium | Citation packaging returns bounded plain-text synthetic excerpts with authority and clinical-use labels set false | Add formal corpus approval and citation review before any authoritative source display |
 | RAG-PRIV-001 | Critical | Retrieval telemetry remains bounded metadata-only and excludes raw query, prompt, hashes, HMACs, paths, URLs, credentials, PHI, patient text, corpus bodies, raw exceptions, and stack traces | Preserve canary tests and metadata allowlists before expanding telemetry |
-| RAG-VEC-001 | High | pgvector remains available but not installed; optional vector schema is defined but unapplied; embeddings, vector retrieval, hybrid retrieval, and reranking are not implemented | Defer P9-C/vector decisions until benchmark and provider-safety review |
+| RAG-VEC-001 | High | pgvector is installed explicitly on the isolated P9-C test database only; optional vector schema is applied explicitly for synthetic testing only. Product embeddings, product vector retrieval, hybrid retrieval, and reranking are not implemented | Keep pgvector/vector schema isolated to synthetic test database evidence; do not promote to pilot/production without formal corpus and clinical review |
 | Gate A remains unmet | High | Unchanged after P9-B | Complete formal registry/corpus governance, clinical review, benchmark evidence, browser QA disposition, and remaining release-gate work before any pilot claim |
+
+## Phase 9 P9-C Status Update
+
+Current P9-C closure status: pgvector installation and vector-schema application completed only through explicit operator-controlled isolated test-database paths. Focused P9-C tests are unittest-discovered and full discovery passed.
+
+| Risk | Severity | P9-C Status | Recommended Action |
+|---|---|---|---|
+| RAG-VEC-001 | Medium | Optional pgvector schema (`MIGRATION_RAG_VECTOR_V003`) is applied on the isolated test database only after explicit operator action | Maintain explicit `--enable-pgvector` and `--apply-vector-schema` separation; do not run either path in pilot/production |
+| RAG-VEC-CLI-001 | High | Staged migration CLI corruption was detected before mutation, recovered from the clean committed baseline, and retested with focused unittest coverage; isolated database operator attestation was provided for this closure run | Preserve CLI role-integrity tests and isolated guard before any future mutation |
+| RAG-VEC-002 | Medium | Exact-cosine baseline introduced but isolated. Synthetic vector generators (`rag_synthetic_vectors.py`) are deterministic plumbing only | Do not connect external embedding APIs, LLM providers, ANN indexes, HNSW, IVFFlat, reranking, hybrid retrieval, or Qdrant without later review |
+| RAG-EVAL-001 | High | Benchmark harness executed 3 synthetic infrastructure runs; full discovery ran 494 tests with 18 expected skips and no failures/errors. This is not semantic or clinical retrieval-quality validation | Complete formal clinical relevance benchmarks and corpus governance before pilot launch |
+| Gate A remains unmet | High | Unchanged after P9-C | Clinical validation and formal registry/corpus governance remain incomplete |

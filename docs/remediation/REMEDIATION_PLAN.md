@@ -79,11 +79,13 @@ The repository is a clinical sandbox candidate only. Phase 0B fail-closed contai
    - Import only approved reference data with provenance and clinical review.
 
 10. **Phase 9 - Governed RAG Corpus Foundation, Retrieval, and Explainability**
-- Status: P9-B is a closure-reviewed checkpoint candidate on the review branch and has not been merged into dev. No product route, frontend integration, embeddings, external providers, real corpus ingestion, patient data, PHI, licensed clinical body copying, or registry activation is added.
+- Status: P9-C installed pgvector explicitly on an operator-attested isolated test database only and applied the optional vector schema explicitly for synthetic testing only. Focused unittest counts are synthetic vectors 8, benchmark 5, red-team 9, and PostgreSQL vector integration 3; full discovery ran 494 tests with 18 expected skips and no failures or errors. No product route, frontend integration, external providers, real corpus ingestion, patient data, PHI, licensed clinical body copying, or registry activation is added.
 - P9-A adds separate RAG migrations, migration checksum journal, bounded explicit migration lock, read-only pgvector probe, optional admin-only pgvector migration path, and metadata-only governance tables.
 - P9-A source checkpoint: `96024f43f41b1f1d9afca08b6b2d5db4b167cb9a`; P9-A dev merge: `59884ecfba983d02924fb1cd4d5a81ff0af46455`; P9-A dev GitHub Actions: PASS.
 - P9-B adds generated synthetic fixture ingestion, deterministic hierarchy-aware chunking, PostgreSQL lexical FTS retrieval, citation packaging, typed abstention, and metadata-only telemetry for explicit synthetic tests.
-    - Later Phase 9 slices may add benchmarks, governed real-corpus approval, product integration, and hybrid retrieval only after safety review.
+- P9-B checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e` was merged into dev at `9dbb6470fc4aea446f9108133bbd262c213113ca`; P9-B dev GitHub Actions passed.
+- P9-C adds deterministic `synthetic-hash-vector-v1` plumbing and an exact-cosine synthetic vector baseline for infrastructure benchmarking only. Integration inserted 54 synthetic vectors across test runs, executed 4 exact-cosine queries, 1 lexical query, 3 benchmark runs, and 6 red-team rejection checks; cleanup verified synthetic vector rows 0, staging rows 0, active synthetic pointers 0, real corpus rows 0, registry activation false, and external provider calls 0. It makes no semantic retrieval-quality claim, no clinical retrieval-quality claim, no pgvector-versus-Qdrant decision, and adds no ANN index, HNSW, IVFFlat, hybrid retrieval, reranking, or Qdrant.
+    - Later Phase 9 slices may add governed real-corpus approval, product integration, and clinically meaningful benchmarks only after safety review.
 
 11. **Phase 10 - EBP Retrieval, OCR, Feedback Governance, and Reliability**
     - Govern EBP/OCR/feedback and complete release reliability gates.
@@ -99,6 +101,8 @@ Phase 1 changes are intentionally limited to outbound data policy, mocked-provid
 Phase 2 changes are intentionally limited to typed clinical response schemas, deterministic clinical validation, trusted evidence binding, server-owned status/provenance fields, a fixture-friendly registry abstraction, fail-fast approved-registry checks, API-boundary abstention for clinical analysis output, synthetic adversarial tests, and nursing review documentation. Phase 2 does not approve local registry data, implement governed registry import/release workflow, enrich SDKI/SLKI/SIKI/NANDA/NOC/NIC datasets, optimize prompts for more diagnoses, add embeddings/vector databases, harden Mermaid, isolate parsers, change authentication/MFA/rate limits, redesign the audit ledger, or enable external capabilities by default.
 
 Phase 9 P9-A changes are intentionally limited to default-off governed RAG corpus foundation tables, safe configuration, read-only pgvector probing, and explicit admin-only migrations. P9-A does not modify Phase 8 registry migrations, edit frontend files, enable product retrieval, implement hybrid retrieval, add reranking, integrate embedding providers, ingest real or licensed corpus bodies, ingest patient data, use PHI, activate RAG index releases, activate registry data, or satisfy Gate A/B/C.
+
+Phase 9 P9-C changes are intentionally limited to synthetic vector readiness and infrastructure benchmarking. P9-C does not modify frontend files, CI YAML, `backend/api.py`, or `backend/registry_migrations.py`; does not add product API routes, external embedding providers, Qdrant, ANN indexes, HNSW, IVFFlat, hybrid retrieval, reranking, real corpus ingestion, licensed clinical body copying, patient data, PHI, or registry activation; and does not satisfy Gate A/B/C.
 
 ## Phase 0B Closure Notes
 
