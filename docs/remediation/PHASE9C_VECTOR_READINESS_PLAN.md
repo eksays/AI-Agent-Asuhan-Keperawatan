@@ -23,6 +23,9 @@ P9-C is a synthetic-only vector readiness and retrieval infrastructure benchmark
 ## Truthful Status
 
 - P9-B checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e` was merged into dev at `9dbb6470fc4aea446f9108133bbd262c213113ca`; P9-B dev GitHub Actions passed.
+- P9-C checkpoint committed at `eac151638f5f294cd21ac634c08d5bac41fe130a` was merged into dev at `8c9e0927ab26be381334a9a2222080671fb6df0f`; review-branch and dev GitHub Actions passed.
+- Phase 9 is technically closed for synthetic infrastructure scope only.
+- Phase 10 has not started.
 - P9-C focused tests are unittest-discovered: synthetic vectors 8, benchmark 5, red-team 9, and PostgreSQL vector integration 3.
 - pgvector extension installation completed only through the explicit isolated admin path.
 - vector-schema application completed only through the explicit isolated admin path.
