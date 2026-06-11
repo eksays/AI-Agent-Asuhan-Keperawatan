@@ -879,9 +879,7 @@ Gate status remains unchanged: Gate A, Gate B, and Gate C are not met. This chec
 
 # Phase 9 P9-B Governed Synthetic Lexical RAG - 2026-06-10
 
-P9-B implements explicit-test-only governed synthetic ingestion, deterministic hierarchy-aware chunking, PostgreSQL lexical FTS retrieval, safe citation packaging, typed abstention, and metadata-only retrieval telemetry. Current closure-review status: P9-B is a closure-reviewed checkpoint candidate on the review branch and has not been merged into dev. No product retrieval route, frontend integration, real corpus ingestion, licensed clinical body copying, patient data, PHI, embeddings, vector retrieval, hybrid retrieval, reranking, external provider call, pgvector installation, optional vector migration application, or registry activation was introduced.
-
-This snapshot was recorded before checkpoint commit.
+P9-B implements explicit-test-only governed synthetic ingestion, deterministic hierarchy-aware chunking, PostgreSQL lexical FTS retrieval, safe citation packaging, typed abstention, and metadata-only retrieval telemetry. P9-B checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e` was merged into dev at `9dbb6470fc4aea446f9108133bbd262c213113ca`; P9-B dev GitHub Actions passed. No product retrieval route, frontend integration, real corpus ingestion, licensed clinical body copying, patient data, PHI, embeddings, vector retrieval, hybrid retrieval, reranking, external provider call, pgvector installation, optional vector migration application, or registry activation was introduced.
 
 Implemented evidence:
 
@@ -918,3 +916,44 @@ Regression evidence:
 Post-cleanup safety position: synthetic integration cleanup completed, registry activation remained false, real corpus rows remained zero, temporary staging rows were removed, synthetic pointers were restored or cleared safely, pgvector was not installed, vector migration was not applied, and no external LLM, EBP, or embedding provider was called.
 
 Gate status remains unchanged: Gate A, Gate B, and Gate C are not met. P9-B is not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.
+
+# Phase 9 P9-C Synthetic Vector Readiness Recovery - 2026-06-10
+
+P9-C is implemented and staged for closure review only. This staged-index recovery pass restored `docs/remediation/VERIFICATION_LOG.md` from the clean UTF-8 `HEAD` version after a staged/worktree NUL-byte corruption was detected, then reapplied only narrow P9-C status notes. No pgvector installation, vector-schema application, PostgreSQL mutation, vector integration test, commit, push, merge, product route, frontend integration, external provider call, real corpus ingestion, licensed clinical body copying, patient data, PHI, Qdrant integration, ANN index, HNSW, IVFFlat, hybrid retrieval, reranking, or registry activation occurred during this recovery pass.
+
+P9-C recovery status:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Branch baseline | PASS | Work is on `audit/phase9c-vector-readiness-benchmark` from `dev` at `9dbb6470fc4aea446f9108133bbd262c213113ca`. |
+| P9-B provenance | PASS | P9-B checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e`; dev merge `9dbb6470fc4aea446f9108133bbd262c213113ca`; dev GitHub Actions PASS. |
+| Migration CLI corruption recovery | PASS | `backend/scripts/rag_db_migrate.py` was recovered from the clean committed baseline, then narrow P9-C guards were reapplied for mutually exclusive extension installation and vector-schema application. |
+| pgvector mutation | NOT RUN | `--enable-pgvector` and `--apply-vector-schema` are intentionally deferred until the database-mutation closure review. |
+| PostgreSQL mutation | NOT RUN | No pgvector installation, vector-schema application, DDL, DML, vector integration test, commit, push, or merge occurred during this CLI recovery pass. |
+| Isolated database attestation | PENDING | Operator attestation was not provided separately in this recovery pass; pgvector mutation must remain blocked until an isolated Neon branch or isolated test database is explicitly confirmed. |
+| Synthetic vectors | STAGED | `synthetic-hash-vector-v1` is deterministic plumbing only; no external embedding provider or semantic-quality claim. |
+| Exact-cosine baseline | STAGED | Infrastructure benchmark only; no clinical retrieval-quality claim and no pgvector-versus-Qdrant architecture decision. |
+| Boundary preservation | PASS | No product route, no frontend integration, no real corpus, no PHI, no licensed clinical content, no external provider, no ANN/HNSW/IVFFlat, no hybrid retrieval, no reranking, no Qdrant, and registry activation remains false. |
+
+Gate status remains unchanged: Gate A, Gate B, and Gate C are not met. P9-C is not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.
+
+# Phase 9 P9-C Focused unittest Repair and Final Closure - 2026-06-11
+
+P9-C focused tests were converted from pytest-style functions to real `unittest.TestCase` coverage. pgvector remained installed only on the operator-attested isolated test database, and the optional vector schema remained applied only for synthetic testing. No product route, frontend integration, real corpus ingestion, licensed clinical content, patient data, PHI, external provider, ANN index, HNSW, IVFFlat, hybrid retrieval, reranking, Qdrant, registry activation, commit, push, or merge occurred.
+
+Focused and integration evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Synthetic vector unittest | PASS | 8 tests; fixed model id `synthetic-hash-vector-v1`, dimension 8, deterministic output, bounded finite unit vectors, empty/NUL/control/oversized input rejection, no tokenizer/model/network/provider SDK. |
+| Benchmark unittest | PASS | 5 tests; lexical and vector baselines measured separately with deterministic synthetic metrics and no hybrid/reranking/Qdrant/quality claim. |
+| Red-team unittest | PASS | 9 tests; prompt injection inert, markup plain-text, PHI canary rejected, SQL-shaped query inert/safe, metadata-only telemetry, provider absence, and DB/service-boundary coverage. |
+| PostgreSQL vector integration | PASS | 3 tests; 54 synthetic vectors inserted across test runs, 4 exact-cosine queries, 1 lexical query, 3 benchmark runs, 6 red-team rejection checks, external provider calls 0. |
+| Cleanup | PASS | synthetic vector rows 0, synthetic corpus rows 0, staging rows 0, active synthetic pointers 0, real corpus rows 0, registry activation false. |
+| Full discovery | PASS | `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v`: 494 tests, 18 expected skips, failures 0, errors 0; P9-C modules visibly included. |
+| Compileall | PASS | `backend\venv\Scripts\python.exe -m compileall backend -q -x ".*(venv|__pycache__).*"`: exit 0. |
+| Bandit | PASS | `backend\venv\Scripts\bandit.exe -r backend -ll -x backend/env,backend/venv`: exit 0; Medium 0, High 0. |
+| Artifact scan | PASS | `backend\venv\Scripts\python.exe backend\scripts\ci_artifact_scan.py`: no forbidden tracked files. |
+| Frontend gates | PASS | `npm --prefix frontend ci`, lint, build, and audit all exit 0; audit reports 0 vulnerabilities. |
+
+Truthful status: `synthetic-hash-vector-v1` remains deterministic plumbing only. Exact-cosine vector retrieval is a synthetic infrastructure baseline only. The benchmark is not semantic retrieval-quality validation, not clinical retrieval-quality validation, and not a pgvector-versus-Qdrant architecture decision. Gate A, Gate B, and Gate C remain unmet. The project remains not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.

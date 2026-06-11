@@ -1,0 +1,12 @@
+{
+    "corpora": [
+        {
+            "id": "corpus_1",
+            "path": "corpus_1.txt"
+        },
+        {
+            "id": "phi_canary",
+            "path": "phi_canary.txt"
+        }
+    ]
+}

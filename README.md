@@ -11,7 +11,7 @@ The current safety posture is intentionally fail-closed: unsupported or unverifi
 - Evidence retrieval from external scholarly services is disabled by default until de-identification enforcement is verified.
 - Clinical photo analysis is unavailable; validated OCR or vision processing is not implemented.
 - Mermaid pathway rendering is disabled by default until strict SVG sanitization and XSS regression tests pass.
-- Phase 9 RAG corpus foundations are default-off. P9-B adds governed synthetic ingestion, deterministic chunking, and PostgreSQL lexical FTS retrieval for explicit synthetic tests only; product retrieval routes, hybrid retrieval, embeddings, vector retrieval, reranking, and external embedding providers are not implemented.
+- Phase 9 RAG corpus foundations are default-off. P9-B adds governed synthetic ingestion, deterministic chunking, and PostgreSQL lexical FTS retrieval for explicit synthetic tests only. P9-C adds an isolated synthetic exact-cosine vector baseline for infrastructure testing only; product retrieval routes, hybrid retrieval, semantic/vector product retrieval, reranking, and external embedding providers are not implemented.
 - Local registry files are not approved authoritative clinical references.
 - API keys are accepted only through Authorization: Bearer <key>; body, query-string, and cookie API-key transport is not supported.
 - Browser-carried shared API keys are visible to the browser client; this is a sandbox containment control, not confidential server-side authentication.
@@ -29,7 +29,7 @@ The current safety posture is intentionally fail-closed: unsupported or unverifi
 | Clinical photo analysis | Unavailable | Validated OCR or vision workflow not implemented |
 | Mermaid pathway rendering | Disabled by default | Awaiting SVG sanitization and XSS regression suite |
 | Governed RAG corpus | Synthetic test pipeline only | P9-B supports generated synthetic ingestion, chunking, lexical FTS retrieval, citation packaging, abstention, and metadata telemetry for explicit tests; no real corpus or product retrieval |
-| Hybrid/vector retrieval | Not implemented | pgvector is proposed/probed only; embeddings are not implemented |
+| Hybrid/vector retrieval | Product capability not implemented | P9-C installed pgvector and applied the optional vector schema only on an isolated test database; the exact-cosine baseline is synthetic infrastructure testing only, and external embedding providers are not implemented |
 | SDKI authoritative grounding | Unavailable for production | Registry governance incomplete |
 | SLKI/SIKI | Unavailable | Approved registries unavailable |
 | NANDA/NOC/NIC | Unavailable | Approved registries unavailable |
@@ -138,13 +138,15 @@ The current local registry data is sandbox-only. Missing or unapproved SDKI/SLKI
 
 Phase 9 P9-A source checkpoint `96024f43f41b1f1d9afca08b6b2d5db4b167cb9a` was merged into dev at `59884ecfba983d02924fb1cd4d5a81ff0af46455`, with dev GitHub Actions passing after merge.
 
-Phase 9 P9-B adds generated synthetic fixture ingestion, deterministic hierarchy-aware chunking, synthetic-only PostgreSQL lexical FTS retrieval, safe citation packaging, typed abstention, and metadata-only retrieval telemetry for explicit local tests only. At this checkpoint P9-B is a closure-reviewed checkpoint candidate on the review branch and has not been merged into dev. It does not add a product retrieval route, frontend integration, real corpus ingestion, licensed clinical content copying, patient data ingestion, PHI storage, embeddings, vector retrieval, hybrid retrieval, reranking, external embedding providers, or registry activation. pgvector remains available but not installed; the optional vector schema remains defined but unapplied.
+Phase 9 P9-B adds generated synthetic fixture ingestion, deterministic hierarchy-aware chunking, synthetic-only PostgreSQL lexical FTS retrieval, safe citation packaging, typed abstention, and metadata-only retrieval telemetry for explicit local tests only. P9-B checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e` was merged into dev at `9dbb6470fc4aea446f9108133bbd262c213113ca`; dev GitHub Actions passed after merge. P9-B does not add a product retrieval route, frontend integration, real corpus ingestion, licensed clinical content copying, patient data ingestion, PHI storage, embeddings, vector retrieval, hybrid retrieval, reranking, external embedding providers, or registry activation.
+
+Phase 9 P9-C installs pgvector explicitly on an operator-attested isolated test database only and applies the optional vector schema explicitly for synthetic testing only. Focused P9-C tests are now unittest-discovered: synthetic vectors 8, benchmark 5, red-team 9, and isolated PostgreSQL vector integration 3. Integration inserted 54 synthetic vectors across test runs, executed 4 exact-cosine queries, 1 lexical query, 3 benchmark runs, and 6 red-team rejection checks; cleanup verified synthetic vector rows 0, synthetic corpus rows 0, staging rows 0, active synthetic pointers 0, real corpus rows 0, registry activation false, and external provider calls 0. `synthetic-hash-vector-v1` remains deterministic plumbing only, and exact-cosine vector retrieval is a synthetic infrastructure baseline only; it makes no semantic retrieval-quality claim, no clinical retrieval-quality claim, and no pgvector-versus-Qdrant architecture conclusion. P9-C adds no product route, frontend integration, real corpus, licensed clinical content, PHI, external embedding provider, ANN index, HNSW, IVFFlat, hybrid retrieval, reranking, Qdrant, or registry activation.
 
 ## Remediation Roadmap
 
 See `docs/remediation/` for the remediation plan, verification log, risk register, data governance notes, and release gates.
 
-Gate A is not passed yet. Phase 0B through Phase 9 P9-B controls are sandbox checkpoints only. Later work still needs durable identity/session/rate-limit storage, formal registry and clinical review, browser-rendered QA disposition, hard parser resource controls, external immutable audit storage or equivalent audit service, CI enforcement, governed real corpus approval, benchmarked retrieval, and legal/regulatory review before any pilot or production claim.
+Gate A is not passed yet. Phase 0B through staged Phase 9 P9-C controls are sandbox checkpoints only. Later work still needs durable identity/session/rate-limit storage, formal registry and clinical review, browser-rendered QA disposition, hard parser resource controls, external immutable audit storage or equivalent audit service, CI enforcement, governed real corpus approval, clinically meaningful retrieval benchmarks, and legal/regulatory review before any pilot or production claim.
 
 
 Director MFA enrollment is disabled by default. Local sandbox provisioning requires DIRECTOR_ENROLLMENT_ENABLED=true and X-Director-Bootstrap; controlled-pilot and production provisioning workflows are not implemented.

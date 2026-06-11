@@ -333,6 +333,49 @@ CREATE INDEX IF NOT EXISTS idx_rag_chunk_embeddings_chunk_id
 )
 
 
+MIGRATION_RAG_VECTOR_V003 = RagMigration(
+    migration_id="RAG_VECTOR_V003",
+    migration_name="add synthetic constraints to rag chunk embedding table",
+    requires_pgvector=True,
+    sql="""\
+ALTER TABLE rag_chunk_embeddings
+    ADD COLUMN IF NOT EXISTS synthetic_only BOOLEAN NOT NULL DEFAULT FALSE;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'rag_chunk_embeddings'::regclass
+          AND conname = 'rag_chunk_embeddings_synthetic_only_check'
+    ) THEN
+        ALTER TABLE rag_chunk_embeddings ADD CONSTRAINT rag_chunk_embeddings_synthetic_only_check CHECK (synthetic_only = TRUE);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'rag_chunk_embeddings'::regclass
+          AND conname = 'rag_chunk_embeddings_vector_dims_check'
+    ) THEN
+        ALTER TABLE rag_chunk_embeddings ADD CONSTRAINT rag_chunk_embeddings_vector_dims_check CHECK (vector_dims(embedding) = embedding_dimension);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'rag_chunk_embeddings'::regclass
+          AND conname = 'rag_chunk_embeddings_synthetic_hash_vector_v1_dims_check'
+    ) THEN
+        ALTER TABLE rag_chunk_embeddings ADD CONSTRAINT rag_chunk_embeddings_synthetic_hash_vector_v1_dims_check CHECK (
+            embedding_model_id != 'synthetic-hash-vector-v1' OR embedding_dimension = 8
+        );
+    END IF;
+END $$;
+""",
+)
+
+
 CORE_MIGRATIONS: tuple[RagMigration, ...] = (
     MIGRATION_RAG_CORE_V001,
     MIGRATION_RAG_CORE_V002,
@@ -343,9 +386,19 @@ CORE_MIGRATIONS: tuple[RagMigration, ...] = (
     MIGRATION_RAG_CORE_V006,
 )
 
-PGVECTOR_MIGRATIONS: tuple[RagMigration, ...] = (
+PGVECTOR_MIGRATIONS = (
     MIGRATION_RAG_VECTOR_V001,
     MIGRATION_RAG_VECTOR_V002,
+    MIGRATION_RAG_VECTOR_V003,
+)
+
+PGVECTOR_EXTENSION_MIGRATIONS: tuple[RagMigration, ...] = (
+    MIGRATION_RAG_VECTOR_V001,
+)
+
+PGVECTOR_SCHEMA_MIGRATIONS: tuple[RagMigration, ...] = (
+    MIGRATION_RAG_VECTOR_V002,
+    MIGRATION_RAG_VECTOR_V003,
 )
 
 
@@ -399,7 +452,7 @@ def _applied_migrations(conn) -> dict[str, str]:
 
 
 def _verify_applied_checksums(applied: dict[str, str], migrations: tuple[RagMigration, ...]) -> None:
-    known = {migration.migration_id: migration for migration in (*CORE_MIGRATIONS, *PGVECTOR_MIGRATIONS)}
+    known = {migration.migration_id: migration for migration in (*CORE_MIGRATIONS, *PGVECTOR_EXTENSION_MIGRATIONS, *PGVECTOR_SCHEMA_MIGRATIONS)}
     for migration_id, checksum in applied.items():
         migration = known.get(migration_id)
         if migration and checksum != migration.checksum:
@@ -410,10 +463,15 @@ def _verify_applied_checksums(applied: dict[str, str], migrations: tuple[RagMigr
             raise RagMigrationError("Applied RAG migration checksum mismatch.")
 
 
-def run_migrations(conn, *, include_pgvector: bool = False) -> list[str]:
+def run_migrations(conn, *, include_pgvector_extension: bool = False, include_vector_schema: bool = False) -> list[str]:
     """Run pending RAG migrations. Caller owns explicit CLI/operator gating."""
     _ensure_journal(conn)
-    migrations = CORE_MIGRATIONS + (PGVECTOR_MIGRATIONS if include_pgvector else ())
+    migrations = list(CORE_MIGRATIONS)
+    if include_pgvector_extension:
+        migrations.extend(PGVECTOR_EXTENSION_MIGRATIONS)
+    if include_vector_schema:
+        migrations.extend(PGVECTOR_SCHEMA_MIGRATIONS)
+    migrations = tuple(migrations)
     applied = _applied_migrations(conn)
     _verify_applied_checksums(applied, migrations)
 
