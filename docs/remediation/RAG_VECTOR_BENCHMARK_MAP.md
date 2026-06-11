@@ -33,4 +33,8 @@ Focused unittest counts: synthetic vectors 8, benchmark 5, red-team 9, PostgreSQ
 
 ## Gate Status
 
+- P9-C checkpoint committed at `eac151638f5f294cd21ac634c08d5bac41fe130a` was merged into dev at `8c9e0927ab26be381334a9a2222080671fb6df0f`; review-branch and dev GitHub Actions passed.
+- Phase 9 is technically closed for synthetic infrastructure scope only.
+- Phase 10 has not started.
+
 Gate A, Gate B, and Gate C remain unmet. The benchmark is a sandbox checkpoint only and must not be used for patient care, clinical validation, hospital deployment, production readiness, or compliance claims.

@@ -939,7 +939,7 @@ Gate status remains unchanged: Gate A, Gate B, and Gate C are not met. P9-C is n
 
 # Phase 9 P9-C Focused unittest Repair and Final Closure - 2026-06-11
 
-P9-C focused tests were converted from pytest-style functions to real `unittest.TestCase` coverage. pgvector remained installed only on the operator-attested isolated test database, and the optional vector schema remained applied only for synthetic testing. No product route, frontend integration, real corpus ingestion, licensed clinical content, patient data, PHI, external provider, ANN index, HNSW, IVFFlat, hybrid retrieval, reranking, Qdrant, registry activation, commit, push, or merge occurred.
+P9-C focused tests were converted from pytest-style functions to real `unittest.TestCase` coverage. pgvector remained installed only on the operator-attested isolated test database, and the optional vector schema remained applied only for synthetic testing. No product route, frontend integration, real corpus ingestion, licensed clinical content, patient data, PHI, external provider, ANN index, HNSW, IVFFlat, hybrid retrieval, reranking, Qdrant, registry activation, commit, push, or merge occurred. P9-C checkpoint committed at `eac151638f5f294cd21ac634c08d5bac41fe130a` was merged into dev at `8c9e0927ab26be381334a9a2222080671fb6df0f`; review-branch and dev GitHub Actions passed. Phase 9 is technically closed for synthetic infrastructure scope only. Gate A/B/C remain unmet, and Phase 10 has not started.
 
 Focused and integration evidence:
 

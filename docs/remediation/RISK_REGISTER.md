@@ -246,7 +246,7 @@ Current P9-B status: checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e` was m
 
 ## Phase 9 P9-C Status Update
 
-Current P9-C closure status: pgvector installation and vector-schema application completed only through explicit operator-controlled isolated test-database paths. Focused P9-C tests are unittest-discovered and full discovery passed.
+Current P9-C closure status: P9-C checkpoint committed at `eac151638f5f294cd21ac634c08d5bac41fe130a` was merged into dev at `8c9e0927ab26be381334a9a2222080671fb6df0f`; review-branch and dev GitHub Actions passed. Phase 9 is technically closed for synthetic infrastructure scope only. Gate A/B/C remain unmet, and Phase 10 has not started. pgvector installation and vector-schema application completed only through explicit operator-controlled isolated test-database paths. Focused P9-C tests are unittest-discovered and full discovery passed.
 
 | Risk | Severity | P9-C Status | Recommended Action |
 |---|---|---|---|
