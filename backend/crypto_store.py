@@ -6,6 +6,7 @@ File didekripsi HANYA saat diload ke RAM; dienkripsi kembali saat save().
 """
 from __future__ import annotations
 import os, json, base64, hashlib, threading
+from config import CONFIG
 
 _KEYFILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cdss_key")
 _DEKFILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dek_store")   # registry session_id -> DEK (terenkripsi master)
@@ -18,7 +19,7 @@ def _get_fernet():
     if _fernet_cache is not None:
         return _fernet_cache
     from cryptography.fernet import Fernet
-    raw = os.environ.get("CDSS_SECRET_KEY", "").strip()
+    raw = CONFIG.cdss_secret_key
     if raw:
         try:
             f = Fernet(raw.encode())                                   # sudah berupa Fernet key valid

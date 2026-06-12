@@ -6,8 +6,16 @@ const Welcome = dynamic(() => import("@/components/welcome").then((m) => m.Welco
 const Dashboard = dynamic(() => import("@/components/dashboard").then((m) => m.Dashboard), { ssr: false, loading: () => <div className="min-h-[100dvh] bg-zinc-950" /> });
 
 function Root() {
-  const { phase } = useApp();
-  return phase === "welcome" ? <Welcome /> : <Dashboard />;
+  const { phase, capabilities } = useApp();
+  return (
+    <>
+      <div className="fixed inset-x-0 top-0 z-[300] border-b border-amber-500/30 bg-amber-950/95 px-3 py-2 text-center text-xs font-medium text-amber-50 shadow-lg backdrop-blur">
+        {capabilities.safety_notice} Unsupported or unverified features are disabled.
+        {capabilities.metadata_unavailable ? " Capability metadata unavailable; unsafe features are disabled." : ""}
+      </div>
+      <div className="pt-9">{phase === "welcome" ? <Welcome /> : <Dashboard />}</div>
+    </>
+  );
 }
 
 export default function Home() {

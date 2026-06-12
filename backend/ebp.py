@@ -18,23 +18,26 @@ import os, re, json, time, threading, datetime, urllib.parse, urllib.request
 try:
     from defusedxml.ElementTree import fromstring as _xml_fromstring   # parsing XML AMAN (anti XML-bomb / XXE)
 except Exception:   # fallback bila defusedxml belum terpasang (sumber XML sudah dibatasi host allowlist)
-    from xml.etree.ElementTree import fromstring as _xml_fromstring  # nosec
+    # B405: fallback only if defusedxml is unavailable; HTTP XML sources use host allowlists.
+    from xml.etree.ElementTree import fromstring as _xml_fromstring  # nosec B405
 from concurrent.futures import ThreadPoolExecutor
 from langchain_core.messages import SystemMessage, HumanMessage
 import crypto_store
+from config import CONFIG
+from outbound_policy import DEFAULT_OUTBOUND_POLICY
 
 _FILE = os.path.join(os.path.dirname(__file__), "ebp_memory.json")
 _LOCK = threading.Lock()
 _UA = {"User-Agent": "CDSS-Keperawatan/1.0 (EBP agent; mailto:cdss@local)"}
 _TIMEOUT = 14
-_PER_SRC = 8       # ambil per sumber
-_MERGED_CAP = 10   # maksimal artikel yang diberikan ke AI untuk dibaca
+_PER_SRC = 10      # ambil per sumber (lebih banyak kandidat -> AI bisa rekomendasi >=3 yang relevan)
+_MERGED_CAP = 12   # maksimal artikel yang diberikan ke AI untuk dibaca
 _ABS_CAP = 1200
 _NCBI = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 _EUPMC = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 _S2 = "https://api.semanticscholar.org/graph/v1/paper/search"
 _UNPAYWALL = "https://api.unpaywall.org/v2/"
-_UNPAYWALL_EMAIL = os.environ.get("UNPAYWALL_EMAIL", "cdss.keperawatan@example.com")
+_UNPAYWALL_EMAIL = CONFIG.unpaywall_email
 
 
 # ----------------------------- util ------------------------------------------
@@ -116,6 +119,21 @@ def _text(el) -> str:
     return " ".join("".join(el.itertext()).split()) if el is not None else ""
 
 
+def _authors_pubmed(art) -> list:
+    """Daftar penulis 'NamaBelakang Inisial' dari XML PubMed (untuk Daftar Pustaka APA 7)."""
+    names = []
+    for au in art.findall(".//AuthorList/Author"):
+        last = (au.findtext("LastName") or "").strip()
+        ini = (au.findtext("Initials") or "").strip()
+        if last:
+            names.append((last + " " + ini).strip())
+        else:
+            coll = (au.findtext("CollectiveName") or "").strip()
+            if coll:
+                names.append(coll)
+    return names[:25]
+
+
 def _pubmed(query: str, mn, mx, n: int) -> list:
     try:
         params = {"db": "pubmed", "retmode": "json", "sort": "relevance", "retmax": str(n),
@@ -141,6 +159,10 @@ def _pubmed(query: str, mn, mx, n: int) -> list:
                  "abstract": " ".join(_text(x) for x in art.findall(".//Abstract/AbstractText")).strip()[:_ABS_CAP],
                  "journal": (art.findtext(".//Journal/Title") or "").strip(),
                  "year": (art.findtext(".//JournalIssue/PubDate/Year") or art.findtext(".//PubDate/Year") or "").strip(),
+                 "authors": _authors_pubmed(art),
+                 "volume": (art.findtext(".//JournalIssue/Volume") or "").strip(),
+                 "issue": (art.findtext(".//JournalIssue/Issue") or "").strip(),
+                 "pages": (art.findtext(".//Pagination/MedlinePgn") or art.findtext(".//MedlinePgn") or "").strip(),
                  "oa_url": (f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmcid}/" if pmcid else ""),
                  "open_access": True, "citations": 0, "source": "PubMed"}   # sudah disaring free full text[sb]
             out.append(a)
@@ -163,12 +185,17 @@ def _europepmc(query: str, mn, mx, n: int) -> list:
             for u in (((r.get("fullTextUrlList") or {}).get("fullTextUrl")) or []):
                 if (u.get("availability") or "").lower().startswith("open") or (u.get("documentStyle") in ("html", "pdf")):
                     oa_url = u.get("url") or oa_url
-            journal = ((r.get("journalInfo") or {}).get("journal") or {}).get("title") or r.get("journalTitle") or r.get("source") or ""
+            ji = r.get("journalInfo") or {}
+            journal = (ji.get("journal") or {}).get("title") or r.get("journalTitle") or r.get("source") or ""
+            au_str = (r.get("authorString") or "").strip().rstrip(".")
+            authors = [x.strip() for x in au_str.split(",") if x.strip()][:25] if au_str else []
             out.append({"pmid": (r.get("pmid") or "").strip(), "doi": (r.get("doi") or "").strip().lower(),
                         "pmcid": (r.get("pmcid") or "").strip(),
                         "title": (r.get("title") or "").strip(),
                         "abstract": (r.get("abstractText") or "").strip()[:_ABS_CAP],
                         "journal": journal.strip(), "year": str(r.get("pubYear") or "").strip(),
+                        "authors": authors, "volume": str(ji.get("volume") or "").strip(),
+                        "issue": str(ji.get("issue") or "").strip(), "pages": (r.get("pageInfo") or "").strip(),
                         "oa_url": oa_url, "open_access": (r.get("isOpenAccess") == "Y" or bool(oa_url)),
                         "citations": int(r.get("citedByCount") or 0), "source": "Europe PMC"})
         return out
@@ -180,7 +207,7 @@ def _europepmc(query: str, mn, mx, n: int) -> list:
 def _semanticscholar(query: str, mn, mx, n: int) -> list:
     try:
         params = {"query": query.strip(), "limit": str(min(n, 20)),
-                  "fields": "title,abstract,year,venue,externalIds,openAccessPdf,citationCount"}
+                  "fields": "title,abstract,year,venue,externalIds,openAccessPdf,citationCount,authors"}
         if mn and mx:
             params["year"] = f"{mn}-{mx}"
         res = _http_json(f"{_S2}?" + urllib.parse.urlencode(params)).get("data", []) or []
@@ -190,9 +217,11 @@ def _semanticscholar(query: str, mn, mx, n: int) -> list:
             oa = (r.get("openAccessPdf") or {}).get("url") or ""
             if not oa:
                 continue   # WAJIB open-access (full-text gratis) — lewati yang tidak punya PDF gratis
+            authors = [au.get("name", "").strip() for au in (r.get("authors") or []) if au.get("name")][:25]
             out.append({"pmid": str(ext.get("PubMed") or "").strip(), "doi": str(ext.get("DOI") or "").strip().lower(),
                         "title": (r.get("title") or "").strip(), "abstract": (r.get("abstract") or "").strip()[:_ABS_CAP],
                         "journal": (r.get("venue") or "").strip(), "year": str(r.get("year") or "").strip(),
+                        "authors": authors, "volume": "", "issue": "", "pages": "",
                         "oa_url": oa, "open_access": bool(oa), "citations": int(r.get("citationCount") or 0),
                         "source": "Semantic Scholar"})
         return out
@@ -226,6 +255,10 @@ def _search_all(query: str, mn, mx, n: int) -> list:
             ex_a["oa_url"] = ex_a.get("oa_url") or a.get("oa_url")
             ex_a["doi"] = ex_a.get("doi") or a.get("doi")
             ex_a["pmid"] = ex_a.get("pmid") or a.get("pmid")
+            ex_a["authors"] = ex_a.get("authors") or a.get("authors")
+            ex_a["volume"] = ex_a.get("volume") or a.get("volume")
+            ex_a["issue"] = ex_a.get("issue") or a.get("issue")
+            ex_a["pages"] = ex_a.get("pages") or a.get("pages")
             ex_a["citations"] = max(ex_a.get("citations", 0), a.get("citations", 0))
             if a.get("source") and a["source"] not in (ex_a.get("source") or ""):
                 ex_a["source"] = (ex_a.get("source") or "") + "+" + a["source"]
@@ -316,15 +349,21 @@ def _store(arts: list, terms_text: str):
 
 # ----------------------------- jembatan ke LLM -------------------------------
 def _english_query(llm, case: str) -> str:
-    sys = ("Anda pustakawan medis ahli pencari bukti. Dari kasus klinis (Bahasa Indonesia) berikut, susun SATU baris "
-           "kueri pencarian dalam Bahasa Inggris yang RINGKAS namun cukup LUAS: cukup 2-4 KONSEP inti saja "
-           "(boleh memakai OR untuk sinonim). JANGAN merangkai banyak istilah ber-AND agar hasil tidak nihil. "
-           "Keluarkan HANYA kuerinya — tanpa tanda kutip, tanpa field tag seperti [tiab]/[mesh], tanpa penjelasan.")
+    """Susun kueri Bahasa Inggris TERSTRUKTUR berbasis PICO (personal & spesifik pada kasus) namun tidak terlalu sempit."""
+    sys = ("Anda pustakawan medis ahli EBP. Dari kasus klinis (Bahasa Indonesia) berikut, lakukan analisis PICO secara "
+           "internal: P (population/problem pasien), I (intervention/topik keperawatan inti), C (comparison — boleh "
+           "diabaikan), O (outcome yang diharapkan). Lalu susun SATU baris kueri pencarian Bahasa Inggris yang "
+           "menggabungkan konsep P dan I (boleh + O): bentuk (konsep1 OR sinonim OR sinonim) AND (konsep2 OR sinonim OR "
+           "sinonim), MAKSIMAL 3 konsep ber-AND agar hasil tidak nihil. Sertakan BANYAK sinonim (2-4 per konsep, termasuk "
+           "istilah MeSH umum) dengan OR agar menjangkau SEBANYAK mungkin jurnal relevan. "
+           "Keluarkan HANYA kuerinya — tanpa label P/I/C/O, tanpa tanda kutip, tanpa field tag seperti [tiab]/[mesh], "
+           "tanpa penjelasan.")
     r = llm.invoke([SystemMessage(content=sys), HumanMessage(content=case[:2000])])
-    lines = (getattr(r, "content", "") or "").strip().splitlines()
-    q = (lines[0] if lines else "").strip()
+    lines = [ln for ln in (getattr(r, "content", "") or "").strip().splitlines() if ln.strip()]
+    q = (lines[-1] if lines else "").strip()                      # ambil baris kuerinya (abaikan baris analisis bila ada)
+    q = re.sub(r"^\s*(query|kueri|search)\s*[:\-]\s*", "", q, flags=re.I)
     q = re.sub(r"\[[^\]]*\]", "", q).replace('"', "").strip()
-    return q[:200] or case[:200]
+    return q[:240] or case[:200]
 
 
 def _broaden(q: str) -> str:
@@ -360,13 +399,33 @@ def retrieve(english_query: str, recall_text: str = "", k: int = _PER_SRC):
     return list(merged.values())[:_MERGED_CAP], tier
 
 
+def _apa_bits(a: dict) -> str:
+    """Ringkas data sitasi (penulis/volume/nomor/halaman/DOI) untuk penyusunan Daftar Pustaka APA 7 oleh AI."""
+    parts = []
+    au = a.get("authors")
+    if au:
+        au_str = "; ".join(au) if isinstance(au, list) else str(au)
+        parts.append("Penulis: " + au_str[:320])
+    if a.get("volume"):
+        parts.append("Volume: " + str(a["volume"]))
+    if a.get("issue"):
+        parts.append("Nomor: " + str(a["issue"]))
+    if a.get("pages"):
+        parts.append("Halaman: " + str(a["pages"]))
+    if a.get("doi"):
+        parts.append("DOI: " + str(a["doi"]))
+    return "; ".join(parts) if parts else "(penulis/volume tidak tersedia di sumber)"
+
+
 def retrieve_context(llm, case: str) -> str:
     """Susun query (EN) -> cari lintas-database (PubMed/Europe PMC/Semantic Scholar) berjenjang -> blok konteks NYATA."""
+    safe_case = DEFAULT_OUTBOUND_POLICY.deidentified_concept_query(case)
     try:
-        q = _english_query(llm, case) or case
+        q = _english_query(llm, safe_case.text) or safe_case.text
     except Exception:
-        q = case
-    arts, tier = retrieve(q, case)
+        q = safe_case.text
+    q = DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(q).text
+    arts, tier = retrieve(q, safe_case.text)
     if not arts:
         return ("\n\nHASIL PENCARIAN JURNAL: KOSONG. Sudah dicari di beberapa database kredibel (PubMed, Europe PMC, "
                 "Semantic Scholar) dengan syarat OPEN-ACCESS/FULL-TEXT GRATIS, berjenjang (5 tahun, 10 tahun, lalu tanpa "
@@ -376,15 +435,16 @@ def retrieve_context(llm, case: str) -> str:
     head = (f"\n\nDAFTAR JURNAL NYATA dari DATABASE KREDIBEL (kueri: \"{q}\"; rentang tahun: {tier or 'tanpa batas'}; "
             "DIURUTKAN dari yang PALING BARU). Sumber: PubMed / Europe PMC / Semantic Scholar. SEMUA jurnal di bawah "
             "OPEN-ACCESS / FULL-TEXT GRATIS — dapat diakses & dibaca penuh oleh AI maupun perawat. Anda WAJIB HANYA "
-            "memakai jurnal dari daftar ini (judul/DOI/URL PERSIS; DILARANG mengarang atau mengubah). Baca tiap abstrak, "
-            "bandingkan, lalu pilih yang BENAR-BENAR RELEVAN dengan kasus DAN paling BARU; ringkas isinya. Jurnal yang "
-            "TIDAK relevan dengan kasus JANGAN dimasukkan.")
+            "memakai jurnal dari daftar ini (judul/DOI/URL/penulis PERSIS; DILARANG mengarang atau mengubah). Baca tiap "
+            "abstrak, bandingkan, lalu pilih yang BENAR-BENAR RELEVAN dengan kasus DAN paling BARU; ringkas isinya. Jurnal "
+            "yang TIDAK relevan dengan kasus JANGAN dimasukkan. Field 'SITASI' tiap jurnal (penulis/volume/nomor/halaman/"
+            "DOI) WAJIB dipakai untuk menyusun Daftar Pustaka APA 7 di akhir jawaban — pakai PERSIS, JANGAN mengarang penulis/tahun/DOI.")
     blocks = [head]
     for i, a in enumerate(arts, 1):
         oa = " [OA]" if a.get("open_access") else ""
         cit = f", {a['citations']} sitasi" if a.get("citations") else ""
         blocks.append(f"[{i}] {a['title']} ({a.get('journal','')} {a.get('year','')}{cit}){oa} — sumber: {a.get('source','')}\n"
-                      f"    URL: {a.get('url','')}\n    ABSTRAK: {a.get('abstract') or '(abstrak tidak tersedia)'}")
+                      f"    SITASI: {_apa_bits(a)}\n    URL: {a.get('url','')}\n    ABSTRAK: {a.get('abstract') or '(abstrak tidak tersedia)'}")
     return "\n".join(blocks)
 
 

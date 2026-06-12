@@ -1,0 +1,19 @@
+# Synthetic Fall-Risk Observation Workflow
+
+## Scenario Setup
+This generated fixture models a training room checklist for simulated mobility observation. It contains no real case details and no authoritative clinical content.
+
+## Observation Group
+1. Check whether the scenario card says the walking path is clear.
+2. Observe whether the training actor pauses before changing direction.
+3. Record synthetic balance cues only from the scripted exercise.
+4. Keep the note bounded to the exercise and request human review for any uncertainty.
+
+## Row Group
+| cue | generated note |
+| path | clear or cluttered according to the script |
+| pause | present or absent according to the script |
+| review | required for all sandbox retrieval demonstrations |
+
+## Safety Boundary
+This text is for deterministic chunking and lexical search tests only. It must remain synthetic-only and non-authoritative.

@@ -1,0 +1,10 @@
+# Synthetic Markup Safety Fixture
+
+## Citation Payload
+This generated text includes inert markup for citation packaging tests: <script>alert('synthetic')</script> and <b>bold synthetic marker</b>.
+
+## Expected Handling
+Citation packaging must return plain text only. Script-like text must not become executable markup and must not be treated as trusted formatting.
+
+## Safety Boundary
+This fixture is synthetic generated content only and exists to test excerpt sanitization.

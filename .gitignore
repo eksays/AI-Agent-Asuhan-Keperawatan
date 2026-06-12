@@ -43,15 +43,38 @@ backend/Pdf_*.pdf
 backend/feedback_memory.json
 backend/ebp_memory.json
 
-# Kunci enkripsi lokal, registry DEK (crypto-shredding) & jejak audit (WORM ledger)
+# Kunci enkripsi lokal, registry DEK (crypto-shredding) & jejak audit lokal (not WORM)
 backend/.cdss_key
 backend/.dek_store
 backend/.director_totp
 backend/audit_log.txt
 backend/audit_ledger.jsonl
+backend/audit_ledger*.jsonl
+backend/audit_exports/
 
 # (Fase 4) sterilisasi tambahan — data turunan/berkas besar/PHI JANGAN di-commit
 data_terstruktur/
 *.pdf
 feedback_memory.json
 ebp_memory.json
+
+# (Phase 8) Local environment secrets in subdirectories
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# (Phase 8) Local database credentials
+.pgpass
+*.pgpass
+
+# (Phase 8) Local database exports and dumps
+*.dump
+*.backup
+*.sql.gz
+
+# (Phase 8) Local SQLite or fallback artifacts
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm

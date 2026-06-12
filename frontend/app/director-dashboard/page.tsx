@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 // Dasbor Eksekutif Direktur — rute SAH (bukan pintu rahasia), dijaga MFA/TOTP.
 // Tema "Bloomberg Terminal": True Black + hijau neon + amber, monospace, kepadatan data tinggi.
 const API = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://127.0.0.1:8000";
-const SS = "cdss-director";
 
 interface Metrics {
   uptime_s: number; requests: number; req_last_hour: number; denied: number; err5xx: number;
@@ -49,15 +48,13 @@ export default function DirectorDashboard() {
   const [err, setErr] = useState("");
   const [m, setM] = useState<Metrics | null>(null);
 
-  useEffect(() => { try { const t = sessionStorage.getItem(SS); if (t) setToken(t); } catch {} }, []);
-
   const login = async (e: React.FormEvent) => {
     e.preventDefault(); setErr("");
     try {
       const fd = new FormData(); fd.append("code", code.trim());
       const r = await fetch(`${API}/director/login`, { method: "POST", body: fd });
       const d = await r.json();
-      if (d.status === "sukses" && d.director_token) { setToken(d.director_token); try { sessionStorage.setItem(SS, d.director_token); } catch {} }
+      if (d.status === "sukses" && d.director_token) { setToken(d.director_token); }
       else setErr(d.pesan || "Otentikasi gagal.");
     } catch { setErr("Tidak dapat terhubung ke server backend."); }
   };
@@ -66,12 +63,17 @@ export default function DirectorDashboard() {
     if (!token) return;
     try {
       const r = await fetch(`${API}/director/metrics`, { headers: { Authorization: `Bearer ${token}` } });
-      if (r.status === 401) { setToken(null); try { sessionStorage.removeItem(SS); } catch {} return; }
+      if (r.status === 401) { setToken(null); return; }
       setM((await r.json()) as Metrics);
     } catch {}
   }, [token]);
 
-  useEffect(() => { if (!token) return; poll(); const i = setInterval(poll, 3000); return () => clearInterval(i); }, [token, poll]);
+  useEffect(() => {
+    if (!token) return;
+    const first = setTimeout(() => { void poll(); }, 0);
+    const i = setInterval(poll, 3000);
+    return () => { clearTimeout(first); clearInterval(i); };
+  }, [token, poll]);
 
   if (!token) {
     return (
@@ -83,7 +85,7 @@ export default function DirectorDashboard() {
             className="mt-5 w-full border border-[#00FF00]/40 bg-black px-3 py-2 text-center text-2xl tracking-[0.5em] tabular-nums text-[#00FF00] outline-none focus:border-[#FFBF00]" />
           {err && <div className="mt-2 text-xs text-red-400">{err}</div>}
           <button type="submit" className="mt-4 w-full border border-[#00FF00] bg-[#00FF00]/10 py-2 text-sm font-bold uppercase tracking-widest hover:bg-[#00FF00]/20">Authenticate</button>
-          <div className="mt-4 text-[0.6rem] leading-relaxed text-[#00FF00]/40">Pindai otpauth:// URI (dari konsol server saat start, atau /director/enroll dgn DIRECTOR_BOOTSTRAP) ke aplikasi authenticator.</div>
+          <div className="mt-4 text-[0.6rem] leading-relaxed text-[#00FF00]/40">Provisioning MFA dilakukan secara lokal di server sandbox melalui boundary bootstrap eksplisit; token direktur disimpan di memori halaman saja.</div>
         </form>
       </main>
     );
@@ -93,7 +95,7 @@ export default function DirectorDashboard() {
     <main className="min-h-screen bg-black p-3 font-mono text-[#00FF00] sm:p-5">
       <header className="mb-4 flex flex-wrap items-baseline justify-between gap-2 border-b border-[#00FF00]/30 pb-2">
         <div className="text-sm uppercase tracking-[0.3em] text-[#FFBF00]">CDSS · SINGULARITY COMMAND CENTER</div>
-        <div className="text-[0.65rem] text-[#00FF00]/50">UPTIME {m ? dur(m.uptime_s) : "—"} · LIVE 3s · <button onClick={() => { setToken(null); try { sessionStorage.removeItem(SS); } catch {} }} className="underline hover:text-[#FFBF00]">LOGOUT</button></div>
+        <div className="text-[0.65rem] text-[#00FF00]/50">UPTIME {m ? dur(m.uptime_s) : "—"} · LIVE 3s · <button onClick={() => { setToken(null); }} className="underline hover:text-[#FFBF00]">LOGOUT</button></div>
       </header>
 
       {!m ? <div className="text-[#00FF00]/50">Memuat telemetri…</div> : (

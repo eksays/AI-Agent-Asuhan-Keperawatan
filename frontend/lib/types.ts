@@ -4,7 +4,7 @@ export type Tier = "flash" | "medium" | "pro";
 
 export type ProviderId =
   | "gemini" | "openai" | "claude" | "deepseek" | "groq"
-  | "xai" | "mistral" | "together" | "openrouter" | "shopee";
+  | "xai" | "mistral" | "together" | "openrouter" | "shopee" | "sumopod";
 
 export interface Credentials { name: string; apiKey: string; provider: ProviderId }
 
@@ -22,6 +22,7 @@ export function detectProvider(key: string): ProviderId {
   if (k.startsWith("xai-")) return "xai";
   if (k.startsWith("sk-or-")) return "openrouter";
   if (/^shpe|^shopee|^spc_/i.test(k)) return "shopee";       // ShopeeAI
+  if (k.startsWith("sp-") || k.startsWith("sumo-")) return "sumopod"; // Sumopod
   if (k.startsWith("sk-")) return "openai";
   return "openrouter"; // universal fallback (OpenRouter)
 }
@@ -29,7 +30,7 @@ export function detectProvider(key: string): ProviderId {
 export const PROVIDER_LABEL: Record<ProviderId, string> = {
   gemini: "Gemini", openai: "OpenAI", claude: "Claude", deepseek: "DeepSeek",
   groq: "Groq", xai: "Grok", mistral: "Mistral", together: "Together AI",
-  openrouter: "OpenRouter", shopee: "ShopeeAI",
+  openrouter: "OpenRouter", shopee: "ShopeeAI", sumopod: "Sumopod",
 };
 
 export function resolveModel(provider: ProviderId, tier: Tier): string {
@@ -44,6 +45,7 @@ export function resolveModel(provider: ProviderId, tier: Tier): string {
     together: { flash: "meta-llama/Llama-3.3-70B-Instruct-Turbo", medium: "meta-llama/Llama-3.3-70B-Instruct-Turbo", pro: "meta-llama/Llama-3.3-70B-Instruct-Turbo" },
     openrouter: { flash: "openai/gpt-4o-mini", medium: "openai/gpt-4o", pro: "anthropic/claude-sonnet-4" },
     shopee: { flash: "shopee-llm", medium: "shopee-llm", pro: "shopee-llm" },
+    sumopod: { flash: "deepseek-v4-pro", medium: "deepseek-v4-pro", pro: "deepseek-v4-pro" },
   };
   return M[provider][tier];
 }
