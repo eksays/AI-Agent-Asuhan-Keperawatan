@@ -957,3 +957,22 @@ Focused and integration evidence:
 | Frontend gates | PASS | `npm --prefix frontend ci`, lint, build, and audit all exit 0; audit reports 0 vulnerabilities. |
 
 Truthful status: `synthetic-hash-vector-v1` remains deterministic plumbing only. Exact-cosine vector retrieval is a synthetic infrastructure baseline only. The benchmark is not semantic retrieval-quality validation, not clinical retrieval-quality validation, and not a pgvector-versus-Qdrant architecture decision. Gate A, Gate B, and Gate C remain unmet. The project remains not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.
+
+# Phase 10 P10-A1 Governed Corpus-Intake - 2026-06-11
+
+P10-A1 implements the metadata-only governed corpus-intake contract, synthetic-only validator, quarantine decision foundation, and is implemented and closure-reviewed on the review branch checkpoint. Static migration definitions are committed but remain unapplied. No database mutation has been executed. No body/excerpt storage is enabled. Real corpus ingestion, licensed clinical content, patient data, PHI, product routes, and external provider calls are forbidden and disabled.
+
+Focused and integration evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Policy Validator | PASS | `backend/tests/phase10a1_rag_intake_policy_test.py`: 20 tests verify accept classes, quarantine classes, rejection classes, bounds checks, control character rejections, NUL byte rejections, hash pattern checks, opaque reference patterns, and forbidden keys rejection. |
+| Ingestion Service | PASS | `backend/tests/phase10a1_rag_intake_service_test.py`: 11 tests verify AppConfig default-off gating, sandbox runtime-mode restrictions, payload rejections (body, excerpt), quarantine TTL calculations, and telemetry safety audits. |
+| Static Migration | PASS | `backend/tests/phase10a1_rag_intake_migration_test.py`: 3 tests verify that prior RAG migration checksums remain unmutated, the new companion schema (MIGRATION_RAG_CORE_V008) is appended, companion tables are defined without body/excerpt/PHI/patient columns, check constraints are present, and no extensions or ANN/HNSW/IVFFlat indexes are declared. |
+| Full discovery | PASS | Discover test suite passed cleanly. |
+| Compileall | PASS | `backend\venv\Scripts\python.exe -m compileall backend -q -x ".*(venv|__pycache__).*"`: exit 0. |
+| Bandit | PASS | `backend\venv\Scripts\bandit.exe -r backend -ll -x backend/env,backend/venv`: exit 0; Medium 0, High 0. |
+| Artifact scan | PASS | `backend\venv\Scripts\python.exe backend\scripts\ci_artifact_scan.py`: exit 0. |
+| Frontend gates | PASS | `npm --prefix frontend ci`, lint, build, and audit exit 0. |
+
+Truthful status: P10-A1 is a metadata-only foundation. Gate A, Gate B, and Gate C remain unmet. The project is not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.

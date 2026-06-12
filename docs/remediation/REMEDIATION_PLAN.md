@@ -261,3 +261,20 @@ Phase 7 is limited to tamper-evident audit ledger hardening. It adds a structure
 Closure hardening adds direct tests for canonical field coverage, non-finite JSON rejection, append fail-closed behavior on mutated/reordered/malformed/wrong-key ledgers, valid-prefix tail-truncation limitations, path normalization and unsafe file-type rejection, privileged audit failure semantics, recursion safety, and expanded PHI/secret canaries.
 
 The ledger remains a local sandbox evidence control only. It is not WORM storage, not immutable filesystem storage, not a digital signature, and not asymmetric non-repudiation. A host administrator with both ledger and key access can still rewrite history. A valid-prefix tail truncation may still verify locally without an external checkpoint/footer/archive. Segment rotation is implemented; key rotation is not implemented. Multi-process correctness is not claimed; a durable centralized ledger service or external immutable archive remains required before controlled-pilot, compliance, hospital, or production claims.
+
+## Phase 10 P10-A1 Implementation Notes
+
+Phase 10 P10-A1 is limited to the metadata-only governed corpus-intake contract and quarantine-decision foundation.
+
+Implemented scope:
+- Added experimental flags in `backend/config.py` and `backend/.env.example` (default-off).
+- Added `backend/rag_intake_policy.py` containing explicit enums for source classes, status outcomes, safe field limits, character/nul checks, opaque references, and classification rules.
+- Added `backend/rag_intake_service.py` to evaluate metadata-only submissions, calculate cleanup TTL, and emit in-memory decision events.
+- Appended `MIGRATION_RAG_CORE_V008` migration SQL in `backend/rag_migrations.py` containing schema definitions for companion tables `rag_intake_submissions`, `rag_intake_decision_events`, and `rag_intake_quarantine_records`.
+- Added unit tests for policy, service gating, and static migrations.
+
+Residuals:
+- Static migration definitions are committed but remain unapplied. No PostgreSQL mutation has been executed. P10-A1 is not merged into dev, and P10-A2 has not started.
+- No document bodies or excerpts are stored.
+- Real corpus ingestion, licensed clinical body copying, patient data, and PHI are forbidden.
+- Gate A, B, and C remain unmet. Not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.

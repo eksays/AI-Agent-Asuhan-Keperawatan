@@ -255,3 +255,14 @@ Current P9-C closure status: P9-C checkpoint committed at `eac151638f5f294cd21ac
 | RAG-VEC-002 | Medium | Exact-cosine baseline introduced but isolated. Synthetic vector generators (`rag_synthetic_vectors.py`) are deterministic plumbing only | Do not connect external embedding APIs, LLM providers, ANN indexes, HNSW, IVFFlat, reranking, hybrid retrieval, or Qdrant without later review |
 | RAG-EVAL-001 | High | Benchmark harness executed 3 synthetic infrastructure runs; full discovery ran 494 tests with 18 expected skips and no failures/errors. This is not semantic or clinical retrieval-quality validation | Complete formal clinical relevance benchmarks and corpus governance before pilot launch |
 | Gate A remains unmet | High | Unchanged after P9-C | Clinical validation and formal registry/corpus governance remain incomplete |
+
+## Phase 10 P10-A1 Status Update
+
+Current P10-A1 status: P10-A1 is implemented and closure-reviewed on the review branch checkpoint. Static migration definitions are committed but remain unapplied. No PostgreSQL mutation has been executed. P10-A1 is not merged into dev, and P10-A2 has not started. No body storage, real corpus ingestion, patient data, PHI, external provider, clinical-use eligibility, or product routes have been implemented. Gate A, B, and C remain unmet.
+
+| Risk | Severity | P10-A1 Status | Recommended Action |
+| :--- | :--- | :--- | :--- |
+| RAG-INTAKE-001 | Medium | Metadata contract is validated in-memory; no companion table SQL is executed against PostgreSQL. | Postpone migration execution until P10-A2 isolated integration is approved. |
+| RAG-INTAKE-002 | High | Corpus body storage is disabled; no raw document text, excerpts, or queries are stored. | Maintain hard blocks on body storage parameters. |
+| RAG-PRIV-002 | Critical | No patient data or PHI is allowed; any flag triggers rejection. Opaque sandbox references are used for reviewers. | Maintain synthetic-only validator invariants. |
+| Gate A remains unmet | High | Unchanged after P10-A1. | Not patient-care software, not clinically validated, not hospital-ready, and not compliant. |

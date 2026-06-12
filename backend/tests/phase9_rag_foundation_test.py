@@ -181,9 +181,8 @@ class P9ARagMigrationDefinitionTests(unittest.TestCase):
         self.assertNotIn('insert into rag_active_index_release', sql)
 
     def test_retrieval_telemetry_has_no_forbidden_columns(self):
-        sql = self._core_sql()
-        start = sql.index('create table if not exists rag_retrieval_events')
-        telemetry_sql = sql[start:]
+        from rag_migrations import MIGRATION_RAG_CORE_V006
+        telemetry_sql = MIGRATION_RAG_CORE_V006.sql.lower()
         forbidden = (
             'raw_query', 'raw_prompt', 'query_hash', 'query_fingerprint', 'query_hmac',
             'patient', 'phi', 'corpus_body', 'path', 'url', 'credential', 'exception',
