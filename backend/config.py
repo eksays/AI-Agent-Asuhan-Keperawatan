@@ -89,6 +89,12 @@ class AppConfig:
     rag_min_lexical_rank: float
     rag_max_selected_chunk_ids: int
     rag_staging_ttl_seconds: int
+    rag_corpus_intake_enabled: bool
+    rag_corpus_quarantine_enabled: bool
+    rag_body_storage_enabled: bool
+    rag_real_corpus_ingestion_enabled: bool
+    rag_corpus_promotion_enabled: bool
+    rag_quarantine_metadata_ttl_hours: int
 
     @property
     def external_llm_enabled(self) -> bool:
@@ -184,6 +190,37 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         rag_index_activation_enabled,
         rag_external_embedding_provider_enabled,
     ))
+    rag_corpus_intake_enabled = _bool_env(source, 'RAG_CORPUS_INTAKE_ENABLED')
+    rag_corpus_quarantine_enabled = _bool_env(source, 'RAG_CORPUS_QUARANTINE_ENABLED')
+    rag_body_storage_enabled = _bool_env(source, 'RAG_BODY_STORAGE_ENABLED')
+    rag_real_corpus_ingestion_enabled = _bool_env(source, 'RAG_REAL_CORPUS_INGESTION_ENABLED')
+    rag_corpus_promotion_enabled = _bool_env(source, 'RAG_CORPUS_PROMOTION_ENABLED')
+
+    p10_flags_active = any((
+        rag_corpus_intake_enabled,
+        rag_corpus_quarantine_enabled,
+        rag_body_storage_enabled,
+        rag_real_corpus_ingestion_enabled,
+        rag_corpus_promotion_enabled,
+    ))
+
+    if app_mode in {'controlled_pilot', 'production'} and p10_flags_active:
+        raise RuntimeError('Phase 10 experimental flags are not allowed outside clinical_sandbox mode.')
+
+    if rag_corpus_intake_enabled:
+        if app_mode != 'clinical_sandbox':
+            raise RuntimeError('RAG corpus intake requires APP_MODE=clinical_sandbox.')
+        if rag_runtime_mode != 'synthetic_corpus_test':
+            raise RuntimeError('RAG corpus intake requires RAG_RUNTIME_MODE=synthetic_corpus_test.')
+        if registry_activation_enabled:
+            raise RuntimeError('RAG corpus intake requires REGISTRY_ACTIVATION_ENABLED=false.')
+        if rag_body_storage_enabled:
+            raise RuntimeError('RAG body storage is forbidden during metadata intake.')
+        if rag_real_corpus_ingestion_enabled:
+            raise RuntimeError('Real RAG corpus ingestion is forbidden during metadata intake.')
+        if rag_corpus_promotion_enabled:
+            raise RuntimeError('RAG clinical use promotion is forbidden during metadata intake.')
+
     if rag_runtime_mode == 'synthetic_corpus_test' and app_mode != 'clinical_sandbox':
         raise RuntimeError('RAG_RUNTIME_MODE=synthetic_corpus_test is only valid in clinical_sandbox mode.')
     if rag_runtime_mode == 'synthetic_corpus_test' and registry_activation_enabled:
@@ -286,6 +323,12 @@ def load_config(env: Mapping[str, str] | None = None) -> AppConfig:
         rag_min_lexical_rank=_bounded_float_env(source, 'RAG_MIN_LEXICAL_RANK', 0.01, 0.0, 10.0),
         rag_max_selected_chunk_ids=_bounded_int_env(source, 'RAG_MAX_SELECTED_CHUNK_IDS', 8, 1, 20),
         rag_staging_ttl_seconds=_bounded_int_env(source, 'RAG_STAGING_TTL_SECONDS', 3600, 60, 86400),
+        rag_corpus_intake_enabled=rag_corpus_intake_enabled,
+        rag_corpus_quarantine_enabled=rag_corpus_quarantine_enabled,
+        rag_body_storage_enabled=rag_body_storage_enabled,
+        rag_real_corpus_ingestion_enabled=rag_real_corpus_ingestion_enabled,
+        rag_corpus_promotion_enabled=rag_corpus_promotion_enabled,
+        rag_quarantine_metadata_ttl_hours=_bounded_int_env(source, 'RAG_QUARANTINE_METADATA_TTL_HOURS', 24, 1, 168),
         unpaywall_email=source.get("UNPAYWALL_EMAIL", "cdss.keperawatan@example.com"),
     )
 

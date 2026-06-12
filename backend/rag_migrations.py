@@ -376,6 +376,74 @@ END $$;
 )
 
 
+MIGRATION_RAG_CORE_V008 = RagMigration(
+    migration_id="RAG_CORE_V008",
+    migration_name="create governed corpus intake companion metadata tables",
+    sql="""\
+CREATE TABLE IF NOT EXISTS rag_intake_submissions (
+    source_id                    VARCHAR(96) PRIMARY KEY,
+    source_type                  VARCHAR(64) NOT NULL,
+    source_title                 VARCHAR(256) NOT NULL,
+    source_owner_ref             VARCHAR(128) NOT NULL,
+    source_version               VARCHAR(128) NOT NULL,
+    source_version_date          VARCHAR(32) NOT NULL,
+    license_status               VARCHAR(32) NOT NULL,
+    license_evidence_ref         VARCHAR(256) NOT NULL,
+    provenance_status            VARCHAR(32) NOT NULL,
+    provenance_evidence_ref      VARCHAR(256) NOT NULL,
+    content_hash                 CHAR(64) NOT NULL,
+    content_language             VARCHAR(16) NOT NULL,
+    content_domain               VARCHAR(64) NOT NULL,
+    synthetic_only               BOOLEAN NOT NULL,
+    contains_patient_data        BOOLEAN NOT NULL,
+    contains_phi                 BOOLEAN NOT NULL,
+    deidentification_disposition VARCHAR(64) NOT NULL,
+    clinical_review_status       VARCHAR(32) NOT NULL,
+    qa_status                    VARCHAR(32) NOT NULL,
+    retrieval_eligibility        BOOLEAN NOT NULL,
+    clinical_use_allowed         BOOLEAN NOT NULL,
+    retention_policy             VARCHAR(64) NOT NULL,
+    created_by_actor_ref         VARCHAR(128) NOT NULL,
+    cleanup_after               TIMESTAMPTZ,
+    created_at                   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_submissions_synthetic_only CHECK (synthetic_only = TRUE),
+    CONSTRAINT chk_submissions_contains_patient_data CHECK (contains_patient_data = FALSE),
+    CONSTRAINT chk_submissions_contains_phi CHECK (contains_phi = FALSE),
+    CONSTRAINT chk_submissions_clinical_use_allowed CHECK (clinical_use_allowed = FALSE),
+    CONSTRAINT chk_submissions_source_type CHECK (source_type IN (
+        'synthetic_fixture', 'reviewer_authored_synthetic_educational',
+        'openly_licensed_public_guideline', 'internal_educational_handout',
+        'copyrighted_clinical_standard_unclear_license', 'licensed_clinical_standard',
+        'deidentified_retrospective_document', 'real_patient_document',
+        'web_scraped_clinical_content', 'user_uploaded_document', 'unknown'
+    ))
+);
+
+CREATE TABLE IF NOT EXISTS rag_intake_decision_events (
+    event_id             VARCHAR(96) PRIMARY KEY,
+    source_id            VARCHAR(96) NOT NULL,
+    event_type           VARCHAR(32) NOT NULL CHECK (event_type IN ('accept', 'quarantine', 'reject')),
+    reason_code          VARCHAR(96) NOT NULL,
+    created_by_actor_ref VARCHAR(128) NOT NULL,
+    quarantine_reason    VARCHAR(96) NOT NULL DEFAULT '',
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS rag_intake_quarantine_records (
+    source_id           VARCHAR(96) PRIMARY KEY REFERENCES rag_intake_submissions(source_id) ON DELETE CASCADE,
+    quarantine_reason   VARCHAR(96) NOT NULL,
+    cleanup_after       TIMESTAMPTZ NOT NULL,
+    cleanup_disposition VARCHAR(32) NOT NULL DEFAULT 'pending'
+        CHECK (cleanup_disposition IN ('pending', 'cleaned', 'failed', 'released')),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_intake_quarantine_cleanup
+    ON rag_intake_quarantine_records (cleanup_disposition, cleanup_after);
+""",
+)
+
+
 CORE_MIGRATIONS: tuple[RagMigration, ...] = (
     MIGRATION_RAG_CORE_V001,
     MIGRATION_RAG_CORE_V002,
@@ -384,6 +452,7 @@ CORE_MIGRATIONS: tuple[RagMigration, ...] = (
     MIGRATION_RAG_CORE_V005,
     MIGRATION_RAG_C007,
     MIGRATION_RAG_CORE_V006,
+    MIGRATION_RAG_CORE_V008,
 )
 
 PGVECTOR_MIGRATIONS = (

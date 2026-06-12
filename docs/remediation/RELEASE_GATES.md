@@ -206,6 +206,12 @@ P9-C does not add a product API route, frontend integration, real corpus ingesti
 
 Gate A remains **Not met**. P9-C is not clinical validation, corpus approval, controlled-pilot readiness, hospital readiness, production readiness, or compliance evidence.
 
-Gate B remains **Not met** because Gate A remains unmet and identity/RBAC, durable distributed controls, managed secret custody, formal operational review, approved real registry/corpus releases, and external audit/storage controls remain absent.
-
 Gate C remains **Not met** because Gate B remains unmet and formal privacy/security/legal/regulatory review, clinical validation study, incident response, monitoring, and production responsibility model remain absent.
+
+## Phase 10 P10-A1 Governed Corpus-Intake Checkpoint
+
+P10-A1 implements the metadata-only governed corpus-intake contract, synthetic-only policy validator, and quarantine decision foundation. It is configured as default-off.
+
+P10-A1 does not ingest or store document bodies or excerpts, does not mutate PostgreSQL, does not execute migrations, does not implement clinical retrieval or product routes, does not activate registry data, and does not integrate external providers. P10-A2 isolated integration has not started.
+
+Gate A, B, and C remain **Not met**. This remains not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant. Reviewer references are opaque sandbox identifiers only, and de-identification is limited to metadata disposition.
