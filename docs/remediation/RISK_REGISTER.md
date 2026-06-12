@@ -276,3 +276,13 @@ Current P10-A2A status: P10-A2A is implemented and staged. Operator-controlled m
 | RAG-MUTATION-001 | High | Explicit CLI guards and no-flag blocking prevent accidental migration execution. | Maintain strict APP_MODE and isolated DB confirmation checks. |
 | RAG-PROBE-001 | Medium | Probe reports read-only status and safe enums without credentials. | Verify that probe does not acquire write/advisory locks in tests. |
 | Gate A remains unmet | High | Unchanged after P10-A2A. | Do not use for patient care or hospital production. |
+
+## Phase 10 P10-A2B Status Update
+
+Current P10-A2B status: P10-A2B has successfully applied the `RAG_CORE_V008` migration on the operator-attested isolated Neon test database and verified the synthetic metadata-only PostgreSQL integration boundary. The three companion tables are verified, and synthetic tests passed with full row cleanup. No body storage, real corpus ingestion, patient data, PHI, or external provider calls are active. Gate A, B, and C remain unmet.
+
+| Risk | Severity | P10-A2B Status | Recommended Action |
+| :--- | :--- | :--- | :--- |
+| RAG-MUTATION-002 | High | `RAG_CORE_V008` schema has been applied on the isolated Neon test database only. No vector migration or extension has been installed. | Maintain separation of vector DDL and keep all runtime intake features disabled. |
+| RAG-CLEANUP-001 | High | Synthetic rows were verified to be cleaned up automatically (remaining rows = 0). | Keep using `finally` blocks for transactional cleanup in tests. |
+| Gate A remains unmet | High | Unchanged after P10-A2B. | Complete clinical validation and formal registry/corpus governance. |

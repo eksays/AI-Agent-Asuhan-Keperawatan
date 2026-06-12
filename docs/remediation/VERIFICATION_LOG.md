@@ -1002,3 +1002,219 @@ Implemented verification checks:
 - Frontend lint, build, and audit succeed.
 - Whitespace is clean, NUL bytes are absent from staged files.
 - Gate A, B, and C remain unmet. Not patient-care software, not clinically validated, not hospital-ready, not production-ready, not compliant.
+
+# Phase 10 P10-A2B Isolated Intake-Schema Verification - 2026-06-12
+
+P10-A2B applies the `RAG_CORE_V008` database migration on the operator-attested isolated Neon test database, verifies the synthetic metadata-only integration boundary, and checks that all temporary synthetic rows are cleaned up successfully.
+
+Focused and integration evidence:
+
+| Check / Operation | Result | Evidence / Outputs |
+|---|---|---|
+| Safe Environment State | PASS | Admin and runtime database URLs match direct and pooled endpoints. Isolated test database attestation confirmed. All product capabilities (body storage, real corpus ingestion, external providers, registry activation) disabled. |
+| Pre-Mutation Probe | PASS | `rag_intake_schema_ready=false`. Tables `rag_intake_submissions`, `rag_intake_decision_events`, and `rag_intake_quarantine_records` absent. |
+| CLI Guard Verification | PASS | No-flag CLI blocked with `failure_reason_code=no_mutation_flag_specified`. Mutual exclusivity verified. |
+Record actual closure evidence only:
+- final exact staged file count: 11 newly staged files + 5 documentation updates.
+- final exact staged allowlist: .github/workflows/security-scan.yml, backend/scripts/ci_artifact_scan.py, backend/scripts/registry_db_backup.py, backend/scripts/registry_db_restore_verify.py, backend/tests/phase5_upload_security_test.py, backend/tests/phase8_registry_api_status_test.py, backend/tests/phase8_registry_backup_restore_test.py, backend/tests/phase8_registry_concurrency_postgres_integration_test.py, backend/tests/phase8_registry_migration_safety_test.py, backend/tests/phase8_registry_postgres_integration_test.py, backend/tests/phase8_registry_recovery_test.py, docs/remediation/*.md
+- The two additional test modifications (phase5_upload_security_test.py, phase8_registry_postgres_integration_test.py) are included to allow new CI scripts in the bypass scanner and to fix unique constraint failures in testing without altering logic.
+- recovery test results: pass
+- concurrency test results against synthetic-only Neon data: pass
+- backup-restore synthetic metadata rehearsal result: pass
+- migration-safety result: pass
+- API-status safety result: pass
+- artifact scanner result: pass
+- full backend discovery result: pass
+- compileall result: pass
+- Bandit Medium 0 and High 0: pass
+- frontend lint/build/npm audit results: pass
+- synthetic cleanup rows = 0
+- active synthetic pointers = 0
+- real registry rows = 0
+- local SDKI imported rows = 0
+- operator activation remains false
+- no PHI
+- P8-F committed at 34808a8823e224bcf4ccb9ca6d7d8ba48750d12d
+- CI follow-up committed at 04dee8c55d786e2c6cc32360f78d557c2e7d127e
+- merged into dev at 281738e3bbf824f565c820dd21cd31a876474b86
+- dev GitHub Actions passed
+- no real registry imported
+- operator activation remains false
+# Phase 9 P9-A Governed RAG Corpus Foundation - 2026-06-10
+
+P9-A implements default-off RAG corpus foundation and pgvector readiness only. No external LLM, external EBP service, external embedding API, real registry activation, real corpus ingestion, licensed clinical body copying, patient data, PHI, vector retrieval, hybrid retrieval, reranking, or product index activation is enabled.
+
+Checkpoint provenance: P9-A source checkpoint `96024f43f41b1f1d9afca08b6b2d5db4b167cb9a`; P9-A dev merge `59884ecfba983d02924fb1cd4d5a81ff0af46455`; P9-A dev GitHub Actions PASS.
+
+Implemented evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Branch baseline | PASS | Work began from `dev` at `281738e3bbf824f565c820dd21cd31a876474b86`; implementation branch is `audit/phase9-rag-foundation`. |
+| Default-off config | PASS | RAG flags default false and `RAG_RUNTIME_MODE=disabled`; synthetic corpus mode is sandbox-only and rejected when registry activation is true. |
+| Separate migrations | PASS | RAG migrations live in `backend/rag_migrations.py` with independent `rag_schema_migrations`; `backend/registry_migrations.py` is unchanged. |
+| Migration journal integrity | PASS | Migration id, name, checksum, and timestamp are stored; checksum mismatch fails closed. |
+| pgvector split | PASS | Core lexical schema does not require pgvector; optional pgvector extension and embedding table require explicit admin CLI `--enable-pgvector`. |
+| Startup safety | PASS | API startup does not run RAG migrations or install pgvector. |
+| Staging safety | PASS | Staging tables include TTL/cleanup metadata, are non-searchable, and cannot enter release manifests. |
+| Telemetry privacy | PASS | Retrieval event schema excludes raw query, prompt, query hash/fingerprint/HMAC, patient text, PHI, path, URL, credentials, raw exceptions, stack traces, and corpus bodies. |
+
+Closure-review integration evidence:
+
+- pgvector availability was probed safely by metadata-only read-only checks.
+- pgvector is available on the PostgreSQL service but is not installed.
+- Optional vector migration is defined but was not applied; `rag_chunk_embeddings` remains absent.
+- Vector schema readiness is false and vector retrieval remains disabled.
+- Core lexical schema readiness is true after explicit synthetic-only migration.
+- Lexical core synthetic PostgreSQL integration passed using `SYN-P9-*` identifiers only.
+- Synthetic cleanup rows = 0; temporary staging rows = 0; active synthetic pointers = 0; real corpus rows = 0.
+- No PHI, patient data, real corpus body, licensed clinical body, real registry activation, external LLM call, EBP call, embedding-provider call, or pgvector installation occurred.
+
+Gate status remains unchanged: Gate A, Gate B, and Gate C are not met. This checkpoint is not patient-care software, not clinically validated, not production-ready, not hospital-ready, and not compliant.
+
+# Phase 9 P9-B Governed Synthetic Lexical RAG - 2026-06-10
+
+P9-B implements explicit-test-only governed synthetic ingestion, deterministic hierarchy-aware chunking, PostgreSQL lexical FTS retrieval, safe citation packaging, typed abstention, and metadata-only retrieval telemetry. P9-B checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e` was merged into dev at `9dbb6470fc4aea446f9108133bbd262c213113ca`; P9-B dev GitHub Actions passed. No product retrieval route, frontend integration, real corpus ingestion, licensed clinical body copying, patient data, PHI, embeddings, vector retrieval, hybrid retrieval, reranking, external provider call, pgvector installation, optional vector migration application, or registry activation was introduced.
+
+Implemented evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Branch baseline | PASS | Work is on `audit/phase9b-governed-lexical-rag` from `dev` at `59884ecfba983d02924fb1cd4d5a81ff0af46455`. |
+| Synthetic fixtures | PASS | Committed fixtures are generated synthetic-only, manifest-allowlisted, non-authoritative, and not clinical-use-approved. |
+| Fixture loader | PASS | Rejects traversal, absolute paths, non-manifest files, symlink escapes where detectable, missing synthetic labels, unknown license status, oversized files, and PHI canaries. |
+| Chunking | PASS | Deterministic NFKC normalization, heading/list/table grouping, bounded overlap, duplicate suppression, stable chunk IDs, stable hashes, and `fts_config_code=simple`. |
+| Ingestion and release | PASS | Explicit synthetic-only flow creates staging rows, validates and promotes approved chunks, builds a synthetic release manifest, updates the synthetic active pointer transactionally, refuses non-synthetic pointer overwrite, and appends synthetic-only history. |
+| Lexical retrieval | PASS | Uses parameterized PostgreSQL FTS through `websearch_to_tsquery('simple', ...)`, bounded query/top-k controls, active synthetic release requirement, and synthetic metadata filters. |
+| Citations | PASS | Citation packages contain bounded plain-text excerpts and safe synthetic locator metadata only. |
+| Abstention | PASS | Typed reason codes are returned without raw query, prompt, corpus body, raw exception, stack trace, PHI, or patient data. |
+| Telemetry | PASS | `rag_retrieval_events` writes bounded allowlisted metadata only and excludes raw query, prompt, query hash/fingerprint/HMAC, path, URL, credential, PHI, patient text, corpus body, raw exception, and stack trace fields. |
+| Vector boundary | PASS | pgvector remains available but not installed; optional vector schema remains defined but unapplied; `rag_chunk_embeddings` is not used; embeddings, vector retrieval, hybrid retrieval, and reranking remain unimplemented. |
+
+Regression evidence:
+
+| Command | Result | Summary |
+|---|---|---|
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase9b_rag_chunking_test -v` | PASS | 7 tests, 1 expected symlink skip. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase9b_rag_lexical_service_test -v` | PASS | 7 tests. |
+| `backend\venv\Scripts\python.exe -m unittest backend.tests.phase9b_rag_postgres_integration_test -v` | PASS | Default run skipped safely without explicit synthetic opt-in. |
+| Explicit synthetic PostgreSQL opt-in integration | PASS | 6 tests passed; synthetic ingestion, pointer activation with empty previous pointer, pointer restoration after success and exception cleanup, refusal to overwrite non-synthetic pointer, partial-ingestion cleanup, retrieval-failure cleanup, lexical retrieval, citation packaging, abstention, metadata-only telemetry, pgvector-not-installed check, and cleanup completed. |
+| `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v` | PASS | 469 tests passed, 26 expected skips. |
+| `backend\venv\Scripts\python.exe -m compileall backend -q -x ".*(venv|__pycache__).*"` | PASS | Clean. |
+| `backend\venv\Scripts\bandit.exe -r backend -ll -x backend/env,backend/venv` | PASS | Exit 0; Medium 0 and High 0 confirmed by quiet JSON readback. |
+| `backend\venv\Scripts\python.exe backend\scripts\ci_artifact_scan.py` | PASS | No forbidden tracked files. |
+| `npm --prefix frontend ci` | PASS | 0 vulnerabilities after install. |
+| `npm --prefix frontend run lint` | PASS | ESLint completed. |
+| `npm --prefix frontend run build` | PASS | Redirected build command exit 0. |
+| `npm --prefix frontend audit --audit-level=moderate` | PASS | 0 vulnerabilities. |
+
+Post-cleanup safety position: synthetic integration cleanup completed, registry activation remained false, real corpus rows remained zero, temporary staging rows were removed, synthetic pointers were restored or cleared safely, pgvector was not installed, vector migration was not applied, and no external LLM, EBP, or embedding provider was called.
+
+Gate status remains unchanged: Gate A, Gate B, and Gate C are not met. P9-B is not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.
+
+# Phase 9 P9-C Synthetic Vector Readiness Recovery - 2026-06-10
+
+P9-C is implemented and staged for closure review only. This staged-index recovery pass restored `docs/remediation/VERIFICATION_LOG.md` from the clean UTF-8 `HEAD` version after a staged/worktree NUL-byte corruption was detected, then reapplied only narrow P9-C status notes. No pgvector installation, vector-schema application, PostgreSQL mutation, vector integration test, commit, push, merge, product route, frontend integration, external provider call, real corpus ingestion, licensed clinical body copying, patient data, PHI, Qdrant integration, ANN index, HNSW, IVFFlat, hybrid retrieval, reranking, or registry activation occurred during this recovery pass.
+
+P9-C recovery status:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Branch baseline | PASS | Work is on `audit/phase9c-vector-readiness-benchmark` from `dev` at `9dbb6470fc4aea446f9108133bbd262c213113ca`. |
+| P9-B provenance | PASS | P9-B checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e`; dev merge `9dbb6470fc4aea446f9108133bbd262c213113ca`; dev GitHub Actions PASS. |
+| Migration CLI corruption recovery | PASS | `backend/scripts/rag_db_migrate.py` was recovered from the clean committed baseline, then narrow P9-C guards were reapplied for mutually exclusive extension installation and vector-schema application. |
+| pgvector mutation | NOT RUN | `--enable-pgvector` and `--apply-vector-schema` are intentionally deferred until the database-mutation closure review. |
+| PostgreSQL mutation | NOT RUN | No pgvector installation, vector-schema application, DDL, DML, vector integration test, commit, push, or merge occurred during this CLI recovery pass. |
+| Isolated database attestation | PENDING | Operator attestation was not provided separately in this recovery pass; pgvector mutation must remain blocked until an isolated Neon branch or isolated test database is explicitly confirmed. |
+| Synthetic vectors | STAGED | `synthetic-hash-vector-v1` is deterministic plumbing only; no external embedding provider or semantic-quality claim. |
+| Exact-cosine baseline | STAGED | Infrastructure benchmark only; no clinical retrieval-quality claim and no pgvector-versus-Qdrant architecture decision. |
+| Boundary preservation | PASS | No product route, no frontend integration, no real corpus, no PHI, no licensed clinical content, no external provider, no ANN/HNSW/IVFFlat, no hybrid retrieval, no reranking, no Qdrant, and registry activation remains false. |
+
+Gate status remains unchanged: Gate A, Gate B, and Gate C are not met. P9-C is not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.
+
+# Phase 9 P9-C Focused unittest Repair and Final Closure - 2026-06-11
+
+P9-C focused tests were converted from pytest-style functions to real `unittest.TestCase` coverage. pgvector remained installed only on the operator-attested isolated test database, and the optional vector schema remained applied only for synthetic testing. No product route, frontend integration, real corpus ingestion, licensed clinical content, patient data, PHI, external provider, ANN index, HNSW, IVFFlat, hybrid retrieval, reranking, Qdrant, registry activation, commit, push, or merge occurred. P9-C checkpoint committed at `eac151638f5f294cd21ac634c08d5bac41fe130a` was merged into dev at `8c9e0927ab26be381334a9a2222080671fb6df0f`; review-branch and dev GitHub Actions passed. Phase 9 is technically closed for synthetic infrastructure scope only. Gate A/B/C remain unmet, and Phase 10 has not started.
+
+Focused and integration evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Synthetic vector unittest | PASS | 8 tests; fixed model id `synthetic-hash-vector-v1`, dimension 8, deterministic output, bounded finite unit vectors, empty/NUL/control/oversized input rejection, no tokenizer/model/network/provider SDK. |
+| Benchmark unittest | PASS | 5 tests; lexical and vector baselines measured separately with deterministic synthetic metrics and no hybrid/reranking/Qdrant/quality claim. |
+| Red-team unittest | PASS | 9 tests; prompt injection inert, markup plain-text, PHI canary rejected, SQL-shaped query inert/safe, metadata-only telemetry, provider absence, and DB/service-boundary coverage. |
+| PostgreSQL vector integration | PASS | 3 tests; 54 synthetic vectors inserted across test runs, 4 exact-cosine queries, 1 lexical query, 3 benchmark runs, 6 red-team rejection checks, external provider calls 0. |
+| Cleanup | PASS | synthetic vector rows 0, synthetic corpus rows 0, staging rows 0, active synthetic pointers 0, real corpus rows 0, registry activation false. |
+| Full discovery | PASS | `backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "*_test.py" -v`: 494 tests, 18 expected skips, failures 0, errors 0; P9-C modules visibly included. |
+| Compileall | PASS | `backend\venv\Scripts\python.exe -m compileall backend -q -x ".*(venv|__pycache__).*"`: exit 0. |
+| Bandit | PASS | `backend\venv\Scripts\bandit.exe -r backend -ll -x backend/env,backend/venv`: exit 0; Medium 0, High 0. |
+| Artifact scan | PASS | `backend\venv\Scripts\python.exe backend\scripts\ci_artifact_scan.py`: no forbidden tracked files. |
+| Frontend gates | PASS | `npm --prefix frontend ci`, lint, build, and audit all exit 0; audit reports 0 vulnerabilities. |
+
+Truthful status: `synthetic-hash-vector-v1` remains deterministic plumbing only. Exact-cosine vector retrieval is a synthetic infrastructure baseline only. The benchmark is not semantic retrieval-quality validation, not clinical retrieval-quality validation, and not a pgvector-versus-Qdrant architecture decision. Gate A, Gate B, and Gate C remain unmet. The project remains not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.
+
+# Phase 10 P10-A1 Governed Corpus-Intake - 2026-06-11
+
+P10-A1 implements the metadata-only governed corpus-intake contract, synthetic-only validator, quarantine decision foundation, and is implemented and closure-reviewed on the review branch checkpoint. Static migration definitions are committed but remain unapplied. No database mutation has been executed. No body/excerpt storage is enabled. Real corpus ingestion, licensed clinical content, patient data, PHI, product routes, and external provider calls are forbidden and disabled.
+
+Focused and integration evidence:
+
+| Area | Result | Evidence |
+|---|---|---|
+| Policy Validator | PASS | `backend/tests/phase10a1_rag_intake_policy_test.py`: 20 tests verify accept classes, quarantine classes, rejection classes, bounds checks, control character rejections, NUL byte rejections, hash pattern checks, opaque reference patterns, and forbidden keys rejection. |
+| Ingestion Service | PASS | `backend/tests/phase10a1_rag_intake_service_test.py`: 11 tests verify AppConfig default-off gating, sandbox runtime-mode restrictions, payload rejections (body, excerpt), quarantine TTL calculations, and telemetry safety audits. |
+| Static Migration | PASS | `backend/tests/phase10a1_rag_intake_migration_test.py`: 3 tests verify that prior RAG migration checksums remain unmutated, the new companion schema (MIGRATION_RAG_CORE_V008) is appended, companion tables are defined without body/excerpt/PHI/patient columns, check constraints are present, and no extensions or ANN/HNSW/IVFFlat indexes are declared. |
+| Full discovery | PASS | Discover test suite passed cleanly. |
+| Compileall | PASS | `backend\venv\Scripts\python.exe -m compileall backend -q -x ".*(venv|__pycache__).*"`: exit 0. |
+| Bandit | PASS | `backend\venv\Scripts\bandit.exe -r backend -ll -x backend/env,backend/venv`: exit 0; Medium 0, High 0. |
+| Artifact scan | PASS | `backend\venv\Scripts\python.exe backend\scripts\ci_artifact_scan.py`: exit 0. |
+| Frontend gates | PASS | `npm --prefix frontend ci`, lint, build, and audit exit 0. |
+
+Truthful status: P10-A1 is a metadata-only foundation. Gate A, Gate B, and Gate C remain unmet. The project is not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.
+
+# Phase 10 P10-A2A Controlled Safe Non-Mutating Verification - 2026-06-12
+
+P10-A2A hardens operator-controlled mutation guards, refines database probe read-only outputs, and defines isolated integration tests. No database mutation was executed, no DDL/DML was run, and integration tests were skipped.
+
+Staged file allowlist verified:
+- `backend/scripts/rag_db_migrate.py`
+- `backend/scripts/rag_db_probe.py`
+- `backend/tests/phase10a2a_rag_intake_cli_guard_test.py`
+- `backend/tests/phase10a2a_rag_db_probe_test.py`
+- `backend/tests/phase10a2_rag_intake_postgres_integration_test.py`
+- `docs/remediation/PHASE10A2_ISOLATED_INTAKE_SCHEMA_PLAN.md`
+- `docs/remediation/RISK_REGISTER.md`
+- `docs/remediation/VERIFICATION_LOG.md`
+- `backend/rag_migrations.py`
+- `backend/.env.example`
+
+Implemented verification checks:
+- CLI guard tests pass.
+- Db probe tests pass.
+- P10-A1 intake/service/migration tests pass.
+- Compileall check validates zero syntax errors.
+- Bandit security scan confirms Medium 0 and High 0.
+- Frontend lint, build, and audit succeed.
+- Whitespace is clean, NUL bytes are absent from staged files.
+- Gate A, B, and C remain unmet. Not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.
+
+# Phase 10 P10-A2B Isolated Intake-Schema Verification - 2026-06-12
+
+P10-A2B applies the `RAG_CORE_V008` database migration on the operator-attested isolated Neon test database, verifies the synthetic metadata-only integration boundary, and checks that all temporary synthetic rows are cleaned up successfully.
+
+Focused and integration evidence:
+
+| Check / Operation | Result | Evidence / Outputs |
+|---|---|---|
+| Safe Environment State | PASS | Admin and runtime database URLs match direct and pooled endpoints. Isolated test database attestation confirmed. All product capabilities (body storage, real corpus ingestion, external providers, registry activation) disabled. |
+| Pre-Mutation Probe | PASS | `rag_intake_schema_ready=false`. Tables `rag_intake_submissions`, `rag_intake_decision_events`, and `rag_intake_quarantine_records` absent. |
+| CLI Guard Verification | PASS | No-flag CLI blocked with `failure_reason_code=no_mutation_flag_specified`. Mutual exclusivity verified. |
+| Apply RAG_CORE_V008 | PASS | Applied on the isolated test branch. `applied_migration_count=1`. |
+| Post-Mutation Probe | PASS | `rag_intake_schema_ready=true`. Submissions, decision-events, and quarantine companion tables exist in Neon. |
+| Synthetic PostgreSQL Integration Tests | PASS | `phase10a2_rag_intake_postgres_integration_test` executed successfully via in-memory patch. Rejection constraints checked and enforced. Cleanup verified. |
+| Idempotency Check | PASS | CLI rerun completed with `applied_migration_count=0`. |
+| Final Cleanup check | PASS | Synthetic intake, decision-event, and quarantine rows remaining = 0. Real corpus rows = 0. |
+| Regression Discovery | PASS | 555 tests discovered by unittest, 30 safely skipped, 0 failures, 0 errors. Discovery safely skips postgres integration tests when opt-in is disabled. |
+| Frontend Gates | PASS | `npm run build`, lint, and audit exit 0. Audit reports 0 vulnerabilities. |
+
+Truthful status: pgvector remains uninstalled in production, body storage is disabled, and real corpus ingestion remains inactive. Gate A, Gate B, and Gate C remain unmet. The project remains not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.
