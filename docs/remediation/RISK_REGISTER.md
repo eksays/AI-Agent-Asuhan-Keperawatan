@@ -266,3 +266,13 @@ Current P10-A1 status: P10-A1 is implemented and closure-reviewed on the review 
 | RAG-INTAKE-002 | High | Corpus body storage is disabled; no raw document text, excerpts, or queries are stored. | Maintain hard blocks on body storage parameters. |
 | RAG-PRIV-002 | Critical | No patient data or PHI is allowed; any flag triggers rejection. Opaque sandbox references are used for reviewers. | Maintain synthetic-only validator invariants. |
 | Gate A remains unmet | High | Unchanged after P10-A1. | Not patient-care software, not clinically validated, not hospital-ready, and not compliant. |
+
+## Phase 10 P10-A2A Status Update
+
+Current P10-A2A status: P10-A2A is implemented and staged. Operator-controlled mutation guards are hardened, safe read-only probe output is implemented, and isolated PostgreSQL integration tests are defined (but skipped safely). Zero database mutations have occurred, `RAG_CORE_V008` remains unapplied, and P10-A2B has not started. All other capabilities remain disabled. Gate A, B, and C remain unmet.
+
+| Risk | Severity | P10-A2A Status | Recommended Action |
+| :--- | :--- | :--- | :--- |
+| RAG-MUTATION-001 | High | Explicit CLI guards and no-flag blocking prevent accidental migration execution. | Maintain strict APP_MODE and isolated DB confirmation checks. |
+| RAG-PROBE-001 | Medium | Probe reports read-only status and safe enums without credentials. | Verify that probe does not acquire write/advisory locks in tests. |
+| Gate A remains unmet | High | Unchanged after P10-A2A. | Do not use for patient care or hospital production. |

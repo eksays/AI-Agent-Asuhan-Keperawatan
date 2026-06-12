@@ -976,3 +976,29 @@ Focused and integration evidence:
 | Frontend gates | PASS | `npm --prefix frontend ci`, lint, build, and audit exit 0. |
 
 Truthful status: P10-A1 is a metadata-only foundation. Gate A, Gate B, and Gate C remain unmet. The project is not patient-care software, not clinically validated, not hospital-ready, not production-ready, and not compliant.
+
+# Phase 10 P10-A2A Controlled Safe Non-Mutating Verification - 2026-06-12
+
+P10-A2A hardens operator-controlled mutation guards, refines database probe read-only outputs, and defines isolated integration tests. No database mutation was executed, no DDL/DML was run, and integration tests were skipped.
+
+Staged file allowlist verified:
+- `backend/scripts/rag_db_migrate.py`
+- `backend/scripts/rag_db_probe.py`
+- `backend/tests/phase10a2a_rag_intake_cli_guard_test.py`
+- `backend/tests/phase10a2a_rag_db_probe_test.py`
+- `backend/tests/phase10a2_rag_intake_postgres_integration_test.py`
+- `docs/remediation/PHASE10A2_ISOLATED_INTAKE_SCHEMA_PLAN.md`
+- `docs/remediation/RISK_REGISTER.md`
+- `docs/remediation/VERIFICATION_LOG.md`
+- `backend/rag_migrations.py`
+- `backend/.env.example`
+
+Implemented verification checks:
+- CLI guard tests pass.
+- Db probe tests pass.
+- P10-A1 intake/service/migration tests pass.
+- Compileall check validates zero syntax errors.
+- Bandit security scan confirms Medium 0 and High 0.
+- Frontend lint, build, and audit succeed.
+- Whitespace is clean, NUL bytes are absent from staged files.
+- Gate A, B, and C remain unmet. Not patient-care software, not clinically validated, not hospital-ready, not production-ready, not compliant.

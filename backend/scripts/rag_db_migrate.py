@@ -27,6 +27,10 @@ _ALLOWED_FAILURE_REASON_CODES = {
     'rag_vector_retrieval_enabled',
     'registry_activation_enabled',
     'vector_schema_not_ready',
+    'rag_body_storage_enabled',
+    'rag_real_corpus_ingestion_enabled',
+    'rag_corpus_promotion_enabled',
+    'no_mutation_flag_specified',
 }
 
 
@@ -70,6 +74,12 @@ def _validate_operator_mode() -> str:
         raise RuntimeError('rag_runtime_mode_not_synthetic_corpus_test')
     if _enabled(os.environ.get('REGISTRY_ACTIVATION_ENABLED', 'false')):
         raise RuntimeError('registry_activation_enabled')
+    if _enabled(os.environ.get('RAG_BODY_STORAGE_ENABLED', 'false')):
+        raise RuntimeError('rag_body_storage_enabled')
+    if _enabled(os.environ.get('RAG_REAL_CORPUS_INGESTION_ENABLED', 'false')):
+        raise RuntimeError('rag_real_corpus_ingestion_enabled')
+    if _enabled(os.environ.get('RAG_CORPUS_PROMOTION_ENABLED', 'false')):
+        raise RuntimeError('rag_corpus_promotion_enabled')
     if _enabled(os.environ.get('RAG_VECTOR_RETRIEVAL_ENABLED', 'false')):
         raise RuntimeError('rag_vector_retrieval_enabled')
     if _enabled(os.environ.get('RAG_EXTERNAL_EMBEDDING_PROVIDER_ENABLED', 'false')):
@@ -87,12 +97,21 @@ def _operation_name(args: argparse.Namespace) -> str:
         return 'enable_pgvector'
     if args.apply_vector_schema:
         return 'apply_vector_schema'
-    return 'core_migrations'
+    if args.apply_intake_schema:
+        return 'apply_intake_schema'
+    return 'none'
 
 
 def _vector_schema_ready(conn) -> bool:
     with conn.cursor() as cur:
         cur.execute("SELECT to_regclass(%s) IS NOT NULL", ('rag_chunk_embeddings',))
+        row = cur.fetchone()
+    return bool(row and row[0])
+
+
+def _intake_schema_ready(conn) -> bool:
+    with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass(%s) IS NOT NULL", ('rag_intake_submissions',))
         row = cur.fetchone()
     return bool(row and row[0])
 
@@ -106,12 +125,19 @@ def main() -> int:
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument('--enable-pgvector', action='store_true', help='Install the pgvector extension only.')
     actions.add_argument('--apply-vector-schema', action='store_true', help='Apply optional vector schema migrations only.')
+    actions.add_argument('--apply-intake-schema', action='store_true', help='Apply P10-A1 intake companion-table migration RAG_CORE_V008 only.')
     parser.add_argument('--lock-timeout-sec', type=float, default=5.0, help='Bounded advisory-lock wait time.')
     args = parser.parse_args()
     operation = _operation_name(args)
     lock_timeout_sec = _bounded_lock_timeout(args.lock_timeout_sec)
 
     _load_env(args.env_file)
+
+    if operation == 'none':
+        print(f'operation={operation}')
+        print('operation_status=blocked')
+        print('failure_reason_code=no_mutation_flag_specified')
+        return 2
 
     try:
         admin_url = _validate_operator_mode()
@@ -132,11 +158,13 @@ def main() -> int:
     print(f'core_migration_count={len(CORE_MIGRATIONS)}')
     print(f'pgvector_requested={_safe_bool(args.enable_pgvector)}')
     print(f'vector_schema_requested={_safe_bool(args.apply_vector_schema)}')
+    print(f'intake_schema_requested={_safe_bool(args.apply_intake_schema)}')
     if args.dry_run:
         print('operation_status=dry_run')
         print('dry_run=true')
         print(f'pgvector_extension_migration_count={len(PGVECTOR_EXTENSION_MIGRATIONS) if args.enable_pgvector else 0}')
         print(f'vector_schema_migration_count={len(PGVECTOR_SCHEMA_MIGRATIONS) if args.apply_vector_schema else 0}')
+        print(f'intake_schema_migration_count={1 if args.apply_intake_schema else 0}')
         return 0
 
     try:
@@ -147,6 +175,8 @@ def main() -> int:
             pgvector_installed,
             release_advisory_lock,
             run_migrations,
+            run_selected_migrations,
+            MIGRATION_RAG_CORE_V008,
         )
 
         with psycopg.connect(admin_url, connect_timeout=15, autocommit=False) as conn:
@@ -158,6 +188,7 @@ def main() -> int:
                 installed, version_present = pgvector_installed(conn)
                 vector_schema_ready = _vector_schema_ready(conn)
                 vector_schema_applied = False
+                intake_schema_ready = _intake_schema_ready(conn)
 
                 if args.enable_pgvector:
                     if not available:
@@ -192,14 +223,14 @@ def main() -> int:
                     vector_schema_ready = _vector_schema_ready(conn)
                     vector_schema_ids = {migration.migration_id for migration in PGVECTOR_SCHEMA_MIGRATIONS}
                     vector_schema_applied = any(migration_id in vector_schema_ids for migration_id in applied)
-                else:
-                    applied = run_migrations(
+                elif args.apply_intake_schema:
+                    applied = run_selected_migrations(
                         conn,
-                        include_pgvector_extension=False,
-                        include_vector_schema=False,
+                        migrations=(MIGRATION_RAG_CORE_V008,),
                     )
-                    installed, version_present = pgvector_installed(conn)
-                    vector_schema_ready = _vector_schema_ready(conn)
+                    intake_schema_ready = _intake_schema_ready(conn)
+                else:
+                    applied = []
 
                 if args.apply_vector_schema and not vector_schema_ready:
                     print('operation_status=failed')
@@ -219,6 +250,7 @@ def main() -> int:
         print(f'pgvector_version_present={_safe_bool(version_present)}')
         print(f'vector_schema_applied={_safe_bool(vector_schema_applied)}')
         print(f'vector_schema_ready={_safe_bool(vector_schema_ready)}')
+        print(f'rag_intake_schema_ready={_safe_bool(intake_schema_ready)}')
         print(f'applied_migration_count={len(applied)}')
         return 0
     except Exception:
