@@ -532,15 +532,9 @@ def _verify_applied_checksums(applied: dict[str, str], migrations: tuple[RagMigr
             raise RagMigrationError("Applied RAG migration checksum mismatch.")
 
 
-def run_migrations(conn, *, include_pgvector_extension: bool = False, include_vector_schema: bool = False) -> list[str]:
-    """Run pending RAG migrations. Caller owns explicit CLI/operator gating."""
+def run_selected_migrations(conn, *, migrations: tuple[RagMigration, ...]) -> list[str]:
+    """Run a specific sequence of migrations safely."""
     _ensure_journal(conn)
-    migrations = list(CORE_MIGRATIONS)
-    if include_pgvector_extension:
-        migrations.extend(PGVECTOR_EXTENSION_MIGRATIONS)
-    if include_vector_schema:
-        migrations.extend(PGVECTOR_SCHEMA_MIGRATIONS)
-    migrations = tuple(migrations)
     applied = _applied_migrations(conn)
     _verify_applied_checksums(applied, migrations)
 
@@ -562,3 +556,13 @@ def run_migrations(conn, *, include_pgvector_extension: bool = False, include_ve
             conn.rollback()
             raise RagMigrationError("RAG migration failed safely.") from exc
     return newly_applied
+
+
+def run_migrations(conn, *, include_pgvector_extension: bool = False, include_vector_schema: bool = False) -> list[str]:
+    """Run pending RAG migrations. Caller owns explicit CLI/operator gating."""
+    migrations = [m for m in CORE_MIGRATIONS if m.migration_id != 'RAG_CORE_V008']
+    if include_pgvector_extension:
+        migrations.extend(PGVECTOR_EXTENSION_MIGRATIONS)
+    if include_vector_schema:
+        migrations.extend(PGVECTOR_SCHEMA_MIGRATIONS)
+    return run_selected_migrations(conn, migrations=tuple(migrations))
