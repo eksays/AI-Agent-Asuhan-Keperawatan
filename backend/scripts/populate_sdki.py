@@ -13,6 +13,7 @@ Optional environment:
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import shutil
@@ -22,10 +23,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib import error, request
+from urllib import error, parse, request
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from outbound_policy import DEFAULT_OUTBOUND_POLICY  # noqa: E402
 
 
 API_URL = "https://api.anthropic.com/v1/messages"
+ALLOWED_API_HOSTS = {"api.anthropic.com"}
 DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
 ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_BATCH_SIZE = 5
@@ -38,6 +43,34 @@ DEFAULT_SDKI_PATH = BACKEND_DIR / "data_terstruktur" / "SDKI.json"
 DEFAULT_REPORT_PATH = BACKEND_DIR / "data_terstruktur" / "SDKI_population_report.json"
 
 GEJALA_KEYS = ("subjektif", "objektif")
+
+def validate_anthropic_api_url(url: str) -> str:
+    raw = str(url or "").strip()
+    if not raw:
+        raise ValueError("Anthropic API URL is required")
+    try:
+        parsed = parse.urlparse(raw)
+    except ValueError as exc:
+        raise ValueError("Anthropic API URL is malformed") from exc
+
+    if parsed.scheme.lower() != "https":
+        raise ValueError("Anthropic API URL must use https")
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        raise ValueError("Anthropic API URL hostname is required")
+    if parsed.username or parsed.password:
+        raise ValueError("Anthropic API URL must not contain credentials")
+    if hostname == "localhost":
+        raise ValueError("Anthropic API URL must not use localhost")
+    try:
+        if ipaddress.ip_address(hostname).is_loopback:
+            raise ValueError("Anthropic API URL must not use a loopback address")
+    except ValueError as exc:
+        if "loopback" in str(exc):
+            raise
+    if hostname not in ALLOWED_API_HOSTS:
+        raise ValueError("Anthropic API URL host is not allowed")
+    return raw
 
 
 def load_json(path: Path) -> list[dict[str, Any]]:
@@ -172,16 +205,19 @@ def anthropic_messages(
     max_tokens: int,
     timeout: int,
 ) -> str:
+    safe_system = DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(system).text
+    safe_user = DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(user).text
     payload = {
         "model": model,
         "max_tokens": max_tokens,
         "temperature": 0,
-        "system": system,
-        "messages": [{"role": "user", "content": user}],
+        "system": safe_system,
+        "messages": [{"role": "user", "content": safe_user}],
     }
     body = json.dumps(payload).encode("utf-8")
+    validated_url = validate_anthropic_api_url(API_URL)
     req = request.Request(
-        API_URL,
+        validated_url,
         data=body,
         method="POST",
         headers={
@@ -191,7 +227,9 @@ def anthropic_messages(
         },
     )
 
-    with request.urlopen(req, timeout=timeout) as resp:
+    validate_anthropic_api_url(req.full_url)
+    # URL has passed HTTPS-only and explicit-host allowlist validation.
+    with request.urlopen(req, timeout=timeout) as resp:  # nosec B310
         raw = resp.read().decode("utf-8")
     data = json.loads(raw)
     parts = data.get("content", [])
@@ -221,11 +259,12 @@ def call_with_retries(
             )
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            last_error = RuntimeError(f"HTTP {exc.code}: {detail}")
+            safe_detail = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(detail).text
+            last_error = RuntimeError(f"HTTP {exc.code}: {safe_detail}")
             if exc.code not in RETRY_STATUSES or attempt == attempts:
                 break
         except Exception as exc:  # network/parser errors are retryable for this one-shot job
-            last_error = exc
+            last_error = RuntimeError(DEFAULT_OUTBOUND_POLICY.sanitize_for_log(str(exc)).text)
             if attempt == attempts:
                 break
 
@@ -451,7 +490,7 @@ def main() -> int:
             report["batches"].append({"batch": batch_number, "codes": codes, "status": "filled"})
             write_report(report_path, report)
         except Exception as exc:
-            message = str(exc)
+            message = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(str(exc)).text
             print(f"[ERROR] Batch {batch_number} failed: {message}", file=sys.stderr)
             report["failed"].append({"batch": batch_number, "codes": codes, "error": message})
             report["batches"].append({"batch": batch_number, "codes": codes, "status": "failed"})

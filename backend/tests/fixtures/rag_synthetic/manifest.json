@@ -1,0 +1,65 @@
+{
+  "fixture_pack_id": "rag-synthetic-p9b-v1",
+  "fixtures": [
+    {
+      "case_id": "synthetic-respiratory-observation",
+      "title": "Synthetic Respiratory Observation Workflow",
+      "relative_path": "respiratory_observation.txt",
+      "synthetic_only": true,
+      "authority": false,
+      "clinical_use_allowed": false,
+      "provenance_status": "synthetic_generated",
+      "license_status": "synthetic_only",
+      "review_status": "approved_for_synthetic_test",
+      "language_code": "id"
+    },
+    {
+      "case_id": "synthetic-pain-observation",
+      "title": "Synthetic Pain Observation Workflow",
+      "relative_path": "pain_observation.txt",
+      "synthetic_only": true,
+      "authority": false,
+      "clinical_use_allowed": false,
+      "provenance_status": "synthetic_generated",
+      "license_status": "synthetic_only",
+      "review_status": "approved_for_synthetic_test",
+      "language_code": "id"
+    },
+    {
+      "case_id": "synthetic-fall-risk-observation",
+      "title": "Synthetic Fall-Risk Observation Workflow",
+      "relative_path": "fall_risk_observation.txt",
+      "synthetic_only": true,
+      "authority": false,
+      "clinical_use_allowed": false,
+      "provenance_status": "synthetic_generated",
+      "license_status": "synthetic_only",
+      "review_status": "approved_for_synthetic_test",
+      "language_code": "id"
+    },
+    {
+      "case_id": "synthetic-malicious-markup-citation",
+      "title": "Synthetic Malicious Markup Citation Fixture",
+      "relative_path": "malicious_markup.txt",
+      "synthetic_only": true,
+      "authority": false,
+      "clinical_use_allowed": false,
+      "provenance_status": "synthetic_generated",
+      "license_status": "synthetic_only",
+      "review_status": "approved_for_synthetic_test",
+      "language_code": "id"
+    },
+    {
+      "case_id": "synthetic-prompt-injection-inert",
+      "title": "Synthetic Prompt Injection Text Fixture",
+      "relative_path": "prompt_injection_inert.txt",
+      "synthetic_only": true,
+      "authority": false,
+      "clinical_use_allowed": false,
+      "provenance_status": "synthetic_generated",
+      "license_status": "synthetic_only",
+      "review_status": "approved_for_synthetic_test",
+      "language_code": "id"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 CDSS AI Keperawatan — backend FastAPI (Phase 3, re-engineered).
 
 Fitur:
-- Autentikasi via header `Authorization: Bearer <key>` (fallback form `api_key`) -> memperbaiki 401.
+- Autentikasi hanya via header `Authorization: Bearer <key>`; body/query/cookie key diabaikan aman.
 - Multi-provider get_llm (Gemini / OpenAI / Claude / Groq / xAI / DeepSeek / Mistral / Together / OpenRouter / ShopeeAI), temperature 0.
 - SessionMemory: AI membaca SELURUH riwayat percakapan per session_id.
 - StreamingResponse /chat_stream (efek typewriter).
@@ -13,12 +13,12 @@ Fitur:
 Jalankan:  uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 """
 from __future__ import annotations
-import os, io, re, json, glob, threading, secrets, sys, time, hashlib, datetime
+import os, re, json, glob, threading, secrets, sys, time
+from contextlib import asynccontextmanager
 from typing import Optional, List, Tuple
-from concurrent.futures import ThreadPoolExecutor
 from collections import deque
 
-from fastapi import FastAPI, Form, File, UploadFile, Header
+from fastapi import FastAPI, Form, File, UploadFile, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -28,10 +28,32 @@ import agents
 import ebp
 import phi
 import crypto_store
+from config import CONFIG, SAFETY_NOTICE, build_capabilities, capability_enabled, capability_reason
 import metrics
 import director
 import harvester
+from security_controls import (
+    AuthPrincipal,
+    BoundedRateLimiter,
+    authenticate_api_key,
+    client_ip_from_request,
+    issue_secret_token,
+    limit_key,
+    rate_subject,
+    safe_security_payload,
+    status_code_for,
+    token_digest,
+    constant_time_equal,
+)
+from clinical_registry import ClinicalRegistry
+from clinical_validator import STANDARD_MAP, safe_abstention, validate_clinical_output, render_clinical_response
+from outbound_policy import DEFAULT_OUTBOUND_POLICY, OutboundPolicyError, wrap_llm
+from upload_security import UploadParseResult, config_from_app, parse_document_bytes, rejection
 from agents import bersihkan, bersihkan_stream, GUARDRAILS
+from audit_ledger import AuditEventInput, AuditLedgerError, LocalAppendOnlyLedgerBackend
+from registry_store import load_registry_store_config
+from registry_runtime import RegistryRuntimeInfo, probe_registry_store, safe_registry_metadata, RegistryRuntimeStatus
+
 
 # ============================ KONFIGURASI ====================================
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -40,89 +62,134 @@ DATA_DIR = os.path.join(BASE, "data_terstruktur")
 # ----- Keamanan: batas upload, sandbox parsing, audit log, sanitasi error -----
 MAX_UPLOAD = 10 * 1024 * 1024     # 10 MB — divalidasi di BACKEND (jangan percaya frontend)
 _PARSE_TIMEOUT = 20               # detik — sandbox parsing PDF/DOCX agar file jebakan tak menggantung server
-_LEDGER = os.path.join(BASE, "audit_ledger.jsonl")   # WORM hash-chain audit ledger (tamper-evident)
-_ledger_lock = threading.Lock()
-_GENESIS = "0" * 64
-_last_hash = None
+UPLOAD_PARSER_CONFIG = config_from_app(CONFIG)
+MAX_UPLOAD = UPLOAD_PARSER_CONFIG.max_upload_bytes
+
+def _audit_ledger_path() -> str | None:
+    if CONFIG.audit_ledger_path:
+        return CONFIG.audit_ledger_path
+    if CONFIG.audit_ledger_hmac_key:
+        return os.path.join(BASE, "audit_ledger.jsonl")
+    return None
+
+_AUDIT_LEDGER_KEY = CONFIG.audit_ledger_hmac_key or secrets.token_urlsafe(48)
+AUDIT_LEDGER = LocalAppendOnlyLedgerBackend(
+    _audit_ledger_path(),
+    _AUDIT_LEDGER_KEY,
+    key_id=CONFIG.audit_ledger_key_id,
+    verify_before_append=bool(_audit_ledger_path()),
+)
 
 
 def _log_err(e) -> None:
     """Catat detail teknis HANYA ke konsol server internal — jangan pernah dikirim ke user/LLM."""
     try:
-        print(f"[ERROR] {type(e).__name__}: {e}", file=sys.stderr)
+        safe = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(str(e)).text
+        print(f"[ERROR] {type(e).__name__}: {safe}", file=sys.stderr)
     except Exception:
         pass
 
 
-def _sid_tag(session_id: str) -> str:
-    return hashlib.sha256((session_id or "").encode("utf-8")).hexdigest()[:12] if session_id else "-"
-
-
-def _entry_hash(prev: str, ts: str, sid: str, action: str, status: str) -> str:
-    return hashlib.sha256(f"{prev}|{ts}|{sid}|{action}|{status}".encode("utf-8")).hexdigest()
-
-
-def _ledger_last_hash() -> str:
-    global _last_hash
-    if _last_hash is not None:
-        return _last_hash
-    last = _GENESIS
+def audit_event(
+    event_type: str,
+    *,
+    actor_type: str = "system",
+    actor_id: str = "",
+    route_class: str = "system",
+    action: str = "",
+    outcome: str = "",
+    status_code: int | None = None,
+    security_tags: tuple[str, ...] = (),
+    metadata: dict | None = None,
+) -> bool:
     try:
-        if os.path.exists(_LEDGER):
-            with open(_LEDGER, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        try:
-                            last = json.loads(line).get("current_hash", last)
-                        except Exception:
-                            pass
+        AUDIT_LEDGER.append_event(AuditEventInput(
+            event_type=event_type,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            route_class=route_class,
+            action=action,
+            outcome=outcome,
+            status_code=status_code,
+            security_tags=security_tags,
+            metadata=metadata or {},
+        ))
+        return True
+    except AuditLedgerError as e:
+        _log_err(e)
+        return False
     except Exception:
-        pass
-    _last_hash = last
-    return last
+        _log_err(RuntimeError("Audit ledger append failed."))
+        return False
+
+
+def _audit_required_failure_response():
+    return JSONResponse(
+        {
+            "status": "error",
+            "security_status": "audit_required_failed",
+            "pesan": "Required audit evidence could not be recorded.",
+        },
+        status_code=503,
+    )
+
+
+def _legacy_event_type(action: str, status: str) -> str:
+    action_l = (action or "").lower()
+    status_l = (status or "").lower()
+    if "directorlogin" in action_l and "success" in status_l:
+        return "mfa_succeeded"
+    if "photoanalysis" in action_l:
+        return "capability_denied"
+    if "consent" in action_l:
+        return "consent_recorded"
+    if "feedback" in action_l:
+        return "feedback_recorded"
+    if "upload" in action_l and "parser_timeout" in status_l:
+        return "upload_parser_timeout"
+    if "upload" in action_l and "parser_crashed" in status_l:
+        return "upload_parser_crashed"
+    if "upload" in action_l and "success" in status_l:
+        return "upload_accepted"
+    if "upload" in action_l:
+        return "upload_rejected"
+    if "analisis" in action_l and "success" in status_l:
+        return "analysis_succeeded"
+    if "analisis" in action_l:
+        return "analysis_failed"
+    if "deletemydata" in action_l:
+        return "session_deleted"
+    return "legacy_event"
 
 
 def audit_log(session_id: str, action: str, status: str) -> None:
-    """Audit mediko-legal WORM (hash-chain, tamper-evident). Hanya metadata (tanpa PHI); session_id disamarkan jadi hash."""
-    try:
-        with _ledger_lock:
-            global _last_hash
-            prev = _ledger_last_hash()
-            ts = datetime.datetime.utcnow().isoformat() + "Z"
-            sid = _sid_tag(session_id)
-            cur = _entry_hash(prev, ts, sid, action, status)
-            rec = {"prev_hash": prev, "timestamp": ts, "sid": sid, "action": action, "status": status, "current_hash": cur}
-            with open(_LEDGER, "a", encoding="utf-8") as f:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            _last_hash = cur
-    except Exception:
-        pass
+    audit_event(
+        _legacy_event_type(action, status),
+        actor_type="session" if session_id != "director" else "director",
+        actor_id=session_id or "anonymous",
+        route_class="legacy",
+        action=action,
+        outcome=status,
+        security_tags=("ledger",),
+        metadata={"legacy_action": action, "legacy_status": status},
+    )
 
 
 def verify_audit_chain():
-    """Verifikasi integritas rantai audit (WORM). Return (ok, jumlah). Alarm bila ada entri yang diubah/dirusak."""
-    prev = _GENESIS
-    n = 0
-    try:
-        if not os.path.exists(_LEDGER):
-            return True, 0
-        with open(_LEDGER, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                rec = json.loads(line)
-                expect = _entry_hash(prev, rec.get("timestamp", ""), rec.get("sid", ""), rec.get("action", ""), rec.get("status", ""))
-                if rec.get("prev_hash") != prev or rec.get("current_hash") != expect:
-                    print(f"[SECURITY-INCIDENT][ERROR] INTEGRITAS AUDIT LEDGER RUSAK pada entri #{n + 1} — log kemungkinan diubah/dirusak.", file=sys.stderr)
-                    return False, n
-                prev = rec["current_hash"]
-                n += 1
-    except Exception as e:
-        _log_err(e)
-        return False, n
-    return True, n
+    result = AUDIT_LEDGER.verify()
+    if not result.ok:
+        print("[SECURITY-INCIDENT][ERROR] Audit ledger verification failed; local tamper evidence is not valid.", file=sys.stderr)
+        audit_event(
+            "ledger_verification_failed",
+            actor_type="system",
+            route_class="ledger",
+            action="verify_audit_chain",
+            outcome="verification_failed",
+            status_code=500,
+            security_tags=("ledger",),
+            metadata={"error_code": result.failure_code, "verified_count": result.record_count},
+        )
+    return result.ok, result.record_count
 
 
 def _too_big(up) -> bool:
@@ -148,7 +215,7 @@ OPENAI_COMPATIBLE = {
     "mistral": "https://api.mistral.ai/v1",
     "together": "https://api.together.xyz/v1",
     "openrouter": "https://openrouter.ai/api/v1",
-    "shopee": os.environ.get("SHOPEE_BASE_URL", "https://openrouter.ai/api/v1"),
+    "shopee": CONFIG.shopee_base_url,
 }
 
 # Peta buku per kerangka + pesan penolakan bila referensi belum tersedia (anti-halusinasi).
@@ -169,6 +236,15 @@ DEGRADE_NOTE = ("\n\n⚠️ **Informasi Sistem:** Dokumen referensi SLKI dan SIK
 
 # ============================ DATA / RAG =====================================
 DATA: dict[str, list] = {}
+CLINICAL_REGISTRY = ClinicalRegistry.unavailable()
+
+# P8-BE: Registry runtime state (fail-closed; safe bounded probe at lifespan startup)
+REGISTRY_RUNTIME_INFO = RegistryRuntimeInfo(
+    status=RegistryRuntimeStatus.UNAVAILABLE,
+    failure_reason_code='not_started',
+    store_backend=CONFIG.registry_store_backend,
+)
+
 
 
 def muat_data():
@@ -332,54 +408,132 @@ def extract_mermaid(text: str) -> str:
 
 
 # ============================ SESSION MEMORY =================================
-class SessionMemory:
-    """Riwayat percakapan penuh per session_id, in-memory & thread-safe.
-    session_id WAJIB diterbitkan server (CSPRNG, 256-bit) — klien tidak boleh membuat sendiri."""
 
-    def __init__(self, cap: int = 40):
-        self._s: dict[str, list[Tuple[str, str]]] = {}
-        self._issued: set[str] = set()
+SECURITY_PEPPER = CONFIG.cdss_secret_key or 'clinical-sandbox-security-pepper'
+
+
+class SecureSessionMemory:
+    def __init__(self, cap: int = 40, ttl: int = 3600, idle: int = 900, max_active: int = 1000, pepper: str = '', now_func=time.monotonic):
+        self._records: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._cap = cap
+        self._ttl = max(60, int(ttl))
+        self._idle = max(30, int(idle))
+        self._max_active = max(1, int(max_active))
+        self._pepper = pepper or 'clinical-sandbox-security-pepper'
+        self._now = now_func
 
-    def issue(self) -> str:
-        sid = secrets.token_urlsafe(32)   # 256-bit, tak dapat ditebak (menutup kebocoran lintas-sesi K2)
-        with self._lock:
-            self._issued.add(sid)
-            self._s.setdefault(sid, [])
-        return sid
+    def _expired(self, rec: dict, now: float) -> bool:
+        return now >= rec.get('expires_at', 0) or now - rec.get('last_access', 0) > self._idle
 
-    def valid(self, sid: str) -> bool:
+    def cleanup(self) -> None:
+        now = self._now()
+        for sid, rec in list(self._records.items()):
+            if self._expired(rec, now):
+                self._records.pop(sid, None)
+        while len(self._records) > self._max_active:
+            oldest = min(self._records, key=lambda sid: self._records[sid].get('last_access', 0))
+            self._records.pop(oldest, None)
+
+    def issue(self, principal: AuthPrincipal):
+        sid = secrets.token_urlsafe(32)
+        token = issue_secret_token()
+        now = self._now()
         with self._lock:
-            return bool(sid) and sid in self._issued
+            self.cleanup()
+            self._records[sid] = {
+                'owner': principal.principal_id,
+                'token_digest': token_digest(token, self._pepper),
+                'created_at': now,
+                'last_access': now,
+                'expires_at': now + self._ttl,
+                'history': [],
+            }
+            self.cleanup()
+        return sid, token
+
+    def validate(self, sid: str, principal: AuthPrincipal, session_token: str, touch: bool = True) -> str:
+        now = self._now()
+        with self._lock:
+            self.cleanup()
+            rec = self._records.get(sid or '')
+            if not rec:
+                return 'session_not_found'
+            if self._expired(rec, now):
+                self._records.pop(sid, None)
+                return 'session_expired'
+            if rec.get('owner') != principal.principal_id:
+                return 'session_owner_mismatch'
+            if not session_token or not constant_time_equal(rec.get('token_digest', ''), token_digest(session_token, self._pepper)):
+                return 'session_token_invalid'
+            if touch:
+                rec['last_access'] = now
+            return 'ok'
 
     def history(self, sid: str) -> list[Tuple[str, str]]:
         with self._lock:
-            return list(self._s.get(sid, []))
+            rec = self._records.get(sid or '')
+            return list((rec or {}).get('history', []))
 
     def add(self, sid: str, role: str, content: str):
         if not content:
             return
         with self._lock:
-            buf = self._s.setdefault(sid, [])
+            rec = self._records.get(sid or '')
+            if not rec:
+                return
+            buf = rec.setdefault('history', [])
             buf.append((role, content))
             if len(buf) > self._cap:
                 del buf[: len(buf) - self._cap]
 
-    def reset(self, sid: str):
+    def reset(self, sid: str, principal: AuthPrincipal, session_token: str):
+        status = self.validate(sid, principal, session_token, touch=False)
+        if status != 'ok':
+            return status, ''
+        new_token = issue_secret_token()
         with self._lock:
-            self._s.pop(sid, None)
-            self._issued.discard(sid)
+            rec = self._records.get(sid or '')
+            if rec:
+                now = self._now()
+                rec['history'] = []
+                rec['token_digest'] = token_digest(new_token, self._pepper)
+                rec['last_access'] = now
+                rec['expires_at'] = now + self._ttl
+        return 'ok', new_token
+
+    def delete(self, sid: str, principal: AuthPrincipal, session_token: str) -> str:
+        status = self.validate(sid, principal, session_token, touch=False)
+        if status == 'ok':
+            with self._lock:
+                self._records.pop(sid, None)
+        return status
+
+    def valid(self, sid: str) -> bool:
+        with self._lock:
+            self.cleanup()
+            return bool(sid and sid in self._records)
+
+    def force_expire_for_tests(self, sid: str) -> None:
+        with self._lock:
+            if sid in self._records:
+                self._records[sid]['expires_at'] = self._now() - 1
 
 
-SESI = SessionMemory()
+SESI = SecureSessionMemory(
+    ttl=CONFIG.session_ttl_sec,
+    idle=CONFIG.session_idle_timeout_sec,
+    max_active=CONFIG.session_max_active,
+    pepper=SECURITY_PEPPER,
+)
+RATE_LIMITER = BoundedRateLimiter(CONFIG.rate_limit_max_keys)
 
 
 # ============================ LLM PROVIDER ===================================
 _LLM_SEED = 7   # benih tetap -> jawaban reproduktif antar-run (provider OpenAI-compatible). Claude/Gemini: temperature=0.
 
 
-def get_llm(provider: str, model: str, api_key: str, temperature: float = 0.0):
+def _create_raw_llm(provider: str, model: str, api_key: str, temperature: float = 0.0):
     provider = (provider or "").lower().strip()
     if provider == "claude":
         from langchain_anthropic import ChatAnthropic
@@ -395,22 +549,256 @@ def get_llm(provider: str, model: str, api_key: str, temperature: float = 0.0):
         kw["base_url"] = base
     return ChatOpenAI(**kw)
 
+def get_llm(provider: str, model: str, api_key: str, temperature: float = 0.0):
+    return wrap_llm(_create_raw_llm(provider, model, api_key, temperature))
 
-def resolve_key(authorization: Optional[str], api_key_form: str) -> str:
-    """Header `Authorization: Bearer ...` diprioritaskan; jika kosong, pakai form."""
-    if authorization:
-        a = authorization.strip()
-        if a.lower().startswith("bearer "):
-            k = a[7:].strip()
-            if k:
-                return k
-        elif a:
-            return a
-    return (api_key_form or "").strip()
+def _external_safe_text(text: str) -> str:
+    return DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(text).text
+
+def _browser_safe_text(text: str) -> str:
+    return DEFAULT_OUTBOUND_POLICY.sanitize_for_browser(phi.sanitize_phi(text or "")).text
+
+def _clinical_status_message(status: str, accepted: bool) -> str:
+    if accepted:
+        return "Clinical candidates passed deterministic schema, registry, and evidence checks; nurse review remains required."
+    if status == "registry_unavailable":
+        return "Approved clinical registry is unavailable; recommendations are not accepted."
+    if status == "registry_incomplete":
+        return "Approved clinical registry set is incomplete; the care plan cannot be generated safely."
+    if status == "malformed_output":
+        return "Provider output was malformed or ambiguous; recommendations are not accepted."
+    if status == "rejected":
+        return "Provider clinical output was rejected by deterministic validation."
+    return "Clinical evidence is insufficient; recommendations are not accepted."
+
+def _registry_names_from_response(response) -> list[str]:
+    order = ["SDKI", "SLKI", "SIKI", "NANDA", "NOC", "NIC"]
+    text_parts = []
+    for issue in getattr(response, "validation_issues", []) or []:
+        text_parts.extend([getattr(issue, "message", ""), getattr(issue, "code", "")])
+    for item in getattr(response, "missing_data", []) or []:
+        text_parts.extend([getattr(item, "reason", ""), getattr(item, "question_for_nurse", "")])
+    text = "\n".join(text_parts)
+    return [name for name in order if re.search(rf"\b{re.escape(name)}\b", text)]
+
+def _clinical_meta_from_response(response, accepted: bool, missing_registries: list[str] | None = None) -> dict:
+    issue_codes = [issue.code for issue in response.validation_issues]
+    missing = list(missing_registries) if missing_registries is not None else _registry_names_from_response(response)
+    return {
+        "status": response.status,
+        "accepted": accepted,
+        "clinical_status": response.status,
+        "accepted_recommendations": bool(accepted),
+        "nurse_review_required": True,
+        "missing_registries": missing,
+        "message": _clinical_status_message(response.status, accepted),
+        "issue_codes": issue_codes,
+        "validation_issue_codes": issue_codes,
+    }
+
+def _clinical_meta(outcome) -> dict:
+    return _clinical_meta_from_response(outcome.response, outcome.accepted)
+
+def _validate_clinical_answer(raw: str, framework: str, patient_context: str):
+    outcome = validate_clinical_output(raw, framework, CLINICAL_REGISTRY, patient_context=patient_context)
+    if not outcome.accepted:
+        audit_event(
+            "clinical_abstention",
+            actor_type="system",
+            actor_id=framework,
+            route_class="clinical_validation",
+            action="validate_clinical_output",
+            outcome=outcome.response.status,
+            status_code=200,
+            security_tags=("clinical",),
+            metadata={"clinical_status": outcome.response.status, "framework": framework},
+        )
+    return _browser_safe_text(outcome.display_text), _clinical_meta(outcome)
+
+def _registry_abstention_answer(framework: str, status: str, missing_registries: list[str]):
+    missing = ", ".join(missing_registries) or "unknown"
+    if status == "registry_incomplete":
+        reason = "Missing approved registries for complete care-plan grounding: " + missing + "."
+        issue_code = "registry_incomplete"
+        question = "Approved registries missing: " + missing + ". The care plan cannot be generated safely until these registries are approved."
+    else:
+        reason = "Approved registry is unavailable for authoritative grounding. Missing approved registries: " + missing + "."
+        issue_code = "registry_unavailable"
+        question = "Approved registries missing: " + missing + ". Clinical recommendations cannot be generated safely."
+    response = safe_abstention(
+        framework,
+        reason=reason,
+        status=status,
+        issue_code=issue_code,
+        field="approved_registries",
+        question=question,
+    )
+    audit_event(
+        status if status in {"registry_unavailable", "registry_incomplete"} else "clinical_abstention",
+        actor_type="system",
+        actor_id=framework,
+        route_class="clinical_registry",
+        action="registry_availability_check",
+        outcome=status,
+        status_code=200,
+        security_tags=("clinical", "registry"),
+        metadata={"clinical_status": status, "framework": framework, "missing_registries": missing_registries},
+    )
+    return _browser_safe_text(render_clinical_response(response)), _clinical_meta_from_response(response, False, missing_registries)
+
+def _registry_unavailable_answer(framework: str):
+    status, missing = _clinical_registry_block(framework)
+    return _registry_abstention_answer(framework, status or "registry_unavailable", missing)
+
+def _clinical_payload(base: dict, meta: dict | None) -> dict:
+    if not meta:
+        return base
+    base["clinical_validation"] = meta
+    base.update({
+        "clinical_status": meta["clinical_status"],
+        "accepted_recommendations": meta["accepted_recommendations"],
+        "nurse_review_required": True,
+        "missing_registries": meta.get("missing_registries", []),
+        "message": meta["message"],
+        "validation_issue_codes": meta["validation_issue_codes"],
+    })
+    return base
+
+def _stream_clinical_headers(meta: dict | None) -> dict[str, str]:
+    headers = {"X-Accel-Buffering": "no", "Cache-Control": "no-cache, no-transform"}
+    if meta:
+        headers.update({
+            "X-Clinical-Status": str(meta["clinical_status"]),
+            "X-Accepted-Recommendations": "true" if meta["accepted_recommendations"] else "false",
+            "X-Nurse-Review-Required": "true",
+            "X-Validation-Issue-Codes": ",".join(meta.get("validation_issue_codes") or []),
+            "X-Missing-Registries": ",".join(meta.get("missing_registries") or []),
+        })
+    return headers
+
+def _clinical_registry_block(framework: str) -> tuple[str | None, list[str]]:
+    standard = (framework or "3S").strip().upper()
+    expected = STANDARD_MAP.get(standard, {})
+    ordered = [expected.get("diagnosis", ""), expected.get("outcome", ""), expected.get("intervention", "")]
+    missing = [item for item in ordered if item and not CLINICAL_REGISTRY.approved_available(item)]
+    if not missing:
+        return None, []
+    if expected.get("diagnosis", "") in missing:
+        return "registry_unavailable", missing
+    return "registry_incomplete", missing
+
+def _requires_clinical_registry(agent: str, text: str = "") -> bool:
+    return (agent or "analisis").lower() == "analisis" and not is_casual(text)
+
+
+RATE_LIMITS = {
+    'AUTH': (120, CONFIG.rate_limit_window_sec),
+    'MFA': (10, CONFIG.rate_limit_window_sec),
+    'SESSION_MUTATION': (60, CONFIG.rate_limit_window_sec),
+    'CHAT': (180, CONFIG.rate_limit_window_sec),
+    'UPLOAD': (90, CONFIG.rate_limit_window_sec),
+    'DIRECTOR_PRIVILEGED': (120, CONFIG.rate_limit_window_sec),
+}
+
+
+def _security_response(status: str, retry_after: int = 0):
+    headers = {'Retry-After': str(retry_after)} if retry_after else None
+    return JSONResponse(safe_security_payload(status), status_code=status_code_for(status), headers=headers)
+
+
+def _client_ip(request: Request) -> str:
+    return client_ip_from_request(request, CONFIG.trusted_proxy_hosts)
+
+
+def _apply_rate_limit(request: Request, route_class: str, principal: AuthPrincipal | None = None):
+    limit, window = RATE_LIMITS.get(route_class, (120, CONFIG.rate_limit_window_sec))
+    subject = rate_subject(principal, _client_ip(request), SECURITY_PEPPER)
+    decision = RATE_LIMITER.check(limit_key(route_class, subject, SECURITY_PEPPER), limit, window)
+    if decision.allowed:
+        return None
+    audit_event(
+        "rate_limited",
+        actor_type="api_principal" if principal else "client_ip",
+        actor_id=(principal.principal_id if principal else _client_ip(request)),
+        route_class=route_class,
+        action="rate_limit",
+        outcome="rate_limited",
+        status_code=429,
+        security_tags=("rate_limit",),
+        metadata={"route_class": route_class, "retry_after_bucket": 1 if decision.retry_after else 0},
+    )
+    return _security_response('rate_limited', decision.retry_after)
+
+
+def _auth_context(request: Request, authorization: Optional[str], route_class: str = 'AUTH'):
+    auth = authenticate_api_key(authorization, CONFIG.api_auth_keys, SECURITY_PEPPER)
+    if not auth.ok:
+        limited = _apply_rate_limit(request, 'AUTH')
+        audit_event(
+            "authentication_failed",
+            actor_type="client_ip",
+            actor_id=_client_ip(request),
+            route_class=route_class,
+            action="api_key_auth",
+            outcome=auth.status,
+            status_code=status_code_for(auth.status),
+            security_tags=("auth",),
+            metadata={"status": auth.status, "route_class": route_class},
+        )
+        return None, '', limited or _security_response(auth.status)
+    limited = _apply_rate_limit(request, route_class, auth.principal)
+    if limited:
+        return None, '', limited
+    audit_event(
+        "authentication_succeeded",
+        actor_type="api_principal",
+        actor_id=auth.principal.credential_fingerprint,
+        route_class=route_class,
+        action="api_key_auth",
+        outcome="authenticated",
+        status_code=200,
+        security_tags=("auth",),
+        metadata={"route_class": route_class},
+    )
+    return auth.principal, auth.raw_credential, None
+
+
+def _require_session(session_id: str, principal: AuthPrincipal, session_token: Optional[str], touch: bool = True):
+    status = SESI.validate(session_id, principal, session_token or '', touch=touch)
+    if status == 'ok':
+        return None
+    event_type = "authorization_failed" if status == "session_owner_mismatch" else status
+    if event_type not in {"session_expired", "session_token_invalid", "authorization_failed"}:
+        event_type = "session_token_invalid"
+    audit_event(
+        event_type,
+        actor_type="api_principal",
+        actor_id=principal.principal_id,
+        route_class="session",
+        action="session_validate",
+        outcome=status,
+        status_code=status_code_for(status),
+        security_tags=("session",),
+        metadata={"status": status},
+    )
+    return _security_response(status)
+
 
 
 def err_status(e: Exception) -> Tuple[int, str]:
     _log_err(e)   # detail teknis -> konsol server saja; user hanya menerima pesan generik di bawah
+    if isinstance(e, OutboundPolicyError):
+        audit_event(
+            "outbound_policy_blocked",
+            actor_type="system",
+            route_class="outbound_policy",
+            action="external_payload_check",
+            outcome="blocked",
+            status_code=400,
+            security_tags=("privacy",),
+            metadata={"reason_code": "outbound_policy_blocked"},
+        )
+        return 400, "Data mengandung identifier berisiko tinggi dan tidak dapat dikirim keluar aplikasi."
     s = str(e).lower()
     if any(x in s for x in ("401", "unauthorized", "invalid api key", "invalid_api_key",
                             "authentication", "permission", "api key", "no auth", "x-api-key")):
@@ -567,52 +955,94 @@ def build_messages(framework: str, session_id: str, pertanyaan: str, tier: str =
 
 
 # ============================ EKSTRAKSI FILE =================================
-def _parse_doc(raw: bytes, name: str) -> str:
-    if name.endswith(".pdf"):
-        try:
-            import pdfplumber
-            with pdfplumber.open(io.BytesIO(raw)) as pdf:
-                return "\n".join((p.extract_text() or "") for p in pdf.pages[:30]).strip()
-        except Exception:
-            from PyPDF2 import PdfReader
-            rd = PdfReader(io.BytesIO(raw))
-            return "\n".join((pg.extract_text() or "") for pg in rd.pages[:30]).strip()
-    if name.endswith(".docx"):
-        import docx
-        d = docx.Document(io.BytesIO(raw))
-        return "\n".join(p.text for p in d.paragraphs).strip()
-    if name.endswith((".txt", ".md", ".csv", ".json")):
-        return raw.decode("utf-8", "ignore").strip()
-    return ""
 
+def _upload_status_code(result: UploadParseResult) -> int:
+    if result.status == "file_too_large":
+        return 413
+    if result.status in {"parser_timeout", "parser_crashed", "extracted_text_too_large"}:
+        return 422
+    return 400
+
+def _upload_error_response(result: UploadParseResult, session_id: str):
+    audit_log(session_id, "Upload", f"Fail({result.status})")
+    return JSONResponse(
+        {
+            "status": "error",
+            "pesan": result.message,
+            "upload_status": result.status,
+            "accepted_upload": False,
+        },
+        status_code=_upload_status_code(result),
+    )
+
+def extract_upload_document(up: Optional[UploadFile]) -> UploadParseResult | None:
+    if up is None:
+        return None
+    try:
+        raw = up.file.read(MAX_UPLOAD + 1)
+    except Exception:
+        return rejection("parser_crashed")
+    try:
+        result = parse_document_bytes(raw, up.filename or "", up.content_type or "", UPLOAD_PARSER_CONFIG)
+    except Exception:
+        return rejection("parser_crashed")
+    if not result.ok:
+        return result
+    return UploadParseResult(
+        status=result.status,
+        message=result.message,
+        text=phi.sanitize_phi(result.text or ""),
+        detected_type=result.detected_type,
+        parser_invoked=result.parser_invoked,
+        temp_workspace_removed=result.temp_workspace_removed,
+        child_pid=result.child_pid,
+    )
 
 def extract_text(up: Optional[UploadFile]) -> str:
-    if up is None:
-        return ""
-    name = (up.filename or "").lower()
+    result = extract_upload_document(up)
+    return result.text if result and result.ok else ""
+
+
+# ============================ LIFESPAN =========================================
+@asynccontextmanager
+async def _lifespan(application: FastAPI):
+    """P8-BE: Bounded registry startup probe runs here, not at import."""
+    global REGISTRY_RUNTIME_INFO
     try:
-        raw = up.file.read(MAX_UPLOAD + 1)   # baca TERBATAS -> cegah DoS memori (file raksasa)
-    except Exception:
-        return ""
-    if not raw or len(raw) > MAX_UPLOAD:
-        return ""
-    # SANDBOX: parsing di thread terpisah dengan TIMEOUT ketat (cegah PDF jebakan/zip-bomb/loop tak henti).
-    try:
-        with ThreadPoolExecutor(max_workers=1) as ex:
-            text = ex.submit(_parse_doc, raw, name).result(timeout=_PARSE_TIMEOUT)
-    except Exception as e:                    # timeout/parser error -> JANGAN bocorkan detail teknis ke user/LLM
-        _log_err(e)
-        return ""
-    return phi.sanitize_phi(text or "")       # REDAKSI PII sebelum teks dipakai/dikirim ke LLM
+        _reg_cfg = load_registry_store_config(
+            backend=CONFIG.registry_store_backend,
+            database_url=CONFIG.registry_database_url,
+            admin_url=CONFIG.registry_database_admin_url,
+            runtime_mode=CONFIG.registry_runtime_mode,
+            activation_enabled=CONFIG.registry_activation_enabled,
+        )
+        REGISTRY_RUNTIME_INFO = probe_registry_store(
+            _reg_cfg,
+            max_attempts=CONFIG.registry_startup_max_attempts,
+            connect_timeout_sec=CONFIG.registry_startup_connect_timeout_sec,
+            backoff_sec=CONFIG.registry_startup_backoff_sec,
+        )
+        print(f"[registry] status={REGISTRY_RUNTIME_INFO.status.value} "
+              f"backend={REGISTRY_RUNTIME_INFO.store_backend} "
+              f"health={REGISTRY_RUNTIME_INFO.store_health} "
+              f"activation={REGISTRY_RUNTIME_INFO.activation_enabled} "
+              f"reason={REGISTRY_RUNTIME_INFO.failure_reason_code or 'none'}")
+    except Exception as _reg_err:
+        REGISTRY_RUNTIME_INFO = RegistryRuntimeInfo(
+            status=RegistryRuntimeStatus.UNAVAILABLE,
+            failure_reason_code='startup_error',
+            store_backend=CONFIG.registry_store_backend,
+        )
+        print(f"[registry] startup probe failed safely: {type(_reg_err).__name__}")
+    yield
 
 
 # ============================ APP ============================================
-app = FastAPI(title="CDSS AI Keperawatan", version="3.0")
+app = FastAPI(title="CDSS AI Keperawatan", version="3.0", lifespan=_lifespan)
 # CORS: HANYA origin frontend yang sah (bukan "*"). Override via env FRONTEND_ORIGINS (pisah koma) untuk produksi.
-FRONTEND_ORIGINS = [o.strip() for o in os.environ.get(
-    "FRONTEND_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if o.strip()]
+FRONTEND_ORIGINS = list(CONFIG.frontend_origins)
 app.add_middleware(CORSMiddleware, allow_origins=FRONTEND_ORIGINS, allow_credentials=False,
-                   allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["Authorization", "Content-Type"])
+                   allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Session-Token"])
 
 
 # ----- Peringatan dini insiden keamanan (UU PDP Pasal 46 — wajib lapor 3x24 jam) -----
@@ -630,8 +1060,9 @@ def _note_access_failure(path: str, status: int) -> None:
             _fail_times.popleft()
         count = len(_fail_times)
     if count > _INCIDENT_THRESHOLD:
+        safe_path = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(path).text
         print(f"[SECURITY-INCIDENT][ERROR] POTENSI INSIDEN KEAMANAN: {count} request gagal (401/403/409) dalam "
-              f"{_INCIDENT_WINDOW} detik terakhir (terakhir: {path} -> {status}). Segera periksa; UU PDP mewajibkan "
+              f"{_INCIDENT_WINDOW} detik terakhir (terakhir: {safe_path} -> {status}). Segera periksa; UU PDP mewajibkan "
               f"pelaporan 3x24 jam bila terbukti kebocoran.", file=sys.stderr)
 
 
@@ -639,7 +1070,8 @@ def _note_access_failure(path: str, status: int) -> None:
 async def security_monitor(request, call_next):
     path = request.url.path
     if (".." in path) or ("%2e" in path.lower()) or ("%2f" in path.lower()):   # percobaan manipulasi path
-        print(f"[SECURITY-INCIDENT][ERROR] POTENSI INSIDEN KEAMANAN: percobaan manipulasi path terdeteksi: {path}", file=sys.stderr)
+        safe_path = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(path).text
+        print(f"[SECURITY-INCIDENT][ERROR] POTENSI INSIDEN KEAMANAN: percobaan manipulasi path terdeteksi: {safe_path}", file=sys.stderr)
     _t0 = time.time()
     response = await call_next(request)
     metrics.record_request(response.status_code, (time.time() - _t0) * 1000.0)   # telemetri agregat
@@ -659,20 +1091,20 @@ _RASP_RE = re.compile(
 async def rasp_filter(request, call_next):
     target = (request.url.path or "") + "?" + (request.url.query or "")
     if _RASP_RE.search(target):
-        print(f"[SECURITY-INCIDENT][ERROR] RASP memblokir pola berbahaya pada URL: {request.url.path}", file=sys.stderr)
+        safe_path = DEFAULT_OUTBOUND_POLICY.sanitize_for_log(request.url.path).text
+        print(f"[SECURITY-INCIDENT][ERROR] RASP memblokir pola berbahaya pada URL: {safe_path}", file=sys.stderr)
         return JSONResponse({"status": "error", "pesan": "Permintaan ditolak."}, status_code=403)
     return await call_next(request)
 
 
 # Muat basis pengetahuan saat modul di-import (robust: tidak bergantung pada event startup).
 muat_data()
-_ledger_ok, _ledger_n = verify_audit_chain()   # verifikasi integritas WORM ledger saat start
+_ledger_ok, _ledger_n = verify_audit_chain()   # verifikasi integritas ledger lokal saat start
 print(f"[audit] ledger {'OK' if _ledger_ok else 'RUSAK/TAMPERED!'} ({_ledger_n} entri)")
-_dsec, _dnew = director.ensure_secret()
-if _dnew:   # cetak URI enrollment MFA HANYA sekali saat secret pertama dibuat (akses konsol server-only)
-    print("[director] Enrollment MFA — pindai ke aplikasi authenticator:", director.otpauth_uri())
-if harvester.start(audit_log):
+if harvester.start(audit_log, interval=CONFIG.harvest_interval_sec, topics=CONFIG.harvest_topics):
     print("[harvester] Knowledge Harvester aktif (interval mingguan, menghangatkan cache jurnal RAG).")
+
+
 
 
 @app.get("/")
@@ -680,25 +1112,92 @@ def root():
     return {"app": "CDSS AI Keperawatan", "status": "aktif", "versi": "3.0"}
 
 
+@app.get("/capabilities")
+def capabilities():
+    return build_capabilities(CONFIG)
+
+
 @app.get("/status")
-def status(authorization: Optional[str] = Header(None)):
-    if not resolve_key(authorization, ""):   # lockdown: butuh kunci (anti-enumerasi anonim) — S7
-        return JSONResponse({"status": "error", "pesan": "Token API Habis"}, status_code=401)
+def status(request: Request, authorization: Optional[str] = Header(None)):
+    principal, key, error = _auth_context(request, authorization, 'AUTH')
+    if error:
+        return error
     detail = {k: f"{len(v)} entri" for k, v in DATA.items()}
     if not detail:
         detail = {"basis_pengetahuan": "kosong"}
     return {"status": "aktif", "detail": detail, "providers": PROVIDERS, **memory.stats(), **ebp.stats()}
 
 
+@app.get("/registry/status")
+def registry_status(request: Request, authorization: Optional[str] = Header(None)):
+    """P8-BE: Authenticated registry status. Returns safe metadata only."""
+    principal, key, error = _auth_context(request, authorization, 'AUTH')
+    if error:
+        return error
+    return JSONResponse(safe_registry_metadata(REGISTRY_RUNTIME_INFO), status_code=200)
+
+
+
 def _session_invalid():
     return JSONResponse({"status": "error", "pesan": "SESSION_INVALID"}, status_code=409)
 
 
+def _unavailable(capability: str, status_code: int = 503, extra: Optional[dict] = None):
+    reason = capability_reason(capability, CONFIG)
+    audit_event(
+        "capability_denied",
+        actor_type="system",
+        route_class="capability",
+        action="capability_denied",
+        outcome=capability,
+        status_code=status_code,
+        security_tags=("capability",),
+        metadata={"capability": capability, "status_code": status_code},
+    )
+    payload = {
+        "status": "error",
+        "capability": capability,
+        "enabled": False,
+        "app_mode": CONFIG.app_mode,
+        "safety_notice": SAFETY_NOTICE,
+        "reason": reason,
+        "pesan": f"Capability temporarily unavailable in secure sandbox mode: {reason}",
+    }
+    if extra:
+        payload.update(extra)
+    return JSONResponse(payload, status_code=status_code)
+
+
+def _blocked_llm_capability(agent: str) -> Optional[str]:
+    a = (agent or "analisis").lower()
+    if a == "referensi" and not capability_enabled("ebp_external_search", CONFIG):
+        return "ebp_external_search"
+    if a == "pathway" and not capability_enabled("mermaid_pathway_rendering", CONFIG):
+        return "mermaid_pathway_rendering"
+    if not capability_enabled("external_llm", CONFIG):
+        return "external_llm"
+    return None
+
+
 @app.post("/session")
-def new_session():
+def new_session(request: Request, authorization: Optional[str] = Header(None)):
     """Terbitkan session_id kriptografis (CSPRNG, 256-bit). Frontend WAJIB memakai ID ini —
     klien DILARANG membuat session_id sendiri (menutup tebak-ID & kebocoran memori lintas pengguna)."""
-    return {"status": "sukses", "session_id": SESI.issue()}
+    principal, key, error = _auth_context(request, authorization, 'AUTH')
+    if error:
+        return error
+    session_id, session_token = SESI.issue(principal)
+    audit_event(
+        "session_created",
+        actor_type="api_principal",
+        actor_id=principal.principal_id,
+        route_class="session",
+        action="session_create",
+        outcome="created",
+        status_code=200,
+        security_tags=("session",),
+    )
+    return {'status': 'sukses', 'session_id': session_id, 'session_token': session_token, 'session_ttl_sec': CONFIG.session_ttl_sec}
 
 
 # ----- Dasbor Eksekutif Direktur (rute SAH, dijaga MFA/TOTP — bukan backdoor) -----
@@ -708,24 +1207,91 @@ def _director_token(authorization: Optional[str]) -> str:
 
 
 @app.post("/director/login")
-def director_login(code: str = Form("")):
-    if not director.verify_totp(code):
-        return JSONResponse({"status": "error", "pesan": "Kode MFA tidak valid."}, status_code=401)
-    audit_log("director", "DirectorLogin", "Success")
-    return {"status": "sukses", "director_token": director.issue_token(), "ttl_s": director._TOKEN_TTL}
+def director_login(request: Request, code: str = Form("")):
+    limited = _apply_rate_limit(request, 'MFA')
+    if limited:
+        return limited
+    result = director.verify_totp_attempt(
+        code,
+        principal='director',
+        ip=_client_ip(request),
+        failure_limit=CONFIG.mfa_failure_limit,
+        failure_window=CONFIG.mfa_failure_window_sec,
+        lockout=CONFIG.mfa_lockout_sec,
+    )
+    if not result.ok:
+        if not audit_event(
+            "mfa_locked" if result.status == "mfa_locked" else "mfa_replay_rejected" if result.status == "mfa_replay_rejected" else "mfa_failed",
+            actor_type="director",
+            actor_id="director",
+            route_class="MFA",
+            action="director_login",
+            outcome=result.status,
+            status_code=status_code_for(result.status),
+            security_tags=("mfa", "director"),
+            metadata={"status": result.status},
+        ):
+            return _audit_required_failure_response()
+        return _security_response(result.status, result.retry_after)
+    if not audit_event(
+        "mfa_succeeded",
+        actor_type="director",
+        actor_id="director",
+        route_class="MFA",
+        action="director_login",
+        outcome="authenticated",
+        status_code=200,
+        security_tags=("mfa", "director"),
+    ):
+        if result.token:
+            director._tokens.pop(result.token, None)
+        return _audit_required_failure_response()
+    return {'status': 'sukses', 'director_token': result.token, 'ttl_s': director._TOKEN_TTL}
 
 
 @app.get("/director/enroll")
-def director_enroll(token: str = ""):
-    """Ambil otpauth:// URI untuk enrollment MFA — HANYA bila env DIRECTOR_BOOTSTRAP cocok (akses server-only)."""
-    boot = os.environ.get("DIRECTOR_BOOTSTRAP", "")
-    if not boot or token != boot:
-        return JSONResponse({"status": "error", "pesan": "Akses ditolak."}, status_code=403)
-    return {"status": "sukses", "otpauth_uri": director.otpauth_uri()}
-
+def director_enroll(request: Request, x_director_bootstrap: Optional[str] = Header(None, alias='X-Director-Bootstrap')):
+    """Local-sandbox-only MFA provisioning. Bootstrap is header-only and never accepted from URL/body/cookie."""
+    limited = _apply_rate_limit(request, 'DIRECTOR_PRIVILEGED')
+    if limited:
+        return limited
+    if not audit_event(
+        "director_enrollment_attempt",
+        actor_type="director_bootstrap",
+        actor_id="director_enrollment",
+        route_class="DIRECTOR_PRIVILEGED",
+        action="director_enroll",
+        outcome="attempted",
+        status_code=0,
+        security_tags=("director",),
+    ):
+        return _audit_required_failure_response()
+    boot = CONFIG.director_bootstrap
+    if CONFIG.app_mode != 'clinical_sandbox' or not CONFIG.director_enrollment_enabled or not boot:
+        return _security_response('authorization_failed')
+    if not constant_time_equal(x_director_bootstrap or '', boot):
+        return _security_response('authorization_failed')
+    if not audit_event(
+        "director_enrollment_succeeded",
+        actor_type="director_bootstrap",
+        actor_id="director_enrollment",
+        route_class="DIRECTOR_PRIVILEGED",
+        action="director_enroll",
+        outcome="provisioned",
+        status_code=200,
+        security_tags=("director",),
+    ):
+        return _audit_required_failure_response()
+    result = director.provision_otpauth_uri()
+    if not result.ok:
+        return _security_response('authorization_failed')
+    return {"status": "sukses", "otpauth_uri": result.otpauth_uri}
 
 @app.get("/director/metrics")
-def director_metrics(authorization: Optional[str] = Header(None)):
+def director_metrics(request: Request, authorization: Optional[str] = Header(None)):
+    limited = _apply_rate_limit(request, 'DIRECTOR_PRIVILEGED')
+    if limited:
+        return limited
     if not director.valid_token(_director_token(authorization)):
         return JSONResponse({"status": "error", "pesan": "Sesi direktur tidak valid."}, status_code=401)
     snap = metrics.snapshot()
@@ -736,31 +1302,52 @@ def director_metrics(authorization: Optional[str] = Header(None)):
 
 # ----- chat (non-stream) -----------------------------------------------------
 @app.post("/chat")
-def chat(provider: str = Form(...), api_key: str = Form(""), model: str = Form(...),
+def chat(request: Request, provider: str = Form(...), model: str = Form(...),
          framework: str = Form("3S"), session_id: str = Form("default"), tier: str = Form("medium"),
          agent: str = Form("analisis"),
-         pertanyaan: str = Form(...), authorization: Optional[str] = Header(None)):
-    key = resolve_key(authorization, api_key)
+         pertanyaan: str = Form(...), authorization: Optional[str] = Header(None),
+         session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'CHAT')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     if not key:
         return JSONResponse({"status": "error", "pesan": "Token API Habis"}, status_code=401)
     if not SESI.valid(session_id):
         return _session_invalid()
     if not (pertanyaan or "").strip():
         return JSONResponse({"status": "error", "pesan": "Pertanyaan kosong."}, status_code=400)
+    blocked = _blocked_llm_capability(agent)
+    if blocked:
+        return _unavailable(blocked)
+    registry_status, missing_registries = _clinical_registry_block(framework)
+    if _requires_clinical_registry(agent, pertanyaan) and registry_status:
+        ans, meta = _registry_abstention_answer(framework, registry_status, missing_registries)
+        return _clinical_payload({"status": "sukses", "jawaban": ans}, meta)
     if not framework_available(framework):
-        return {"status": "sukses", "jawaban": REF_REFUSAL}
+        ans, meta = _registry_unavailable_answer(framework)
+        return _clinical_payload({"status": "sukses", "jawaban": ans}, meta)
     try:
         llm = get_llm(provider, model, key)
-        extra = ebp.retrieve_context(llm, pertanyaan) if (agent or "").lower() == "referensi" else ""   # jurnal NYATA
+        safe_question = _external_safe_text(pertanyaan)
+        extra = ebp.retrieve_context(llm, safe_question) if (agent or "").lower() == "referensi" else ""   # jurnal NYATA
         msgs = build_messages(framework, session_id, pertanyaan, tier, agent, extra)
-        ans = agents.orchestrate_answer(llm, msgs, pertanyaan, tier)   # kedalaman sesuai tier (flash/medium/pro)
-        if (agent or "analisis").lower() == "analisis":
+        ans = agents.orchestrate_answer(llm, msgs, safe_question, tier)   # kedalaman sesuai tier (flash/medium/pro)
+        clinical_meta = None
+        if (agent or "analisis").lower() == "analisis" and not is_casual(pertanyaan):
+            ans, clinical_meta = _validate_clinical_answer(ans, framework, safe_question)
+        elif (agent or "analisis").lower() == "analisis":
             ans = maybe_degrade_note(framework, ans)
-        ans = phi.sanitize_phi(ans)   # redaksi PII pada OUTPUT (jaring pengaman akhir)
-        SESI.add(session_id, "user", pertanyaan)
+            ans = _browser_safe_text(ans)   # redaksi PII pada OUTPUT (jaring pengaman akhir)
+        else:
+            ans = _browser_safe_text(ans)
+        SESI.add(session_id, "user", safe_question)
         SESI.add(session_id, "assistant", ans)
         metrics.record_job(agent, tier, True, (len(pertanyaan) + len(ans)) // 4)
-        return {"status": "sukses", "jawaban": ans}
+        payload = {"status": "sukses", "jawaban": ans}
+        return _clinical_payload(payload, clinical_meta)
     except Exception as e:  # noqa
         code, pesan = err_status(e)
         return JSONResponse({"status": "error", "pesan": pesan}, status_code=code)
@@ -768,129 +1355,147 @@ def chat(provider: str = Form(...), api_key: str = Form(""), model: str = Form(.
 
 # ----- chat streaming (typewriter) ------------------------------------------
 @app.post("/chat_stream")
-def chat_stream(provider: str = Form(...), api_key: str = Form(""), model: str = Form(...),
+def chat_stream(request: Request, provider: str = Form(...), model: str = Form(...),
                 framework: str = Form("3S"), session_id: str = Form("default"), tier: str = Form("medium"),
                 agent: str = Form("analisis"),
-                pertanyaan: str = Form(...), authorization: Optional[str] = Header(None)):
-    key = resolve_key(authorization, api_key)
+                pertanyaan: str = Form(...), authorization: Optional[str] = Header(None),
+                session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'CHAT')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     if not key:
         return JSONResponse({"status": "error", "pesan": "Token API Habis"}, status_code=401)
     if not SESI.valid(session_id):
         return _session_invalid()
     if not (pertanyaan or "").strip():
         return JSONResponse({"status": "error", "pesan": "Pertanyaan kosong."}, status_code=400)
+    blocked = _blocked_llm_capability(agent)
+    if blocked:
+        return _unavailable(blocked)
+    registry_status, missing_registries = _clinical_registry_block(framework)
+    if _requires_clinical_registry(agent, pertanyaan) and registry_status:
+        ans, meta = _registry_abstention_answer(framework, registry_status, missing_registries)
+        return StreamingResponse(iter([ans]), media_type="text/plain; charset=utf-8", headers=_stream_clinical_headers(meta))
     if not framework_available(framework):
-        return StreamingResponse(iter([REF_REFUSAL]), media_type="text/plain; charset=utf-8")
+        ans, meta = _registry_unavailable_answer(framework)
+        return StreamingResponse(iter([ans]), media_type="text/plain; charset=utf-8", headers=_stream_clinical_headers(meta))
 
     # Mulai di sini agar error auth/kuota tertangkap SEBELUM body 200 terkirim.
     tier_l = (tier or "medium").lower()
     casual = is_casual(pertanyaan)                  # sapaan/obrolan singkat -> jalur stream cepat (1 panggilan), tanpa orkestrasi/EBP
     try:
+        clinical_meta = None
         llm = get_llm(provider, model, key)
-        extra = ebp.retrieve_context(llm, pertanyaan) if ((agent or "").lower() == "referensi" and not casual) else ""   # jurnal NYATA
+        safe_question = _external_safe_text(pertanyaan)
+        extra = ebp.retrieve_context(llm, safe_question) if ((agent or "").lower() == "referensi" and not casual) else ""   # jurnal NYATA
         msgs = build_messages(framework, session_id, pertanyaan, tier, agent, extra)
-        if tier_l == "flash" or casual:             # FLASH atau sapaan: 1 panggilan, streaming token langsung (tercepat)
-            precomputed = None
-            it = llm.stream(msgs)
-            try:
-                first = next(it)
-            except StopIteration:
-                first = None
-        else:                                       # MEDIUM/PRO: orkestrasi (draft + audit/swarm) lalu dipancarkan
-            it = first = None
-            precomputed = agents.orchestrate_answer(llm, msgs, pertanyaan, tier_l)
+        effective_tier = "flash" if casual else tier_l
+        precomputed = agents.orchestrate_answer(llm, msgs, safe_question, effective_tier)
+        if (agent or "analisis").lower() == "analisis" and not casual:
+            precomputed, clinical_meta = _validate_clinical_answer(precomputed, framework, safe_question)
+        elif (agent or "analisis").lower() == "analisis":
+            precomputed = maybe_degrade_note(framework, precomputed)
+            precomputed = _browser_safe_text(precomputed)
+        else:
+            precomputed = _browser_safe_text(precomputed)
     except Exception as e:  # noqa
         code, pesan = err_status(e)
         return JSONResponse({"status": "error", "pesan": pesan}, status_code=code)
 
     def gen():
-        acc: list[str] = []
-        if tier_l == "flash" or casual:
-            def emit(chunk) -> str:
-                c = bersihkan_stream(getattr(chunk, "content", "") or "")   # JANGAN strip per-token
-                if c:
-                    acc.append(c)
-                return c
-            if first is not None:
-                c = emit(first)
-                if c:
-                    yield c
-            try:
-                for ch in it:
-                    c = emit(ch)
-                    if c:
-                        yield c
-            except Exception:  # noqa  (stream terputus di tengah)
-                pass
-        else:
-            text = precomputed or ""               # jawaban final hasil multi-agen -> dipancarkan bertahap
-            acc.append(text)
-            for i in range(0, len(text), 120):
-                yield text[i:i + 120]
-        full = "".join(acc)
-        if (agent or "analisis").lower() == "analisis" and (not askep_refs_available(framework)) and ("Informasi Sistem" not in full) and _ASKEP_RE.search(full):
-            yield DEGRADE_NOTE          # notifikasi degradasi di akhir
-            full += DEGRADE_NOTE
-        SESI.add(session_id, "user", pertanyaan)
-        SESI.add(session_id, "assistant", phi.sanitize_phi(bersihkan(full)))
+        full = precomputed or ""
+        for i in range(0, len(full), 120):
+            yield bersihkan_stream(full[i:i + 120])
+        SESI.add(session_id, "user", safe_question)
+        SESI.add(session_id, "assistant", _browser_safe_text(bersihkan(full)))
         metrics.record_job(agent, tier, True, (len(pertanyaan) + len(full)) // 4)
 
     # Header anti-buffering agar token mengalir real-time (tanpa ditahan proxy/uvicorn).
     return StreamingResponse(
         gen(), media_type="text/plain; charset=utf-8",
-        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache, no-transform"},
+        headers=_stream_clinical_headers(clinical_meta),
     )
 
 
 # ----- analisis multi-agen (swarm) ------------------------------------------
 @app.post("/analisis_multi")
-def analisis_multi(provider: str = Form(...), api_key: str = Form(""), model: str = Form(...),
+def analisis_multi(request: Request, provider: str = Form(...), model: str = Form(...),
                    framework: str = Form("3S"), session_id: str = Form("default"), tier: str = Form("medium"),
                    agent: str = Form("analisis"), consent: str = Form(""),
                    gejala: str = Form(""),
                    file_dokumen: Optional[UploadFile] = File(None),
                    file_foto: Optional[UploadFile] = File(None),
-                   authorization: Optional[str] = Header(None)):
-    key = resolve_key(authorization, api_key)
+                   authorization: Optional[str] = Header(None),
+                   session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'UPLOAD')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     if not key:
         return JSONResponse({"status": "error", "pesan": "Token API Habis"}, status_code=401)
     if not SESI.valid(session_id):
         return _session_invalid()
     if _too_big(file_dokumen) or _too_big(file_foto):
         audit_log(session_id, "Upload", "Fail(TooLarge)")
-        return JSONResponse({"status": "error", "pesan": "Ukuran file melebihi batas 10MB."}, status_code=413)
+        return JSONResponse({
+            "status": "error",
+            "pesan": "Ukuran file melebihi batas upload.",
+            "upload_status": "file_too_large",
+            "accepted_upload": False,
+        }, status_code=413)
     if (consent or "").strip().lower() in ("true", "1"):   # CONSENT LOGGING (UU PDP Pasal 20/22)
         audit_log(session_id, "Consent", "Granted")
-
+    if file_foto is not None and not capability_enabled("clinical_photo_analysis", CONFIG):
+        audit_log(session_id, "PhotoAnalysis", "Unavailable")
+        return _unavailable("clinical_photo_analysis")
     cmd = (gejala or "").strip()
-    doc = extract_text(file_dokumen)
+    doc_result = extract_upload_document(file_dokumen)
+    if doc_result and not doc_result.ok:
+        return _upload_error_response(doc_result, session_id)
+    doc = doc_result.text if doc_result else ""
+    blocked = _blocked_llm_capability(agent)
+    if blocked:
+        return _unavailable(blocked)
     doc_block = ("\n\n<dokumen_pasien>\n" + doc + "\n</dokumen_pasien>") if doc else ""   # isolasi anti-injeksi (T4)
     if file_foto is not None:
-        doc_block += "\n[Catatan: foto rekam medis dilampirkan oleh perawat.]"
+        return _unavailable("clinical_photo_analysis")
     if not (cmd or doc_block.strip()):
         return JSONResponse({"status": "error", "pesan": "Tidak ada data untuk dianalisis."}, status_code=400)
-    if not framework_available(framework):
-        return {"status": "sukses", "hasil": REF_REFUSAL}
-    # File diunggah TANPA teks -> interaktif: simpan dokumen ke memori lalu tanya (tidak auto-analisis).
     if not cmd:
-        SESI.add(session_id, "user", "[Dokumen rekam medis diunggah]" + doc_block)
+        SESI.add(session_id, "user", _external_safe_text("[Dokumen rekam medis diunggah]" + doc_block))
         SESI.add(session_id, "assistant", DOC_RECEIVED)
         audit_log(session_id, "Upload", "Success")
         return {"status": "sukses", "hasil": DOC_RECEIVED}
+    registry_status, missing_registries = _clinical_registry_block(framework)
+    if _requires_clinical_registry(agent, cmd + doc_block) and registry_status:
+        hasil, meta = _registry_abstention_answer(framework, registry_status, missing_registries)
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, meta)
+    if not framework_available(framework):
+        hasil, meta = _registry_unavailable_answer(framework)
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, meta)
     try:
         llm = get_llm(provider, model, key)
-        extra = ebp.retrieve_context(llm, cmd + doc_block) if (agent or "").lower() == "referensi" else ""
+        safe_case = _external_safe_text(cmd + doc_block)
+        extra = ebp.retrieve_context(llm, safe_case) if (agent or "").lower() == "referensi" else ""
         # file + perintah spesifik; kedalaman multi-agen mengikuti tier (flash/medium/pro).
         msgs = build_messages(framework, session_id, cmd + doc_block, tier, agent, extra)
-        hasil = agents.orchestrate_answer(llm, msgs, cmd + doc_block, tier)
+        hasil = agents.orchestrate_answer(llm, msgs, safe_case, tier)
+        clinical_meta = None
         if (agent or "analisis").lower() == "analisis":
-            hasil = maybe_degrade_note(framework, hasil)
-        hasil = phi.sanitize_phi(hasil)   # redaksi PII pada OUTPUT
-        SESI.add(session_id, "user", cmd)
+            hasil, clinical_meta = _validate_clinical_answer(hasil, framework, safe_case)
+        else:
+            hasil = _browser_safe_text(hasil)   # redaksi PII pada OUTPUT
+        SESI.add(session_id, "user", _external_safe_text(cmd))
         SESI.add(session_id, "assistant", hasil)
         audit_log(session_id, "Analisis", "Success")
         metrics.record_job(agent, tier, True, (len(cmd) + len(hasil)) // 4, doc=True)
-        return {"status": "sukses", "hasil": hasil}
+        payload = {"status": "sukses", "hasil": hasil}
+        return _clinical_payload(payload, clinical_meta)
     except Exception as e:  # noqa
         audit_log(session_id, "Analisis", "Fail")
         code, pesan = err_status(e)
@@ -899,31 +1504,56 @@ def analisis_multi(provider: str = Form(...), api_key: str = Form(""), model: st
 
 # ----- analisis single-agent (fallback) -------------------------------------
 @app.post("/analisis")
-def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Form(...),
+def analisis(request: Request, provider: str = Form(...), model: str = Form(...),
              framework: str = Form("3S"), session_id: str = Form("default"), tier: str = Form("medium"),
              consent: str = Form(""),
              gejala: str = Form(""),
              file_dokumen: Optional[UploadFile] = File(None),
              file_foto: Optional[UploadFile] = File(None),
-             authorization: Optional[str] = Header(None)):
-    key = resolve_key(authorization, api_key)
+             authorization: Optional[str] = Header(None),
+             session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'UPLOAD')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     if not key:
         return JSONResponse({"status": "error", "pesan": "Token API Habis"}, status_code=401)
     if not SESI.valid(session_id):
         return _session_invalid()
     if _too_big(file_dokumen) or _too_big(file_foto):
         audit_log(session_id, "Upload", "Fail(TooLarge)")
-        return JSONResponse({"status": "error", "pesan": "Ukuran file melebihi batas 10MB."}, status_code=413)
+        return JSONResponse({
+            "status": "error",
+            "pesan": "Ukuran file melebihi batas upload.",
+            "upload_status": "file_too_large",
+            "accepted_upload": False,
+        }, status_code=413)
     if (consent or "").strip().lower() in ("true", "1"):   # CONSENT LOGGING (UU PDP Pasal 20/22)
         audit_log(session_id, "Consent", "Granted")
+    if file_foto is not None and not capability_enabled("clinical_photo_analysis", CONFIG):
+        audit_log(session_id, "PhotoAnalysis", "Unavailable")
+        return _unavailable("clinical_photo_analysis")
+    doc_result = extract_upload_document(file_dokumen)
+    if doc_result and not doc_result.ok:
+        return _upload_error_response(doc_result, session_id)
+    doc = doc_result.text if doc_result else ""
+    blocked = _blocked_llm_capability("analisis")
+    if blocked:
+        return _unavailable(blocked)
+    registry_status, missing_registries = _clinical_registry_block(framework)
+    if registry_status:
+        hasil, meta = _registry_abstention_answer(framework, registry_status, missing_registries)
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, meta)
     if not framework_available(framework):
-        return {"status": "sukses", "hasil": REF_REFUSAL}
-    doc = extract_text(file_dokumen)
+        hasil, meta = _registry_unavailable_answer(framework)
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, meta)
     data = (gejala or "").strip()
     if doc:
         data += ("\n\n<dokumen_pasien>\n" + doc + "\n</dokumen_pasien>")   # isolasi anti-injeksi (T4)
     if file_foto is not None:
-        data += "\n[Catatan: foto rekam medis dilampirkan.]"
+        return _unavailable("clinical_photo_analysis")
     data = data.strip()
     if not data:
         return JSONResponse({"status": "error", "pesan": "Tidak ada data untuk dianalisis."}, status_code=400)
@@ -931,12 +1561,13 @@ def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Fo
     koreksi = (memory.recall_block(framework, data, session_id) or "") + books_note(framework)   # isolasi per-sesi + degradasi anggun
     try:
         llm = get_llm(provider, model, key)
-        hasil = phi.sanitize_phi(maybe_degrade_note(framework, bersihkan(agents.single_askep(llm, framework, data, konteks, koreksi, iq_text(tier)))))
-        SESI.add(session_id, "user", gejala.strip() or "[analisis rekam medis terlampir]")
+        raw_hasil = bersihkan(agents.single_askep(llm, framework, data, konteks, koreksi, iq_text(tier)))
+        hasil, clinical_meta = _validate_clinical_answer(raw_hasil, framework, _external_safe_text(data))
+        SESI.add(session_id, "user", _external_safe_text(gejala.strip()) if gejala.strip() else "[analisis rekam medis terlampir]")
         SESI.add(session_id, "assistant", hasil)
         audit_log(session_id, "Analisis", "Success")
         metrics.record_job("analisis", tier, True, (len(data) + len(hasil)) // 4, doc=True)
-        return {"status": "sukses", "hasil": hasil}
+        return _clinical_payload({"status": "sukses", "hasil": hasil}, clinical_meta)
     except Exception as e:  # noqa
         audit_log(session_id, "Analisis", "Fail")
         code, pesan = err_status(e)
@@ -945,14 +1576,24 @@ def analisis(provider: str = Form(...), api_key: str = Form(""), model: str = Fo
 
 # ----- clinical pathway (background / on-demand) ----------------------------
 @app.post("/pathway")
-def pathway_ep(provider: str = Form(...), api_key: str = Form(""), model: str = Form(...),
+def pathway_ep(request: Request, provider: str = Form(...), model: str = Form(...),
                framework: str = Form("3S"), session_id: str = Form("default"),
-               gejala: str = Form(""), authorization: Optional[str] = Header(None)):
-    key = resolve_key(authorization, api_key)
+               gejala: str = Form(""), authorization: Optional[str] = Header(None),
+               session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'CHAT')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
     if not key:
         return JSONResponse({"status": "error", "pesan": "Token API Habis", "mermaid": ""}, status_code=401)
     if not SESI.valid(session_id):
         return _session_invalid()
+    if not capability_enabled("mermaid_pathway_rendering", CONFIG):
+        return _unavailable("mermaid_pathway_rendering", extra={"mermaid": ""})
+    if not capability_enabled("external_llm", CONFIG):
+        return _unavailable("external_llm", extra={"mermaid": ""})
     if not framework_available(framework):
         return {"status": "error", "pesan": REF_REFUSAL, "mermaid": ""}
     hist = SESI.history(session_id)
@@ -962,7 +1603,7 @@ def pathway_ep(provider: str = Form(...), api_key: str = Form(""), model: str = 
         return {"status": "error", "pesan": "Tidak ada konteks untuk membuat pathway.", "mermaid": ""}
     try:
         llm = get_llm(provider, model, key)
-        code = extract_mermaid(agents.gen_pathway(llm, framework, konteks))
+        code = extract_mermaid(_browser_safe_text(agents.gen_pathway(llm, framework, konteks)))
         return {"status": "sukses", "mermaid": code}
     except Exception as e:  # noqa
         c, pesan = err_status(e)
@@ -971,8 +1612,15 @@ def pathway_ep(provider: str = Form(...), api_key: str = Form(""), model: str = 
 
 # ----- referensi (Referensi tab) --------------------------------------------
 @app.get("/daftar/{buku}")
-def daftar(buku: str, session_id: str = "", authorization: Optional[str] = Header(None)):
-    if not resolve_key(authorization, "") or not SESI.valid(session_id):   # lockdown enumerasi (S7)
+def daftar(request: Request, buku: str, session_id: str = "", authorization: Optional[str] = Header(None),
+           session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'AUTH')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
+    if not SESI.valid(session_id):   # lockdown enumerasi (S7)
         return JSONResponse({"status": "error", "pesan": "Akses ditolak."}, status_code=401)
     data = DATA.get(buku.upper())
     if not data:
@@ -983,8 +1631,15 @@ def daftar(buku: str, session_id: str = "", authorization: Optional[str] = Heade
 
 
 @app.get("/entri/{buku}/{kode}")
-def entri(buku: str, kode: str, session_id: str = "", authorization: Optional[str] = Header(None)):
-    if not resolve_key(authorization, "") or not SESI.valid(session_id):   # lockdown enumerasi (S7)
+def entri(request: Request, buku: str, kode: str, session_id: str = "", authorization: Optional[str] = Header(None),
+          session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'AUTH')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
+    if not SESI.valid(session_id):   # lockdown enumerasi (S7)
         return JSONResponse({"status": "error", "pesan": "Akses ditolak."}, status_code=401)
     for e in (DATA.get(buku.upper()) or []):
         if str(e.get("kode", "")).lower() == kode.lower():
@@ -994,30 +1649,80 @@ def entri(buku: str, kode: str, session_id: str = "", authorization: Optional[st
 
 # ----- reset & feedback ------------------------------------------------------
 @app.post("/reset")
-def reset(session_id: str = Form("default")):
-    SESI.reset(session_id)
-    return {"status": "ok"}
+def reset(request: Request, session_id: str = Form("default"), authorization: Optional[str] = Header(None),
+          session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'SESSION_MUTATION')
+    if error:
+        return error
+    status = SESI.validate(session_id, principal, session_token or '', touch=False)
+    if status != 'ok':
+        return _security_response(status)
+    if not audit_event(
+        "session_reset",
+        actor_type="api_principal",
+        actor_id=principal.principal_id,
+        route_class="SESSION_MUTATION",
+        action="session_reset",
+        outcome="reset",
+        status_code=200,
+        security_tags=("session",),
+    ):
+        return _audit_required_failure_response()
+    status, new_token = SESI.reset(session_id, principal, session_token or '')
+    if status != 'ok':
+        return _security_response(status)
+    return {'status': 'ok', 'session_token': new_token}
 
 
 @app.post("/delete_my_data")
-def delete_my_data(session_id: str = Form(""), authorization: Optional[str] = Header(None)):
+def delete_my_data(request: Request, session_id: str = Form(""), authorization: Optional[str] = Header(None),
+                   session_token: Optional[str] = Header(None, alias='X-Session-Token')):
     """Hak Hapus Data / Right to be Forgotten (UU PDP Pasal 8 & 43): musnahkan PERMANEN riwayat
     percakapan (PHI) + feedback milik session_id ini. session_id CSPRNG = bukti kepemilikan."""
-    if not SESI.valid(session_id):
-        return _session_invalid()
-    SESI.reset(session_id)                         # hapus riwayat percakapan + invalidasi sesi
+    principal, key, error = _auth_context(request, authorization, 'SESSION_MUTATION')
+    if error:
+        return error
+    status = SESI.validate(session_id, principal, session_token or '', touch=False)
+    if status != 'ok':
+        return _security_response(status)
+    if not audit_event(
+        "session_deleted",
+        actor_type="api_principal",
+        actor_id=principal.principal_id,
+        route_class="SESSION_MUTATION",
+        action="session_delete",
+        outcome="delete_authorized",
+        status_code=200,
+        security_tags=("session",),
+    ):
+        return _audit_required_failure_response()
+    status = SESI.delete(session_id, principal, session_token or '')
+    if status != 'ok':
+        return _security_response(status)
     removed = memory.purge_session(session_id)     # hapus seluruh feedback milik sesi ini
     crypto_store.dek_destroy(session_id)           # CRYPTO-SHRED: musnahkan DEK -> data sisa jadi sampah kriptografis
-    audit_log(session_id, "DeleteMyData", "Success")
     return {"status": "ok", "feedback_dihapus": removed}
 
 
 @app.post("/feedback")
-def feedback(framework: str = Form("3S"), session_id: str = Form(""), pertanyaan: str = Form(""),
-             jawaban: str = Form(""), rating: str = Form("up"), koreksi: str = Form("")):
-    if not SESI.valid(session_id):
-        return _session_invalid()
-    memory.store_feedback(framework, pertanyaan, jawaban, rating, koreksi, session_id)   # diikat ke sesi (anti poisoning lintas-user)
+def feedback(request: Request, framework: str = Form("3S"), session_id: str = Form(""), pertanyaan: str = Form(""),
+             jawaban: str = Form(""), rating: str = Form("up"), koreksi: str = Form(""),
+             authorization: Optional[str] = Header(None),
+             session_token: Optional[str] = Header(None, alias='X-Session-Token')):
+    principal, key, error = _auth_context(request, authorization, 'SESSION_MUTATION')
+    if error:
+        return error
+    session_error = _require_session(session_id, principal, session_token)
+    if session_error:
+        return session_error
+    memory.store_feedback(
+        framework,
+        _external_safe_text(pertanyaan),
+        _browser_safe_text(jawaban),
+        rating,
+        _external_safe_text(koreksi),
+        session_id,
+    )   # diikat ke sesi (anti poisoning lintas-user)
     audit_log(session_id, "Feedback", "Success")
     return {"status": "ok", **memory.stats()}
 

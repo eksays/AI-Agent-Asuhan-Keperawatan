@@ -4,6 +4,7 @@ Koreksi 👎 dari perawat disuntik ke kasus serupa berikutnya.
 """
 import os, time, threading, difflib
 import crypto_store
+from outbound_policy import DEFAULT_OUTBOUND_POLICY
 
 _FILE = os.path.join(os.path.dirname(__file__), "feedback_memory.json")
 _LOCK = threading.Lock()
@@ -24,12 +25,15 @@ def _tokens(s):
 def store_feedback(framework, pertanyaan, jawaban, rating, koreksi="", session_id=""):
     enc = bool(session_id)
     e = (lambda t: crypto_store.dek_encrypt(session_id, t)) if enc else (lambda t: t or "")   # crypto-shredding: enkripsi pakai DEK sesi
+    safe_pertanyaan = DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(pertanyaan or "").text
+    safe_jawaban = DEFAULT_OUTBOUND_POLICY.sanitize_for_browser(jawaban or "").text
+    safe_koreksi = DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(koreksi or "").text
     with _LOCK:
         items = _load()
         items.append({"framework": framework, "session_id": session_id or "", "enc": enc,
-                       "pertanyaan": e((pertanyaan or "")[:2000]),
-                       "jawaban": e((jawaban or "")[:4000]), "rating": rating,
-                       "koreksi": e((koreksi or "")[:2000]), "ts": time.time()})
+                       "pertanyaan": e(safe_pertanyaan[:2000]),
+                       "jawaban": e(safe_jawaban[:4000]), "rating": rating,
+                       "koreksi": e(safe_koreksi[:2000]), "ts": time.time()})
         if len(items) > 1000:
             items = items[-1000:]
         _save(items)
@@ -69,7 +73,7 @@ def recall_block(framework, query, session_id=""):
         seq = difflib.SequenceMatcher(None, (query or "")[:400].lower(), per[:400].lower()).ratio()
         s = 0.6 * overlap + 0.4 * seq
         if s >= 0.18:
-            scored.append((s, kor))
+            scored.append((s, DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(kor).text))
     scored.sort(key=lambda x: x[0], reverse=True)
     cor = [c for _, c in scored[:3]]
     if not cor:

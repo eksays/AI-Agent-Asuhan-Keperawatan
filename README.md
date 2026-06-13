@@ -1,305 +1,154 @@
-<div align="center">
-  <h1>🔥 CDSS AI Keperawatan</h1>
-  <p><em>An Agentic Clinical Decision Support System (CDSS) for Nursing Care Plans based on 3S (SDKI, SLKI, SIKI) and 3N (NANDA, NOC, NIC) standards.</em></p>
+# CDSS AI Keperawatan
 
-  [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-  [![Next.js Version](https://img.shields.io/badge/next.js-16.2--flash-black.svg)](https://nextjs.org/)
-  [![License](https://img.shields.io/badge/license-MIT-green.svg)](#license)
-  [![Framework](https://img.shields.io/badge/standard-3S%20%7C%203N-orange.svg)](#overview)
-</div>
+CDSS AI Keperawatan is a **clinical sandbox prototype** for exploring nursing documentation workflows. It is not approved for autonomous clinical decision-making, clinical deployment, or regulatory use. AI-generated suggestions require review by a qualified nurse or clinical reviewer.
 
----
+The current safety posture is intentionally fail-closed: unsupported or unverified features are disabled by default, and the backend is the source of truth for capability availability through `GET /capabilities`. Phase 7 adds a local HMAC-chained audit ledger, but identity, rate limits, sessions, and audit storage remain sandbox controls rather than production distributed enforcement.
 
-## Overview
+## Current Safety Position
 
-**CDSS AI Keperawatan** is a production-grade Clinical Decision Support System designed to help professional nurses formulate structured, accurate, and evidence-based nursing care plans (*Asuhan Keperawatan* or *Askep*). Powered by a multi-agent swarm architecture, the system reads patient medical records, matches symptoms against official Indonesian and international clinical standards (SDKI, SLKI, SIKI / NANDA, NOC, NIC), and generates structured, official-grade clinical documentation without hallucinating codes or diagnoses.
+- Default application mode: `APP_MODE=clinical_sandbox`.
+- External LLM analysis is disabled by default until outbound PHI firewall verification is complete.
+- Evidence retrieval from external scholarly services is disabled by default until de-identification enforcement is verified.
+- Clinical photo analysis is unavailable; validated OCR or vision processing is not implemented.
+- Mermaid pathway rendering is disabled by default until strict SVG sanitization and XSS regression tests pass.
+- Phase 9 RAG corpus foundations are default-off. P9-B adds governed synthetic ingestion, deterministic chunking, and PostgreSQL lexical FTS retrieval for explicit synthetic tests only. P9-C adds an isolated synthetic exact-cosine vector baseline for infrastructure testing only; product retrieval routes, hybrid retrieval, semantic/vector product retrieval, reranking, and external embedding providers are not implemented.
+- Local registry files are not approved authoritative clinical references.
+- API keys are accepted only through Authorization: Bearer <key>; body, query-string, and cookie API-key transport is not supported.
+- Browser-carried shared API keys are visible to the browser client; this is a sandbox containment control, not confidential server-side authentication.
+- Server-issued `session_id` values must be paired with the per-session `X-Session-Token`; the server stores only a token digest.
+- Director MFA includes replay rejection and lockout, but replay and rate-limit state is in memory only.
+- The audit ledger is a development-only HMAC-chained local ledger. It is tamper-evident only while the key remains secret; it is not WORM, immutable storage, a digital signature, external append-only storage, or valid-prefix truncation proof without an external checkpoint/archive.
+- No legal, regulatory, privacy, clinical, controlled-pilot, hospital, or production-readiness claim is made by this repository.
 
-Targeted at healthcare institutions, nurses, and clinical educators, this platform addresses the challenge of tedious administrative paperwork by parsing unstructured input (text, PDF, DOCX, CSV, or clinical photos), verifying standard-specific clinical criteria, and generating compliant clinical pathways, outcomes, and interventions. It incorporates strict security filters, PII sanitization (HIPAA & UU PDP compliance), and a tamper-evident audit ledger for mediko-legal safety.
+## Capability Matrix
 
----
+| Capability | Status | Reason |
+|---|---|---|
+| External LLM analysis | Disabled by default | Awaiting verified outbound PHI firewall |
+| EBP external search | Disabled by default | Awaiting de-identification enforcement |
+| Clinical photo analysis | Unavailable | Validated OCR or vision workflow not implemented |
+| Mermaid pathway rendering | Disabled by default | Awaiting SVG sanitization and XSS regression suite |
+| Governed RAG corpus | Synthetic test pipeline only | P9-B supports generated synthetic ingestion, chunking, lexical FTS retrieval, citation packaging, abstention, and metadata telemetry for explicit tests; no real corpus or product retrieval |
+| Hybrid/vector retrieval | Product capability not implemented | P9-C installed pgvector and applied the optional vector schema only on an isolated test database; the exact-cosine baseline is synthetic infrastructure testing only, and external embedding providers are not implemented |
+| SDKI authoritative grounding | Unavailable for production | Registry governance incomplete |
+| SLKI/SIKI | Unavailable | Approved registries unavailable |
+| NANDA/NOC/NIC | Unavailable | Approved registries unavailable |
+| Audit ledger | Development only | Local HMAC tamper evidence; not WORM, immutable storage, non-repudiation, or complete truncation detection |
 
-## Architecture
+## Application Modes
 
-The system is designed with a decoupled architecture featuring a FastAPI backend (orchestrator & swarm agents) and a Next.js frontend (client dashboard & director dashboard). Below is the high-level request-response and multi-agent swarm workflow.
+Supported modes:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Nurse as User / Nurse
-    participant UI as Next.js Frontend
-    participant Gateway as FastAPI (api.py)
-    participant Swarm as Swarm Orchestrator (agents.py)
-    participant DB as Knowledge Database (JSON)
-    participant EBP as EBP Agent (ebp.py)
-    participant LLM as LLM Providers (OpenAI/Claude/Gemini/DeepSeek)
-
-    Nurse->>UI: Input API Key & Select Provider (e.g. Sumopod/DeepSeek)
-    Nurse->>UI: Submit Patient Data & Select Standard (3S/3N)
-    UI->>Gateway: POST /analisis_multi or /chat_stream
-    Note over Gateway: RASP, PII Redaction & Document Parsing
-    Gateway->>DB: Search Standard Guidelines (RAG matching)
-    DB-->>Gateway: Return relevant SDKI/SLKI/SIKI entries
-    Gateway->>Swarm: Initialize Swarm with Context & Tier (Flash/Medium/Pro)
-
-    alt Flash Tier (Zero-Shot Single Agent)
-        Swarm->>LLM: 1x Request (Generate Care Plan Draft)
-        LLM-->>Swarm: Care Plan Draft
-    else Medium Tier (Maker-Checker Sequential)
-        Swarm->>LLM: 1st Request (Generate Draft)
-        LLM-->>Swarm: Draft
-        Swarm->>LLM: 2nd Request (Auditor checks & refines Draft)
-        LLM-->>Swarm: Refined Care Plan
-    else Pro Tier (Swarm Parallel Review)
-        Swarm->>LLM: 1st Request (Generate Draft)
-        LLM-->>Swarm: Draft
-        par Critics Analysis (Concurrent)
-            Swarm->>LLM: Critic 1: Clinical Accuracy & Code Audit
-            Swarm->>LLM: Critic 2: Formatting & Standard Completeness
-            Swarm->>LLM: Critic 3: Patient Safety & Hallucination Audit
-            LLM-->>Swarm: Return criticisms & corrections
-        end
-        Swarm->>LLM: Final Synthesis (Compile Draft + Critic feedback)
-        LLM-->>Swarm: Production-ready Care Plan
-    end
-
-    alt EBP Agent Enabled (Referensi Tab)
-        Gateway->>EBP: Fetch clinical trials & journals (PubMed/Europe PMC)
-        EBP-->>Gateway: Return relevant evidence-based references
-    end
-
-    Swarm-->>Gateway: Final Nursing Care Plan
-    Note over Gateway: Write to Tamper-Evident WORM Ledger
-    Gateway-->>UI: Stream Output (Typewriter Effect)
-    UI->>Nurse: Render Structured Table, Markdown, & Mermaid Pathway
+```text
+clinical_sandbox
+controlled_pilot
+production
 ```
 
----
+`clinical_sandbox` is the default when `APP_MODE` is absent. `controlled_pilot` and `production` must be set explicitly. Controlled-pilot and production modes fail startup if API keys, the server secret, or director bootstrap values are missing, weak, or placeholder-like. Production mode also fails startup unless explicit safety prerequisite flags are present; those flags are placeholders for later verification gates and are not evidence of clinical or regulatory approval by themselves.
 
-## Tech Stack
+## Key Environment Flags
 
-| Layer | Technology | Purpose |
-| :--- | :--- | :--- |
-| **Frontend** | Next.js 16 (React 19), Tailwind CSS, Framer Motion | User interface, real-time typing animation, document exports (PDF/Word), session management |
-| **Backend** | FastAPI (Python 3.11) | High-performance asynchronous API, RASP security, file parsing sandbox, session control |
-| **Swarm Orchestrator** | LangChain / LangChain Community | LLM invocation wrapper, system prompts orchestration, concurrent agents execution |
-| **Knowledge Engine** | Custom RAG (JSON database) | Strict retrieval of local medical references (SDKI, SLKI, SIKI, NANDA, NOC, NIC) |
-| **MFA Security** | PyOTP (TOTP) | Cryptographic multi-factor authentication for Director / Administrator access |
-| **Auditing Ledger** | WORM JSONL Audit Logs | Write-Once-Read-Many hash-chained ledger for medical-legal logging |
+All unsafe feature flags default to `false`.
 
----
-
-## Prerequisites
-
-*   **Python**: 3.11.x or 3.12.x
-*   **Node.js**: 20.x or higher (LTS recommended)
-*   **Package Managers**: `pip` (Python) and `npm` (Node.js)
-
----
-
-## Getting Started
-
-### 1. Clone & Configure
-
-Clone the repository and initialize the project:
-```bash
-git clone https://github.com/eksays/AI-Agent-Asuhan-Keperawatan.git cdss-app
-cd cdss-app
+```text
+APP_MODE=clinical_sandbox
+FEATURE_EXTERNAL_LLM=false
+FEATURE_EBP_EXTERNAL_SEARCH=false
+FEATURE_CLINICAL_PHOTO_ANALYSIS=false
+FEATURE_MERMAID_PATHWAY_RENDERING=false
+ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=false
+CDSS_API_KEYS=test-key
+CDSS_SECRET_KEY=local-sandbox-secret-change-me
+DIRECTOR_ENROLLMENT_ENABLED=false
+AUDIT_LEDGER_HMAC_KEY=
+AUDIT_LEDGER_KEY_ID=audit-ledger-local-v1
+AUDIT_LEDGER_PATH=
+RAG_RUNTIME_MODE=disabled
+RAG_STORE_ENABLED=false
+RAG_INGESTION_ENABLED=false
+RAG_LEXICAL_RETRIEVAL_ENABLED=false
+RAG_VECTOR_RETRIEVAL_ENABLED=false
+RAG_INDEX_ACTIVATION_ENABLED=false
+RAG_EXTERNAL_EMBEDDING_PROVIDER_ENABLED=false
+RAG_SYNTHETIC_FIXTURE_ROOT=
+RAG_MAX_DOCUMENT_CHARS=12000
+RAG_MAX_STAGING_CHUNKS=200
+RAG_CHUNK_TARGET_WORDS=90
+RAG_CHUNK_OVERLAP_WORDS=12
+RAG_MAX_RESULTS=5
+RAG_MAX_EXCERPT_CHARS=360
+RAG_MIN_LEXICAL_RANK=0.01
+RAG_MAX_SELECTED_CHUNK_IDS=8
+RAG_STAGING_TTL_SECONDS=3600
 ```
 
-Configure the environment variables. 
-For the **Frontend**, create a `.env.local` inside the `frontend/` folder:
-```bash
-NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000
+`ALLOW_UNSAFE_EXTERNAL_LLM_FOR_LOCAL_DEBUG=true` is accepted only in `clinical_sandbox` mode. It must not be used with real patient data. `test-key` is a sandbox default only; controlled-pilot and production modes require explicit strong `CDSS_API_KEYS`, `CDSS_SECRET_KEY`, `DIRECTOR_BOOTSTRAP`, and `AUDIT_LEDGER_HMAC_KEY` values. In sandbox mode, persistent local audit ledger storage also requires an explicit strong `AUDIT_LEDGER_HMAC_KEY`; otherwise the backend uses an ephemeral in-process ledger for local development.
+
+## Repository Structure
+
+```text
+backend/                  FastAPI backend
+frontend/                 Next.js frontend
+docs/remediation/         Remediation evidence, risk register, release gates
+dokumen pendukung/        Local supporting assets/uploads
 ```
 
-For the **Backend**, environments can be passed dynamically or declared in your terminal shell. (See [Environment Variables](#environment-variables) for configuration).
+Important local data and runtime files are intentionally ignored by git, including local secrets, audit logs, virtual environments, generated build artifacts, PDFs, and `backend/data_terstruktur/`. Clinical registry reproducibility, licensing, provenance, and approval are not solved yet. Local session, MFA replay, and rate-limit state are in memory and are not durable across restarts or multiple instances.
 
-### 2. Install Dependencies
+## Running Locally
 
-#### Backend:
-Activate your virtual environment and install dependencies:
-```bash
-# Inside cdss-app/backend/
-python -m venv venv
-# Activate on Windows:
-venv\Scripts\activate
-# Activate on Unix/macOS:
-source venv/bin/activate
+Backend:
 
-pip install -r requirements.txt
-```
-
-#### Frontend:
-Install NPM modules:
-```bash
-# Inside cdss-app/frontend/
-npm install
-```
-
-### 3. Run the Development Servers
-
-You can easily launch the entire workspace by running the root script (on Windows):
-```bash
-start-all.bat
-```
-
-Alternatively, run each service manually in separate terminals:
-
-**Terminal 1 (Backend)**:
 ```bash
 cd backend
-venv\Scripts\activate
-uvicorn api:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-**Terminal 2 (Frontend)**:
+Frontend:
+
 ```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-Open your browser to **[http://localhost:3000](http://localhost:3000)**.
+Open `http://localhost:3000`.
 
----
+## Verification
 
-## Project Structure
+Useful local checks:
 
-```markdown
-├── backend/
-│   ├── data_terstruktur/      # JSON Clinical Reference Databases (SDKI, SLKI, SIKI, NANDA, etc.)
-│   ├── agents.py              # Swarm orchestration agent definitions (Flash/Medium/Pro Tiers)
-│   ├── api.py                 # FastAPI endpoints, security middlewares, session engine
-│   ├── crypto_store.py        # Secure data store encryption and hashing
-│   ├── director.py            # MFA/TOTP validation & session validation for directors
-│   ├── director_setup.py      # TOTP MFA bootstrap script
-│   ├── ebp.py                 # Evidence-Based Practice (PubMed/Europe PMC search agent)
-│   ├── ekstraksi.py           # Offline PDF-to-JSON book parsing utility
-│   ├── harvester.py           # Background journal cache warmer
-│   ├── memory.py              # Session history and feedback memory (RLHF logs)
-│   ├── phi.py                 # HIPAA/UU PDP compliant PII sanitization engine
-│   ├── run.bat                # Dev script helper for backend
-│   └── requirements.txt       # Backend dependencies
-├── frontend/
-│   ├── app/                   # Next.js Pages Router (Page components, Layouts, Director Dashboard)
-│   ├── components/            # React UI components (Dashboard, Chatbox, Welcome dialog)
-│   │   ├── app-context.tsx    # State management context (sessions, logins, API handling)
-│   │   └── ui/                # Core design system components (dialogs, cards)
-│   ├── lib/                   # TypeScript utilities
-│   │   ├── api.ts             # Backend API client mappings
-│   │   ├── types.ts           # Model resolutions, provider labels, & key autodetect
-│   │   └── export.ts          # PDF/Word exporters
-│   └── package.json           # Frontend dependencies
-├── start-all.bat              # Multi-process launcher bat script
-└── JALANKAN.md                # Indonesian quickstart guide
-```
-
----
-
-## API Reference
-
-### User Operations
-
-#### 1. Create cryptographic session
-*   **Method / Path**: `POST /session`
-*   **Auth**: None
-*   **Description**: Generates a 256-bit CSPRNG session ID. The frontend must obtain a session ID through this endpoint to prevent session-hijacking and cross-user leaks.
-*   **Response**:
-    ```json
-    { "status": "sukses", "session_id": "session_id_hash_string" }
-    ```
-
-#### 2. Analyze patient medical record
-*   **Method / Path**: `POST /analisis_multi`
-*   **Auth**: `Authorization: Bearer <api_key>`
-*   **Form Parameters**:
-    *   `provider`: Provider target name (e.g. `sumopod`, `openai`, `deepseek`)
-    *   `model`: Target LLM model ID (e.g. `deepseek-v4-pro`)
-    *   `framework`: Standard standard (`3S` / `3N`)
-    *   `session_id`: active session ID
-    *   `tier`: Swarm logic depth (`flash` / `medium` / `pro`)
-    *   `agent`: Selected agent (`analisis` / `pathway` / `referensi`)
-    *   `gejala`: Text query / clinical symptoms
-    *   `file_dokumen` *(Optional)*: Uploaded PDF/DOCX/TXT file
-    *   `file_foto` *(Optional)*: Uploaded Image file (medical record photo)
-*   **Response**: Returns structured JSON care plan output.
-
-#### 3. Chat with streaming output
-*   **Method / Path**: `POST /chat_stream`
-*   **Auth**: `Authorization: Bearer <api_key>`
-*   **Form Parameters**: Same as `/analisis_multi`
-*   **Response**: Standard `text/event-stream` returning incremental tokens.
-
-#### 4. Delete user data (Right to be Forgotten - UU PDP compliance)
-*   **Method / Path**: `POST /delete_my_data`
-*   **Auth**: None (Verifies by `session_id`)
-*   **Payload**: `{ "session_id": "..." }`
-*   **Description**: Purges all history logs and session context permanently from the server memory.
-
----
-
-## Environment Variables
-
-### Backend Configuration
-| Variable | Required | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `FRONTEND_ORIGINS` | No | `http://localhost:3000,http://127.0.0.1:3000` | Allowed CORS origins separated by commas. |
-| `DIRECTOR_BOOTSTRAP` | No | `""` | Key to register the first Director Admin MFA device. |
-| `SHOPEE_BASE_URL` | No | `https://openrouter.ai/api/v1` | Custom base URL for ShopeeAI gateway. |
-| `API_KEY_EKSTRAKSI` | No | `""` | Target API Key for `ekstraksi.py` (do not hardcode). |
-
-### Frontend Configuration
-| Variable | Required | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `NEXT_PUBLIC_API_BASE`| No | `http://127.0.0.1:8000` | Base endpoint of the FastAPI backend. |
-
----
-
-## Testing
-
-Backend unit tests can be implemented to test the swarm output formats:
 ```bash
-cd backend
-python -m unittest discover -s tests -p "*_test.py"
+python -m compileall backend
+backend\venv\Scripts\python.exe -m unittest discover -s backend/tests -p "*_test.py"
+npm --prefix frontend run lint
+npm --prefix frontend run build
+npm --prefix frontend audit --audit-level=moderate
+node --test frontend/tests/capabilities-fallback.test.mjs
 ```
 
-Frontend linters and TypeScript builds can be validated using:
-```bash
-cd frontend
-npm run lint
-npm run build
-```
+Some optional security tools may not be installed locally. Do not report unavailable tools as passing.
 
----
+## Clinical Data Governance
 
-## Deployment
+Do not commit local secrets, TOTP seed files, raw patient content, raw clinical uploads, runtime audit logs, or clinical registry files unless licensing, provenance, governance status, and clinical approval are explicitly resolved.
 
-### Docker Deployment
-The system can be deployed containerized using the provided `Dockerfile` manifests.
+The current local registry data is sandbox-only. Missing or unapproved SDKI/SLKI/SIKI/NANDA/NOC/NIC content must not be filled from model memory or treated as authoritative.
 
-#### Build Backend Image:
-```bash
-cd backend
-docker build -t cdss-backend .
-docker run -d -p 8000:8000 cdss-backend
-```
+Phase 9 P9-A source checkpoint `96024f43f41b1f1d9afca08b6b2d5db4b167cb9a` was merged into dev at `59884ecfba983d02924fb1cd4d5a81ff0af46455`, with dev GitHub Actions passing after merge.
 
-#### Build Frontend Image:
-```bash
-cd frontend
-docker build -t cdss-frontend .
-docker run -d -p 3000:3000 cdss-frontend
-```
+Phase 9 P9-B adds generated synthetic fixture ingestion, deterministic hierarchy-aware chunking, synthetic-only PostgreSQL lexical FTS retrieval, safe citation packaging, typed abstention, and metadata-only retrieval telemetry for explicit local tests only. P9-B checkpoint `5df6af6b952d50f58b9743a42ca24d3bbf72b14e` was merged into dev at `9dbb6470fc4aea446f9108133bbd262c213113ca`; dev GitHub Actions passed after merge. P9-B does not add a product retrieval route, frontend integration, real corpus ingestion, licensed clinical content copying, patient data ingestion, PHI storage, embeddings, vector retrieval, hybrid retrieval, reranking, external embedding providers, or registry activation.
 
----
+Phase 9 P9-C installs pgvector explicitly on an operator-attested isolated test database only and applies the optional vector schema explicitly for synthetic testing only. Focused P9-C tests are now unittest-discovered: synthetic vectors 8, benchmark 5, red-team 9, and isolated PostgreSQL vector integration 3. Integration inserted 54 synthetic vectors across test runs, executed 4 exact-cosine queries, 1 lexical query, 3 benchmark runs, and 6 red-team rejection checks; cleanup verified synthetic vector rows 0, synthetic corpus rows 0, staging rows 0, active synthetic pointers 0, real corpus rows 0, registry activation false, and external provider calls 0. `synthetic-hash-vector-v1` remains deterministic plumbing only, and exact-cosine vector retrieval is a synthetic infrastructure baseline only; it makes no semantic retrieval-quality claim, no clinical retrieval-quality claim, and no pgvector-versus-Qdrant architecture conclusion. P9-C adds no product route, frontend integration, real corpus, licensed clinical content, PHI, external embedding provider, ANN index, HNSW, IVFFlat, hybrid retrieval, reranking, Qdrant, or registry activation. P9-C checkpoint committed at `eac151638f5f294cd21ac634c08d5bac41fe130a` was merged into dev at `8c9e0927ab26be381334a9a2222080671fb6df0f`; review-branch and dev GitHub Actions passed. Phase 9 is technically closed for synthetic infrastructure scope only.
 
-## Contributing
+Phase 10 P10-A1 implements the metadata-only governed corpus-intake contract, synthetic-only validator, and quarantine decision foundation. It is default-off. P10-A1 does not ingest or store document bodies/excerpts, does not mutate PostgreSQL, does not execute migrations, does not implement clinical retrieval or product routes, does not activate registry data, and does not integrate external providers. Gate A/B/C remain unmet, and Phase 10 P10-A2 isolated integration has not started.
 
-1.  **Branching Strategy**: Use `main` for stable releases, and `dev` for active updates.
-2.  **Pull Requests**: Document your features, ensure your linter is clean, and reference any issues resolved.
-3.  **Commit Conventions**: Follow conventional commits (e.g. `feat(api): ...`, `fix(ui): ...`, `docs: ...`).
+## Remediation Roadmap
 
----
+See `docs/remediation/` for the remediation plan, verification log, risk register, data governance notes, and release gates.
 
-## License
+Gate A is not passed yet. Phase 0B through staged Phase 10 P10-A1 controls are sandbox checkpoints only. Later work still needs durable identity/session/rate-limit storage, formal registry and clinical review, browser-rendered QA disposition, hard parser resource controls, external immutable audit storage or equivalent audit service, CI enforcement, governed real corpus approval, clinically meaningful retrieval benchmarks, and legal/regulatory review before any pilot or production claim.
 
-This project is licensed under the [MIT License](LICENSE).
+
+Director MFA enrollment is disabled by default. Local sandbox provisioning requires DIRECTOR_ENROLLMENT_ENABLED=true and X-Director-Bootstrap; controlled-pilot and production provisioning workflows are not implemented.

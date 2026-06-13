@@ -18,10 +18,13 @@ import os, re, json, time, threading, datetime, urllib.parse, urllib.request
 try:
     from defusedxml.ElementTree import fromstring as _xml_fromstring   # parsing XML AMAN (anti XML-bomb / XXE)
 except Exception:   # fallback bila defusedxml belum terpasang (sumber XML sudah dibatasi host allowlist)
-    from xml.etree.ElementTree import fromstring as _xml_fromstring  # nosec
+    # B405: fallback only if defusedxml is unavailable; HTTP XML sources use host allowlists.
+    from xml.etree.ElementTree import fromstring as _xml_fromstring  # nosec B405
 from concurrent.futures import ThreadPoolExecutor
 from langchain_core.messages import SystemMessage, HumanMessage
 import crypto_store
+from config import CONFIG
+from outbound_policy import DEFAULT_OUTBOUND_POLICY
 
 _FILE = os.path.join(os.path.dirname(__file__), "ebp_memory.json")
 _LOCK = threading.Lock()
@@ -34,7 +37,7 @@ _NCBI = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 _EUPMC = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 _S2 = "https://api.semanticscholar.org/graph/v1/paper/search"
 _UNPAYWALL = "https://api.unpaywall.org/v2/"
-_UNPAYWALL_EMAIL = os.environ.get("UNPAYWALL_EMAIL", "cdss.keperawatan@example.com")
+_UNPAYWALL_EMAIL = CONFIG.unpaywall_email
 
 
 # ----------------------------- util ------------------------------------------
@@ -416,11 +419,13 @@ def _apa_bits(a: dict) -> str:
 
 def retrieve_context(llm, case: str) -> str:
     """Susun query (EN) -> cari lintas-database (PubMed/Europe PMC/Semantic Scholar) berjenjang -> blok konteks NYATA."""
+    safe_case = DEFAULT_OUTBOUND_POLICY.deidentified_concept_query(case)
     try:
-        q = _english_query(llm, case) or case
+        q = _english_query(llm, safe_case.text) or safe_case.text
     except Exception:
-        q = case
-    arts, tier = retrieve(q, case)
+        q = safe_case.text
+    q = DEFAULT_OUTBOUND_POLICY.sanitize_for_external_provider(q).text
+    arts, tier = retrieve(q, safe_case.text)
     if not arts:
         return ("\n\nHASIL PENCARIAN JURNAL: KOSONG. Sudah dicari di beberapa database kredibel (PubMed, Europe PMC, "
                 "Semantic Scholar) dengan syarat OPEN-ACCESS/FULL-TEXT GRATIS, berjenjang (5 tahun, 10 tahun, lalu tanpa "

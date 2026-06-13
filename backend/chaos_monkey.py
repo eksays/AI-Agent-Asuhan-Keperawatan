@@ -20,7 +20,8 @@ def _post(path, fields, headers=None):
     data = urllib.parse.urlencode(fields).encode()
     req = urllib.request.Request(BASE + path, data=data, headers=headers or {})
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:   # nosec B310 - alat uji ke host lokal
+        # B310: opt-in local chaos smoke test against the configured backend.
+        with urllib.request.urlopen(req, timeout=15) as r:   # nosec B310
             return r.status
     except urllib.error.HTTPError as e:
         return e.code
@@ -30,7 +31,8 @@ def _post(path, fields, headers=None):
 
 def _get(path):
     try:
-        with urllib.request.urlopen(BASE + path, timeout=10) as r:   # nosec B310 - alat uji ke host lokal
+        # B310: opt-in local chaos smoke test against the configured backend.
+        with urllib.request.urlopen(BASE + path, timeout=10) as r:   # nosec B310
             return r.status
     except urllib.error.HTTPError as e:
         return e.code

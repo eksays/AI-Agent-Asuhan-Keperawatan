@@ -13,3 +13,5 @@ langchain-anthropic
 cryptography
 gunicorn
 defusedxml
+psycopg[binary]
+python-dotenv

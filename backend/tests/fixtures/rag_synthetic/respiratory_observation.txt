@@ -1,0 +1,19 @@
+# Synthetic Respiratory Observation Workflow
+
+## Intake Signals
+This generated fixture describes a training-only observation workflow for breathing comfort signals in a simulated skills lab. It is not a care instruction and not an authority source.
+
+## Observation Steps
+1. Confirm the synthetic scenario label before any note is created.
+2. Observe breathing rhythm, visible effort, and conversation comfort using neutral training language.
+3. Record only synthetic scenario findings and avoid personal identifiers.
+4. Escalate the training exercise to a human reviewer when information is incomplete.
+
+## Table-Like Checklist
+| item | synthetic observation |
+| rhythm | steady or irregular in the simulated script |
+| effort | relaxed or increased in the simulated script |
+| review | always requires human training review |
+
+## Safety Boundary
+The fixture supports lexical retrieval tests only. It must not be used for clinical advice, diagnosis, treatment, or registry activation.
