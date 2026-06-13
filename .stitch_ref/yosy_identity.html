@@ -1,0 +1,569 @@
+<!DOCTYPE html><html class="dark" lang="id" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>CDSS AI Keperawatan</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&amp;family=Arimo:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "surface-container-lowest": "#0e0e0e",
+                "on-tertiary-fixed": "#1a1c1c",
+                "primary-fixed-dim": "#c6c6c6",
+                "error": "#ffb4ab",
+                "on-primary-fixed": "#1a1c1c",
+                "background": "#131313",
+                "inverse-primary": "#5d5e5f",
+                "surface": "#131313",
+                "secondary-fixed-dim": "#c7c6c6",
+                "on-secondary-fixed": "#1b1c1c",
+                "secondary": "#c7c6c6",
+                "on-tertiary-fixed-variant": "#454747",
+                "inverse-surface": "#e4e2e0",
+                "inverse-on-surface": "#303030",
+                "on-error-container": "#ffdad6",
+                "on-background": "#e4e2e0",
+                "surface-dim": "#131313",
+                "on-tertiary-container": "#040506",
+                "tertiary-fixed-dim": "#c6c6c7",
+                "surface-tint": "#c6c6c6",
+                "surface-container-low": "#1b1c1b",
+                "secondary-container": "#464747",
+                "on-surface-variant": "#c4c7c7",
+                "on-primary": "#2f3131",
+                "surface-variant": "#353534",
+                "on-surface": "#e4e2e0",
+                "on-secondary": "#303031",
+                "on-primary-container": "#040505",
+                "surface-container-highest": "#353534",
+                "surface-container": "#1f201f",
+                "tertiary": "#c6c6c7",
+                "surface-bright": "#393938",
+                "primary-fixed": "#e3e2e2",
+                "primary": "#c6c6c6",
+                "surface-container-high": "#2a2a29",
+                "tertiary-fixed": "#e2e2e2",
+                "on-primary-fixed-variant": "#454747",
+                "tertiary-container": "#767777",
+                "on-secondary-fixed-variant": "#464747",
+                "error-container": "#93000a",
+                "primary-container": "#767777",
+                "on-secondary-container": "#b6b5b5",
+                "secondary-fixed": "#e3e2e2",
+                "outline-variant": "#444748",
+                "outline": "#8e9192",
+                "on-tertiary": "#2f3131",
+                "on-error": "#690005"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.125rem",
+                "lg": "0.25rem",
+                "xl": "0.5rem",
+                "full": "0.75rem"
+        },
+        "spacing": {
+                "unit": "4px",
+                "margin": "48px",
+                "section-v-space": "120px",
+                "card-padding": "32px",
+                "gutter": "24px"
+        },
+        "fontFamily": {
+                "body-md": [
+                        "Outfit"
+                ],
+                "body-lg": [
+                        "Outfit"
+                ],
+                "label-md": [
+                        "Arimo"
+                ],
+                "headline-md": [
+                        "Outfit"
+                ],
+                "headline-lg": [
+                        "Outfit"
+                ],
+                "headline-xl": [
+                        "Outfit"
+                ],
+                "label-sm": [
+                        "Arimo"
+                ]
+        },
+        "fontSize": {
+                "body-md": [
+                        "16px",
+                        {
+                                "lineHeight": "1.6",
+                                "letterSpacing": "0",
+                                "fontWeight": "400"
+                        }
+                ],
+                "body-lg": [
+                        "18px",
+                        {
+                                "lineHeight": "1.6",
+                                "letterSpacing": "-0.01em",
+                                "fontWeight": "400"
+                        }
+                ],
+                "label-md": [
+                        "13px",
+                        {
+                                "lineHeight": "1.4",
+                                "letterSpacing": "0.02em",
+                                "fontWeight": "500"
+                        }
+                ],
+                "headline-md": [
+                        "24px",
+                        {
+                                "lineHeight": "1.3",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "500"
+                        }
+                ],
+                "headline-lg": [
+                        "40px",
+                        {
+                                "lineHeight": "1.2",
+                                "letterSpacing": "-0.03em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "headline-xl": [
+                        "64px",
+                        {
+                                "lineHeight": "1.1",
+                                "letterSpacing": "-0.04em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "label-sm": [
+                        "11px",
+                        {
+                                "lineHeight": "1.2",
+                                "letterSpacing": "0.05em",
+                                "fontWeight": "400"
+                        }
+                ]
+        }
+},
+    },
+  }
+</script>
+<style>
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+        .fill-icon { font-variation-settings: 'FILL' 1; }
+        
+        /* Micro-interactions */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+        .heartbeat-mark { position: relative; }
+        .heartbeat-mark::after {
+            content: '';
+            position: absolute;
+            width: 8px; height: 8px;
+            background-color: theme('colors.primary');
+            border-radius: 50%;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .shimmer-effect::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to right, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+            transform: translateX(-100%);
+            animation: shimmer 4s infinite;
+            pointer-events: none;
+        }
+
+        /* Scroll Reveal */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s cubic-bezier(0.5, 0, 0, 1);
+        }
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .stagger-reveal > * {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeUp 0.8s ease forwards;
+        }
+        .stagger-reveal > *:nth-child(1) { animation-delay: 0.1s; }
+        .stagger-reveal > *:nth-child(2) { animation-delay: 0.2s; }
+        .stagger-reveal > *:nth-child(3) { animation-delay: 0.3s; }
+        
+        @keyframes fadeUp {
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased overflow-x-hidden selection:bg-primary/20 selection:text-primary">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-white/5 transition-all">
+<div class="flex justify-between items-center h-20 px-margin max-w-screen-2xl mx-auto"><div class="flex items-center gap-2"><img alt="Yosy Project Logo" class="w-10 h-10 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAQMxpmkF6MOAL8uOyABM5kcCXveaFGtrsv4sj4Z3YDBSuF3escjpprym3s8usmLMJHmGG_Xedoe9Ef9L9-HZB6CMximnns6fEVnlx8bVvv3HvHcRHdRsZ64PfWZDjNZvWbJ7R0s8K3gtCOBDzvXIWVxnwf42w3IfcDi2R27erZh1K4FzznDKoESJnrw19kXoi25sAWPCY1ncSOh378WcXIxBe9G5Yn9TBTtowquoawk1htiHmtWEdiT3tmj464tG57NFWUCSR189ihzg"><span class="font-headline-md text-headline-md text-on-surface uppercase tracking-widest font-bold"><br></span></div>
+<div class="hidden md:flex items-center gap-8">
+<a class="text-on-surface-variant hover:text-primary transition-colors font-body-md text-body-md" href="#">Fitur</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors font-body-md text-body-md" href="#">Cara Kerja</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors font-body-md text-body-md" href="#">Standar</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors font-body-md text-body-md" href="#">Keamanan</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors font-body-md text-body-md" href="#">EBP</a>
+</div>
+<div class="flex items-center gap-4">
+<button class="hidden md:block font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors">Masuk</button>
+<button class="bg-primary/10 text-primary border border-primary/30 px-6 py-2 rounded font-label-md text-label-md hover:bg-primary hover:text-on-primary hover:scale-105 transition-all active:scale-95 duration-300">Mulai Sekarang</button>
+</div>
+</div>
+</nav>
+<main class="pt-32 pb-section-v-space">
+<!-- Hero Section Wrapper -->
+<div class="relative w-full mb-section-v-space" id="hero-wrapper">
+<!-- Particle Canvas -->
+<canvas class="absolute inset-0 w-full h-full z-0 pointer-events-none" height="715" id="particle-canvas" width="1279"></canvas>
+<!-- Hero Section -->
+<section class="px-margin max-w-screen-2xl mx-auto reveal relative z-10 active">
+<div class="grid grid-cols-1 md:grid-cols-12 gap-gutter items-center min-h-[716px]">
+<div class="md:col-span-8 stagger-reveal pr-0 md:pr-12">
+<h1 class="font-headline-xl text-headline-xl text-on-surface mb-8 leading-tight tracking-tight">CDSS for Nursing</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mb-12 border-l-2 border-outline-variant pl-6">
+                                    Sistem pendukung pengambilan keputusan klinis keperawatan berbasis Multi Agentic Artificial Intelligence dan Retrieval-Augmented Generation (RAG)</p>
+<div class="flex flex-wrap items-center gap-6">
+<button class="bg-primary text-on-primary px-8 py-4 rounded font-label-md text-label-md hover:bg-primary-container hover:scale-105 transition-all duration-300 flex items-center gap-2 shadow-[0_4px_14px_0_rgba(198,198,198,0.39)]">
+                                        Mulai Analisis
+                                        <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+</div>
+<div class="md:col-span-4 relative mt-12 md:mt-0 opacity-0 animate-[fadeUp_1s_ease_0.5s_forwards]">
+<!-- Abstract Mockup Frame -->
+<div class="absolute inset-0 bg-primary/5 blur-3xl rounded-full"></div>
+<div class="relative rounded-xl border border-white/10 bg-surface-container-lowest p-2 shadow-2xl shadow-black/50 overflow-hidden aspect-[3/4] flex flex-col shimmer-effect">
+<div class="flex-1 rounded-lg overflow-hidden bg-surface relative">
+<img alt="Dashboard preview" class="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-luminosity" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB3j4y5sUvmgoSDnV-xF46vL4DM3QMa1JqD3vBSUmL9Z1i6Q_g5K9k4Z06gWNuqtqO25fwzLhNKnBv97M3X8dDTx4-8To6sbhHscUrvEbF7BUdGQ3einUvzpD1eVRKPkTMVWhOv8xnN52Vy-uy9uLWWPeHpi5CIw-ui5v7rshbr3y7W398tjFSmLlwbh-eOtQp70_-uYQuobirXui9yNTcmR6xJfG-eWZ74yOiVA_hg5fi8dagapEQCI1ApssVL0Pcj4mFX5jprqF_zMg">
+<div class="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent"></div>
+<!-- Overlay HUD elements -->
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Trust Strip -->
+<section class="border-y border-white/5 bg-surface-container-lowest py-8 mb-section-v-space reveal active">
+<div class="px-margin max-w-screen-2xl mx-auto flex flex-col md:flex-row items-center gap-8 justify-between">
+<span class="font-label-md text-label-md text-outline uppercase tracking-widest">Supported 11 Provider LLM</span>
+<div class="flex flex-wrap gap-4 items-center">
+<span class="px-3 py-1 border border-outline-variant rounded bg-surface font-label-sm text-label-sm text-on-surface-variant shadow-md shadow-black/20">CLAUDE 3.5 OPUS</span>
+<span class="px-3 py-1 border border-outline-variant rounded bg-surface font-label-sm text-label-sm text-on-surface-variant shadow-md shadow-black/20">GPT-4O</span>
+<span class="px-3 py-1 border border-outline-variant rounded bg-surface font-label-sm text-label-sm text-on-surface-variant shadow-md shadow-black/20">GEMINI 1.5 PRO</span>
+<span class="px-3 py-1 border border-outline-variant rounded bg-surface font-label-sm text-label-sm text-on-surface-variant shadow-md shadow-black/20">LLAMA 3 70B</span>
+<span class="font-label-sm text-label-sm text-outline">+7 Other</span>
+</div>
+</div>
+</section>
+<!-- Core AI Capabilities (Bento) -->
+<section class="px-margin max-w-screen-2xl mx-auto mb-section-v-space">
+<h2 class="font-headline-lg text-headline-lg text-on-surface mb-12 reveal active">Kapabilitas Klinis</h2>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-gutter auto-rows-[240px]">
+<!-- Large Tile -->
+<div class="md:col-span-8 row-span-2 bg-surface-container-low border border-white/5 rounded-xl p-card-padding flex flex-col justify-between group hover:border-primary/30 transition-colors reveal shadow-xl shadow-black/40 active">
+<div>
+<span class="material-symbols-outlined text-[32px] text-primary mb-4">hub</span>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">Multi-Agent Swarm</h3>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-md">Arsitektur agen ganda yang memisahkan tugas ekstraksi, penalaran patofisiologi, dan pemetaan standar untuk akurasi optimal</p>
+</div>
+<div class="mt-auto border-t border-white/5 pt-4">
+<div class="flex items-center gap-4 text-label-sm font-label-sm">
+<span class="text-primary flex items-center gap-1"><span class="w-1.5 h-1.5 bg-primary rounded-full"></span> EXTRACTOR</span>
+<span class="text-tertiary flex items-center gap-1"><span class="w-1.5 h-1.5 bg-tertiary rounded-full"></span> REASONER</span>
+<span class="text-secondary flex items-center gap-1"><span class="w-1.5 h-1.5 bg-secondary rounded-full"></span> MAPPER</span>
+</div>
+</div>
+</div>
+<!-- Small Tile -->
+<div class="md:col-span-4 bg-surface border border-white/5 rounded-xl p-card-padding flex flex-col justify-between hover:bg-surface-container transition-colors reveal shadow-lg shadow-black/30 active" style="transition-delay: 100ms;">
+<span class="material-symbols-outlined text-[28px] text-secondary mb-4">document_scanner</span>
+<h3 class="font-headline-md text-headline-md text-on-surface text-lg mb-2">Document &amp; Photo Reader</h3>
+<p class="font-body-md text-body-md text-on-surface-variant text-sm">Ekstraksi data vital langsung dari rekam medis fisik atau monitor</p>
+</div>
+<!-- Small Tile -->
+<div class="md:col-span-4 bg-surface border border-white/5 rounded-xl p-card-padding flex flex-col justify-between hover:bg-surface-container transition-colors reveal shadow-lg shadow-black/30 active" style="transition-delay: 200ms;">
+<span class="material-symbols-outlined text-[28px] text-tertiary mb-4">account_tree</span>
+<h3 class="font-headline-md text-headline-md text-on-surface text-lg mb-2">3S &amp; 3N Aware</h3>
+<p class="font-body-md text-body-md text-on-surface-variant text-sm">Pemetaan nomenklatur otomatis ke standar asuhan nasional dan global</p>
+</div>
+<!-- Medium Tile -->
+<div class="md:col-span-6 bg-surface-container-low border border-white/5 rounded-xl p-card-padding flex flex-col justify-between relative overflow-hidden reveal shadow-xl shadow-black/40 active" style="transition-delay: 100ms;">
+<div class="absolute top-0 right-0 p-4 opacity-10">
+<span class="material-symbols-outlined text-[120px]">science</span>
+</div>
+<div class="relative z-10">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">Grounding RAG &amp; EBP</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Keputusan didasarkan pada literatur Evidence-Based Practice terbaru, bukan halusinasi generatif</p>
+</div>
+</div>
+<!-- Medium Tile -->
+<div class="md:col-span-6 bg-surface-container-low border border-white/5 rounded-xl p-card-padding flex flex-col justify-between reveal shadow-xl shadow-black/40 active" style="transition-delay: 200ms;">
+<div>
+<div class="flex justify-between items-start mb-4">
+<span class="material-symbols-outlined text-[28px] text-error">shield</span>
+
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">20+ Guardrails Klinis</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Proteksi anti prompt-injection dan verifikasi dosis/intervensi kritis secara real-time.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Standards Split -->
+<section class="border-y border-outline-variant bg-surface py-section-v-space mb-section-v-space reveal active">
+<div class="px-margin max-w-screen-2xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-0">
+<div class="md:border-r border-outline-variant md:pr-16 pb-12 md:pb-0">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-6 flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">public</span>
+                        Standar Indonesia (3S)
+                    </h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-8">Integrasi penuh dengan pedoman PPNI untuk kompatibilitas rekam medis elektronik nasional.</p>
+<ul class="space-y-3 font-label-sm text-label-sm">
+<li class="flex items-center gap-3 text-outline">
+<span class="w-1 h-4 bg-primary/50 block"></span>
+<span class="text-on-surface">SDKI</span> - Standar Diagnosis
+                        </li>
+<li class="flex items-center gap-3 text-outline">
+<span class="w-1 h-4 bg-primary/50 block"></span>
+<span class="text-on-surface">SLKI</span> - Standar Luaran
+                        </li>
+<li class="flex items-center gap-3 text-outline">
+<span class="w-1 h-4 bg-primary/50 block"></span>
+<span class="text-on-surface">SIKI</span> - Standar Intervensi
+                        </li>
+</ul>
+</div>
+<div class="md:pl-16 pt-12 md:pt-0 border-t border-outline-variant md:border-t-0">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-6 flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary">language</span>
+                        Standar Internasional (3N)
+                    </h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-8">Pemetaan sekunder untuk kebutuhan riset, publikasi, atau rumah sakit bertaraf internasional.</p>
+<ul class="space-y-3 font-label-sm text-label-sm">
+<li class="flex items-center gap-3 text-outline">
+<span class="w-1 h-4 bg-secondary/50 block"></span>
+<span class="text-on-surface">NANDA</span> - Nursing Diagnoses
+                        </li>
+<li class="flex items-center gap-3 text-outline">
+<span class="w-1 h-4 bg-secondary/50 block"></span>
+<span class="text-on-surface">NOC</span> - Outcomes Classification
+                        </li>
+<li class="flex items-center gap-3 text-outline">
+<span class="w-1 h-4 bg-secondary/50 block"></span>
+<span class="text-on-surface">NIC</span> - Interventions Classification
+                        </li>
+</ul>
+</div>
+</div>
+</section>
+<!-- Final CTA -->
+<section class="px-margin max-w-screen-2xl mx-auto mb-section-v-space text-center reveal active">
+<div class="bg-surface-container-high border border-outline-variant rounded-2xl p-16 relative overflow-hidden shadow-2xl shadow-black/50">
+<div class="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface mb-6 relative z-10">Susun Asuhan Keperawatan hari ini</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-xl mx-auto mb-10 relative z-10">Tingkatkan akurasi pembuatan asuhan keperawatan anda</p>
+<button class="bg-primary text-on-primary px-8 py-4 rounded font-label-md text-label-md hover:bg-primary-container hover:scale-105 transition-all duration-300 relative z-10 shadow-[0_4px_14px_0_rgba(198,198,198,0.39)]">
+                    Mulai Evaluasi Klinis
+                </button>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-surface-container-lowest w-full py-section-v-space border-t border-outline-variant">
+<div class="grid grid-cols-1 md:grid-cols-12 gap-gutter px-margin max-w-screen-2xl mx-auto">
+<div class="md:col-span-4 mb-8 md:mb-0 reveal active"><div class="mb-6 flex items-center gap-2"><img alt="Yosy Project Logo" class="w-10 h-10 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD6Ws0agtBbP6PP6O39FnFdGN1mQxl0PxjUD1SGlwy-UiSENXLPy192PQ5st7ex8n88lpKdbwLpSuV1z7HToA2uEod-OPYsovLE2PzTmhLAxvmi-t-iyU2JtZqgc2lBqV3Kq6oyir0oFrTfwyv0WF1-Pq1vZCxl_NBHI8mYLwJOeZI1GzEYRPh0UOlPZI2JT5z2yWzA6q5rTJUwqXU6365Qi75a6SPnqdWrl9BMM6LBVujL4YYgE4ANEpGJIuzECNkSIYRdwzVOYV_Gug"><span class="font-headline-md text-headline-md text-on-surface tracking-tight">Yosy Project</span></div>
+<p class="font-label-sm text-label-sm text-outline mb-6">
+                    Sistem ini adalah pendukung keputusan klinis, bukan pengganti penilaian profesional perawat berlisensi.</p>
+<p class="font-label-md text-label-md text-on-surface-variant">© 2026 Yosy Project.</p>
+</div>
+<div class="md:col-span-8 flex flex-wrap gap-x-16 gap-y-8 md:justify-end reveal active">
+<div class="flex flex-col gap-3">
+<span class="font-label-sm text-label-sm text-outline mb-2">PLATFORM</span>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">Produk</a>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">Fitur</a>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">EBP</a>
+</div>
+<div class="flex flex-col gap-3">
+<span class="font-label-sm text-label-sm text-outline mb-2">RESOURCES</span>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">Dokumentasi</a>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">Keamanan</a>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">Pusat Bantuan</a>
+</div>
+<div class="flex flex-col gap-3">
+<span class="font-label-sm text-label-sm text-outline mb-2">LEGAL</span>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">Kebijakan Privasi</a>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">Syarat &amp; Ketentuan</a>
+</div>
+</div>
+</div>
+</footer>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                }
+            });
+        }, { threshold: 0.1, rootMargin: "0px 0px -50px 0px" });
+
+        document.querySelectorAll('.reveal').forEach((el) => {
+            observer.observe(el);
+        });
+
+        // Particle System
+        const canvas = document.getElementById('particle-canvas');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            const wrapper = document.getElementById('hero-wrapper');
+            
+            let particles = [];
+            let mouse = { x: null, y: null, radius: 150 };
+
+            const colors = ['#2BB3A3', '#c6c6c6', '#e4e2e0'];
+
+            wrapper.addEventListener('mousemove', (e) => {
+                const rect = wrapper.getBoundingClientRect();
+                mouse.x = e.clientX - rect.left;
+                mouse.y = e.clientY - rect.top;
+            });
+
+            wrapper.addEventListener('mouseleave', () => {
+                mouse.x = null;
+                mouse.y = null;
+            });
+
+            class Particle {
+                constructor() {
+                    this.x = Math.random() * canvas.width;
+                    this.y = Math.random() * canvas.height;
+                    this.size = Math.random() * 2 + 0.5;
+                    this.baseX = this.x;
+                    this.baseY = this.y;
+                    this.density = (Math.random() * 30) + 1;
+                    this.color = colors[Math.floor(Math.random() * colors.length)];
+                    this.vx = (Math.random() - 0.5) * 0.4;
+                    this.vy = (Math.random() - 0.5) * 0.4;
+                }
+
+                draw() {
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+
+                update() {
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    if (this.x < 0 || this.x > canvas.width) this.vx = -this.vx;
+                    if (this.y < 0 || this.y > canvas.height) this.vy = -this.vy;
+
+                    if (mouse.x != null) {
+                        let dx = mouse.x - this.x;
+                        let dy = mouse.y - this.y;
+                        let distance = Math.sqrt(dx * dx + dy * dy);
+                        let forceDirectionX = dx / distance;
+                        let forceDirectionY = dy / distance;
+                        let maxDistance = mouse.radius;
+                        let force = (maxDistance - distance) / maxDistance;
+                        let directionX = forceDirectionX * force * this.density;
+                        let directionY = forceDirectionY * force * this.density;
+
+                        if (distance < maxDistance) {
+                            this.x -= directionX;
+                            this.y -= directionY;
+                        }
+                    }
+                }
+            }
+
+            function initParticles() {
+                particles = [];
+                // Adjust density based on screen size
+                const numParticles = Math.min((canvas.width * canvas.height) / 12000, 150);
+                for (let i = 0; i < numParticles; i++) {
+                    particles.push(new Particle());
+                }
+            }
+
+            function animateParticles() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                for (let i = 0; i < particles.length; i++) {
+                    particles[i].update();
+                    particles[i].draw();
+                }
+                
+                // Connect particles
+                ctx.lineWidth = 0.5;
+                for (let a = 0; a < particles.length; a++) {
+                    for (let b = a + 1; b < particles.length; b++) {
+                        let dx = particles[a].x - particles[b].x;
+                        let dy = particles[a].y - particles[b].y;
+                        let distance = dx * dx + dy * dy;
+                        
+                        if (distance < 12000) {
+                            let opacity = 1 - (distance/12000);
+                            ctx.strokeStyle = `rgba(198, 198, 198, ${opacity * 0.2})`;
+                            ctx.beginPath();
+                            ctx.moveTo(particles[a].x, particles[a].y);
+                            ctx.lineTo(particles[b].x, particles[b].y);
+                            ctx.stroke();
+                        }
+                    }
+                }
+                requestAnimationFrame(animateParticles);
+            }
+
+            const resizeObserver = new ResizeObserver(entries => {
+                for (let entry of entries) {
+                    canvas.width = entry.contentRect.width;
+                    canvas.height = entry.contentRect.height;
+                    initParticles();
+                }
+            });
+
+            resizeObserver.observe(wrapper);
+            animateParticles();
+        }
+    });
+</script>
+
+
+
+
+
+
+
+
+</body></html>

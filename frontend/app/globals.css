@@ -46,6 +46,28 @@
   --color-ring: hsl(var(--ring));
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Landing page (CDSS clinical-noir palette from Stitch) — additive, does not affect the app/dashboard theme. */
+  --font-cl-display: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  --font-cl-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --font-cl-label: var(--font-arimo), ui-sans-serif, system-ui, sans-serif;
+  --color-cl-bg: #131313;
+  --color-cl-surface: #131313;
+  --color-cl-surface-lowest: #0e0e0e;
+  --color-cl-surface-low: #1b1c1b;
+  --color-cl-surface-container: #1f201f;
+  --color-cl-surface-high: #2a2a29;
+  --color-cl-surface-highest: #353534;
+  --color-cl-on-surface: #e4e2e0;
+  --color-cl-on-surface-variant: #c4c7c7;
+  --color-cl-primary: #c6c6c6;
+  --color-cl-on-primary: #2f3131;
+  --color-cl-primary-container: #767777;
+  --color-cl-secondary: #c7c6c6;
+  --color-cl-tertiary: #c6c6c7;
+  --color-cl-error: #ffb4ab;
+  --color-cl-outline: #8e9192;
+  --color-cl-outline-variant: #444748;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -135,5 +157,34 @@ body { background: hsl(var(--background)); color: hsl(var(--foreground)); font-f
 
 .mermaid-box { background: #fff; border-radius: 12px; padding: 20px; overflow-x: auto; text-align: center; }
 .mermaid-box svg { max-width: 100%; height: auto; }
+
+/* ── Landing page helpers (Stitch design) ───────────────────────────── */
+.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; font-family: 'Material Symbols Outlined'; line-height: 1; }
+.material-symbols-outlined.fill-icon { font-variation-settings: 'FILL' 1; }
+
+@keyframes cl-pulse-ring { 0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.5; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
+.cl-heartbeat { position: relative; }
+.cl-heartbeat::after {
+  content: ''; position: absolute; width: 12px; height: 12px;
+  background-color: var(--color-cl-primary); border-radius: 50%;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  animation: cl-pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+@keyframes cl-fade-up { to { opacity: 1; transform: translateY(0); } }
+.cl-stagger > * { opacity: 0; transform: translateY(20px); animation: cl-fade-up 0.8s ease forwards; }
+.cl-stagger > *:nth-child(1) { animation-delay: 0.1s; }
+.cl-stagger > *:nth-child(2) { animation-delay: 0.2s; }
+.cl-stagger > *:nth-child(3) { animation-delay: 0.3s; }
+.cl-fade-in { opacity: 0; animation: cl-fade-up 1s ease 0.5s forwards; }
+
+/* Shimmer sweep for the hero mockup panel (Stitch "AI Identity Edition"). */
+@keyframes cl-shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.cl-shimmer::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 20;
+  background: linear-gradient(to right, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+  transform: translateX(-100%); animation: cl-shimmer 4s infinite;
+}
+html { scroll-behavior: smooth; }
 
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
-import { HeroLanding } from "@/components/ui/hero-1";
+import { LandingPage } from "@/components/landing/landing-page";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useApp } from "@/components/app-context";
 import { detectProvider, PROVIDER_LABEL, type ProviderId } from "@/lib/types";
@@ -21,12 +21,7 @@ export function Welcome() {
 
   return (
     <>
-      <HeroLanding
-        title="CDSS AI Keperawatan"
-        titleClassName="bg-gradient-to-b from-white via-white to-zinc-500 bg-clip-text text-transparent text-5xl font-bold tracking-tight sm:text-7xl"
-        description="Sistem Pendukung Keputusan Klinis Berbasis Standar 3S & 3N. Cepat, akurat, dan berbasis bukti klinis (EBP)."
-        callToActions={[{ text: "Get Start", variant: "primary", onClick: () => setOpen(true), icon: <ArrowRight className="h-4 w-4" /> }]}
-      />
+      <LandingPage onGetStarted={() => setOpen(true)} />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
